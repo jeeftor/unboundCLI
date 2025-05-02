@@ -456,7 +456,7 @@ func (c *Client) DeleteOverride(uuid string) error {
 
 // ApplyChanges applies all DNS changes to the Unbound service
 func (c *Client) ApplyChanges() error {
-	logging.Info("Applying changes to Unbound service")
+	logging.Debug("Applying changes to Unbound service")
 
 	// Create an empty JSON object as the request body
 	emptyJSON := bytes.NewBufferString("{}")
@@ -465,7 +465,7 @@ func (c *Client) ApplyChanges() error {
 		return err
 	}
 
-	// Check both result and status fields
+	// Check the result field instead of status
 	if resp.Result != "saved" && resp.Status != "ok" {
 		logging.Error(
 			"API returned error",
@@ -479,6 +479,6 @@ func (c *Client) ApplyChanges() error {
 		return fmt.Errorf("API returned error: %s", resp.Message)
 	}
 
-	logging.Info("Successfully applied changes to Unbound service")
+	logging.Debug("Successfully applied changes to Unbound service")
 	return nil
 }
