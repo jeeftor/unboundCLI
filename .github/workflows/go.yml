@@ -42,3 +42,13 @@ jobs:
 
       - name: Test
         run: go test -v ./...
+
+  test-release:
+    name: Test Release Workflow
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/goreleaser-dry-run.yml
+    with:
+      dry_run: true
+    secrets:
+      inherit
