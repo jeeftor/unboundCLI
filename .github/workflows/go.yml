@@ -5,6 +5,8 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+    types: [ opened, synchronize, reopened ] # Explicitly specify event types
+  workflow_dispatch: # Allow manual triggering for debugging
 
 jobs:
   lint:
@@ -12,16 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
           cache: true
-
       - name: Install pre-commit
         run: pip install pre-commit
-
       - name: Run pre-commit
         run: pre-commit run --all-files
 
@@ -30,23 +29,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
           cache: true
-
       - name: Build
         run: go build -v ./...
-
       - name: Test
         run: go test -v ./...
+
+  debug-event:
+    name: Debug Event Trigger
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Print Event Details
+        run: |
+          echo "Event Name: ${{ github.event_name }}"
+          echo "Event Action: ${{ github.event.action }}"
+          echo "Base Branch: ${{ github.base_ref }}"
+          echo "Head Branch: ${{ github.head_ref }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "SHA: ${{ github.sha }}"
 
   test-release:
     name: Test Release Workflow
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    needs: [ debug-event ] # Ensure debug runs first
     uses: ./.github/workflows/goreleaser-dry-run.yml
     with:
       dry_run: true
