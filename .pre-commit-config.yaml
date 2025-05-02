@@ -38,7 +38,7 @@ repos:
       - id: golines
         name: golines
         # Install once, then use the binary directly
-        entry: golines -w
+        entry: bash -c 'command -v golines >/dev/null 2>&1 || go install github.com/segmentio/golines@latest; exec golines'
         language: system
         types: [go]
         # Process only changed files
