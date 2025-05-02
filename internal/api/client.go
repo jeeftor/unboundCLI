@@ -392,7 +392,9 @@ func (c *Client) UpdateOverride(override DNSOverride) error {
 		"server", override.Server,
 	)
 
-	jsonData, err := json.Marshal(override)
+	jsonData, err := json.Marshal(map[string]DNSOverride{
+		"host": override,
+	})
 	if err != nil {
 		logging.Error("Failed to marshal override", "error", err)
 		return fmt.Errorf("error marshaling override: %w", err)

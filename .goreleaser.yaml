@@ -1,0 +1,231 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# See documentation at https://goreleaser.com
+version: 2
+
+# Environment variables
+env:
+  - GO111MODULE=on
+
+# Pre-release hooks
+before:
+  hooks:
+    - go mod tidy
+    # Uncomment if you want to generate completions/manpages
+    # - ./scripts/completions.sh
+    # - ./scripts/manpages.sh
+
+# Snapshot settings
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+# Go mod proxy settings
+gomod:
+  proxy: true
+
+# Report build sizes
+report_sizes: true
+
+# Git settings
+git:
+  ignore_tags:
+    - "{{ if not .IsNightly }}nightly{{ end }}"
+
+# Metadata settings
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"
+
+# Build configurations
+builds:
+  - id: unboundCLI
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser
+
+# Universal binary settings for macOS (combines arm64 and amd64)
+universal_binaries:
+  - replace: true
+    name_template: "{{ .ProjectName }}"
+
+# Archive settings
+archives:
+  - id: unboundCLI
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+      - docs/*
+
+# Checksum generation
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+# Signing configuration (if you have GPG set up)
+signs:
+  - artifacts: checksum
+    args: ["--batch", "-u", "{{ .Env.GPG_FINGERPRINT }}", "--output", "${signature}", "--detach-sign", "${artifact}"]
+
+# Docker image configuration
+dockers:
+  - image_templates:
+      - "ghcr.io/jeeftor/unboundcli:{{ .Version }}"
+      - "ghcr.io/jeeftor/unboundcli:latest"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=CLI for syncing with UNBOUND DNS on OPNSENSE router"
+      - "--label=org.opencontainers.image.url=https://github.com/jeeftor/unboundCLI"
+      - "--label=org.opencontainers.image.source=https://github.com/jeeftor/unboundCLI"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ time \"2006-01-02T15:04:05Z07:00\" }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+# Linux packages (deb, rpm, apk)
+nfpms:
+  - id: unboundCLI
+    package_name: unboundcli
+    vendor: jeeftor
+    homepage: https://github.com/jeeftor/unboundCLI
+    maintainer: Jeef <jeeftor@github.com>
+    description: CLI for syncing with UNBOUND DNS on OPNSENSE router
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/unboundcli/LICENSE
+      - src: ./README.md
+        dst: /usr/share/doc/unboundcli/README.md
+      - src: ./completion/bash/unboundCLI
+        dst: /usr/share/bash-completion/completions/unboundcli
+        type: config
+      - src: ./completion/zsh/unboundCLI
+        dst: /usr/share/zsh/vendor-completions/_unboundcli
+        type: config
+    recommends:
+      - git
+
+# Homebrew formula configuration
+brews:
+  - name: unboundcli
+    tap:
+      owner: jeeftor
+      name: homebrew-tap
+    homepage: "https://github.com/jeeftor/unboundCLI"
+    description: "CLI for syncing with UNBOUND DNS on OPNSENSE router"
+    license: "MIT"
+    install: |
+      bin.install "unboundCLI"
+      # Install shell completions if they exist
+      bash_completion.install "completions/bash/unboundCLI" => "unboundcli"
+      zsh_completion.install "completions/zsh/unboundCLI" => "_unboundcli"
+    test: |
+      system "#{bin}/unboundCLI", "--version"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+
+# Changelog generation
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^test:"
+      - "^tests:"
+      - "^ci:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+      - "go mod tidy"
+  groups:
+    - title: "New Features"
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: "Bug fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: "Documentation updates"
+      regexp: "^.*docs[(\\w)]*:+.*$"
+      order: 2
+    - title: "Other changes"
+      order: 999
+
+# SBOM generation (Software Bill of Materials)
+sboms:
+  - artifacts: binary
+    documents:
+      - "{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json"
+
+# GitHub release configuration
+release:
+  github:
+    owner: jeeftor
+    name: unboundCLI
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## unboundCLI {{ .Tag }} ({{ .Date }})
+
+    Welcome to this new release of unboundCLI!
+
+    This release includes SLSA Level 3 provenance for enhanced supply chain security.
+  footer: |
+    ## Installation
+
+    ### Homebrew
+    ```bash
+    brew install jeeftor/tap/unboundcli
+    ```
+
+    ### Docker
+    ```bash
+    docker pull ghcr.io/jeeftor/unboundcli:{{ .Tag }}
+    ```
+
+    ### Manual
+    Download binaries from [GitHub Releases](https://github.com/jeeftor/unboundCLI/releases/tag/{{ .Tag }})
+
+    ## Security
+
+    This release includes SLSA Level 3 provenance for all artifacts, providing:
+    - Source verification
+    - Build integrity guarantees
+    - Tamper resistance
+    - Provenance generation
+  discussion_category_name: Releases

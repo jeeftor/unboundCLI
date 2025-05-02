@@ -23,35 +23,25 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
-  - repo: local
+  # Go tools as managed hooks
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
     hooks:
       - id: go-mod-tidy
-        name: go mod tidy
-        entry: bash -c 'go mod tidy'
-        language: system
-        pass_filenames: false
-        types: [go]
+      - id: go-imports
+      - id: go-fmt
 
-      - id: goimports
-        name: goimports
-        entry: bash -c 'go install golang.org/x/tools/cmd/goimports@latest && goimports -w .'
-        language: system
-        types: [go]
-        pass_filenames: false
-
-      - id: gofumpt
-        name: gofumpt
-        entry: bash -c 'go install mvdan.cc/gofumpt@latest && gofumpt -w .'
-        language: system
-        types: [go]
-        pass_filenames: false
-
+  # For golines, you can still use local since it's not in the above repo
+  - repo: local
+    hooks:
       - id: golines
         name: golines
-        entry: bash -c 'go install github.com/segmentio/golines@latest && golines -w .'
+        # Install once, then use the binary directly
+        entry: golines -w
         language: system
         types: [go]
-        pass_filenames: false
+        # Process only changed files
+        pass_filenames: true
 
       - id: geminicommit
         name: Generate Commit Message with Gemini
