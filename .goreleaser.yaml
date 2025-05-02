@@ -142,7 +142,7 @@ nfpms:
 # Homebrew formula configuration
 brews:
   - name: unboundcli
-    tap:
+    repository:
       owner: jeeftor
       name: homebrew-tap
     homepage: "https://github.com/jeeftor/unboundCLI"
