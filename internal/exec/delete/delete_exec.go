@@ -22,7 +22,7 @@ func NewUI() *UI {
 
 // RenderHeader renders the header for the delete command
 func (ui *UI) RenderHeader() string {
-	return ui.Styles.Header.Render(" u274c Delete DNS Override u274c ") + "\n\n"
+	return ui.Styles.Header.Render(" ❌ Delete DNS Override ❌ ") + "\n\n"
 }
 
 // RenderSuccess renders a success message for deleting a DNS override
@@ -31,7 +31,7 @@ func (ui *UI) RenderSuccess(uuid string) string {
 
 	sb.WriteString(
 		ui.Styles.Success.Render(
-			fmt.Sprintf(" u2705 DNS override deleted successfully: %s ", uuid),
+			fmt.Sprintf(" ✅ DNS override deleted successfully: %s ", uuid),
 		),
 	)
 	return sb.String()
@@ -39,12 +39,12 @@ func (ui *UI) RenderSuccess(uuid string) string {
 
 // RenderError renders an error message
 func (ui *UI) RenderError(err error) string {
-	return ui.Styles.Error.Render(fmt.Sprintf(" u274c Error: %s ", err))
+	return ui.Styles.Error.Render(fmt.Sprintf(" ❌ Error: %s ", err))
 }
 
 // RenderWarning renders a warning message
 func (ui *UI) RenderWarning(message string) string {
-	return ui.Styles.Warning.Render(fmt.Sprintf(" u26a0ufe0f  %s ", message))
+	return ui.Styles.Warning.Render(fmt.Sprintf(" ⚠️ %s ", message))
 }
 
 // RenderOverrideDetails renders the details of a DNS override
@@ -88,12 +88,12 @@ func (ui *UI) RenderOverrideDetails(override api.DNSOverride) string {
 
 // RenderDeletingMessage renders a message indicating that a DNS override is being deleted
 func (ui *UI) RenderDeletingMessage(uuid string) string {
-	return ui.Styles.Info.Render(fmt.Sprintf(" ud83duddd1 Deleting DNS override %s... ", uuid))
+	return ui.Styles.Info.Render(fmt.Sprintf(" 🗑️ Deleting DNS override %s... ", uuid))
 }
 
 // RenderApplyingMessage renders a message indicating that changes are being applied
 func (ui *UI) RenderApplyingMessage() string {
-	return ui.Styles.Info.Render(" ud83dudcbe Applying changes... ")
+	return ui.Styles.Info.Render(" 📾 Applying changes... ")
 }
 
 // RenderConfirmation renders a confirmation message
@@ -102,7 +102,7 @@ func (ui *UI) RenderConfirmation(override api.DNSOverride) string {
 
 	sb.WriteString(
 		ui.Styles.Warning.Render(
-			fmt.Sprintf(" u26a0ufe0f  Are you sure you want to delete this DNS override? "),
+			fmt.Sprintf(" ⚠️ Are you sure you want to delete this DNS override? "),
 		),
 	)
 	sb.WriteString("\n\n")

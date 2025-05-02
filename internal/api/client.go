@@ -427,9 +427,11 @@ func (c *Client) UpdateOverride(override DNSOverride) error {
 
 // DeleteOverride removes a DNS override
 func (c *Client) DeleteOverride(uuid string) error {
-	logging.Info("Deleting DNS override", "uuid", uuid)
+	logging.Debug("Deleting DNS override", "uuid", uuid)
 
-	resp, err := c.makeRequest("POST", "/api/unbound/settings/delHostOverride/"+uuid, nil)
+	// Create an empty JSON object as the request body
+	emptyJSON := bytes.NewBufferString("{}")
+	resp, err := c.makeRequest("POST", "/api/unbound/settings/delHostOverride/"+uuid, emptyJSON)
 	if err != nil {
 		return err
 	}
@@ -448,7 +450,7 @@ func (c *Client) DeleteOverride(uuid string) error {
 		return fmt.Errorf("API returned error: %s", resp.Message)
 	}
 
-	logging.Info("Successfully deleted DNS override", "uuid", uuid)
+	logging.Debug("Successfully deleted DNS override", "uuid", uuid)
 	return nil
 }
 

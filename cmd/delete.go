@@ -29,12 +29,16 @@ the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 
 		// Get UUID from args
 		uuid := args[0]
-		logging.Debug("Delete command called", "uuid", uuid, "force", force)
+		if logging.GetLogLevel() == logging.LogLevelDebug {
+			logging.Debug("Delete command called", "uuid", uuid, "force", force)
+		}
 
 		// Load config
 		cfg, err := config.LoadConfig()
 		if err != nil {
-			logging.Error("Error loading configuration", "error", err)
+			if logging.GetLogLevel() == logging.LogLevelDebug {
+				logging.Error("Error loading configuration", "error", err)
+			}
 			fmt.Println(
 				deleteUI.RenderError(
 					fmt.Errorf(
@@ -53,7 +57,9 @@ the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 		if !force {
 			overrides, err := client.GetOverrides()
 			if err != nil {
-				logging.Error("Error fetching overrides", "error", err)
+				if logging.GetLogLevel() == logging.LogLevelDebug {
+					logging.Error("Error fetching overrides", "error", err)
+				}
 				fmt.Println(
 					deleteUI.RenderError(
 						fmt.Errorf("error fetching overrides: %v", err),
@@ -72,7 +78,9 @@ the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 			}
 
 			if targetOverride == nil {
-				logging.Error("No override found with UUID", "uuid", uuid)
+				if logging.GetLogLevel() == logging.LogLevelDebug {
+					logging.Error("No override found with UUID", "uuid", uuid)
+				}
 				fmt.Println(
 					deleteUI.RenderError(
 						fmt.Errorf("no override found with UUID %s", uuid),
@@ -87,7 +95,9 @@ the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 			var confirm string
 			fmt.Scanln(&confirm)
 			if confirm != "y" && confirm != "Y" {
-				logging.Info("Delete operation cancelled by user", "uuid", uuid)
+				if logging.GetLogLevel() == logging.LogLevelDebug {
+					logging.Info("Delete operation cancelled by user", "uuid", uuid)
+				}
 				fmt.Println(deleteUI.RenderWarning("Deletion cancelled"))
 				return
 			}
@@ -96,7 +106,9 @@ the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 		// Delete override
 		fmt.Println(deleteUI.RenderDeletingMessage(uuid))
 		if err := client.DeleteOverride(uuid); err != nil {
-			logging.Error("Error deleting override", "error", err, "uuid", uuid)
+			if logging.GetLogLevel() == logging.LogLevelDebug {
+				logging.Error("Error deleting override", "error", err, "uuid", uuid)
+			}
 			fmt.Println(
 				deleteUI.RenderError(
 					fmt.Errorf("error deleting override: %v", err),
@@ -108,7 +120,9 @@ the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 		// Apply changes
 		fmt.Println(deleteUI.RenderApplyingMessage())
 		if err := client.ApplyChanges(); err != nil {
-			logging.Error("Error applying changes", "error", err)
+			if logging.GetLogLevel() == logging.LogLevelDebug {
+				logging.Error("Error applying changes", "error", err)
+			}
 			fmt.Println(
 				deleteUI.RenderError(
 					fmt.Errorf(
@@ -121,7 +135,9 @@ the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 		}
 
 		fmt.Println(deleteUI.RenderSuccess(uuid))
-		logging.Info("DNS override deleted successfully", "uuid", uuid)
+		if logging.GetLogLevel() == logging.LogLevelDebug {
+			logging.Info("DNS override deleted successfully", "uuid", uuid)
+		}
 	},
 }
 
