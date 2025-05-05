@@ -1,0 +1,99 @@
+# Options for analysis running
+run:
+  # Timeout for analysis, e.g. 30s, 5m, default is 1m
+  timeout: 5m
+
+  # Include test files or not, default is true
+  tests: true
+
+  # Default concurrency is a available CPU number
+  concurrency: 4
+
+# Output configuration options
+output:
+  # Format: colored-line-number|line-number|json|tab|checkstyle|code-climate, default is "colored-line-number"
+  format: colored-line-number
+
+  # Print lines of code with issue, default is true
+  print-issued-lines: true
+
+  # Print linter name in the end of issue text, default is true
+  print-linter-name: true
+
+# All available settings of specific linters
+linters-settings:
+  errcheck:
+    # Report about not checking of errors in type assertions: `a := b.(MyStruct)`
+    check-type-assertions: true
+
+  govet:
+    # Report about shadowed variables
+    check-shadowing: true
+
+  gocyclo:
+    # Minimal code complexity to report, 30 by default
+    min-complexity: 15
+
+  gofmt:
+    # Simplify code: gofmt with `-s` option, true by default
+    simplify: true
+
+  goimports:
+    # Put imports beginning with prefix after 3rd-party packages
+    local-prefixes: github.com/jeeftor/unboundCLI
+
+  gocritic:
+    # Enable multiple checks by tags, run `GL_DEBUG=gocritic golangci-lint run` to see all tags and checks
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+
+  misspell:
+    # Correct spellings using locale preferences for US or UK
+    locale: US
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+#    - staticcheck
+    - typecheck
+    - unused
+    - gocyclo
+    - misspell
+
+  disable:
+    - bodyclose    # Checks whether HTTP response body is closed
+    - depguard     # Go linter that checks if package imports are in a list of acceptable packages
+    - dogsled      # Checks assignments with too many blank identifiers (e.g. x, _, _, _, := f())
+    - dupl         # Tool for code clone detection
+    - funlen       # Tool for detection of long functions
+    - gochecknoglobals # Check that no global variables exist
+    - gochecknoinits   # Check that no init functions are present
+    - goconst      # Finds repeated strings that could be replaced by a constant
+    - goerr113     # Golang linter to check the errors handling expressions
+    - gomnd        # An analyzer to detect magic numbers
+    - goprintffuncname # Checks that printf-like functions are named with `f` at the end
+    - gosec        # Inspects source code for security problems
+    - lll          # Reports long lines
+    - nakedret     # Finds naked returns in functions greater than a specified function length
+    - nolintlint   # Reports ill-formed or insufficient nolint directives
+    - rowserrcheck # Checks whether Err of rows is checked
+    - scopelint    # Scopelint checks for unpinned variables in go programs
+    - stylecheck   # Stylecheck is a replacement for golint
+    - testpackage  # Makes you use a separate _test package
+    - unparam      # Reports unused function parameters
+    - whitespace   # Tool for detection of leading and trailing whitespace
+    - wsl          # Whitespace Linter - Forces you to use empty lines
+
+issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text
+  max-same-issues: 0

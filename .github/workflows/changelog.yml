@@ -1,0 +1,50 @@
+name: Update Changelog
+
+on:
+  push:
+    branches:
+      - main
+  # Also update the changelog when preparing for a release
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update changelog for (e.g., v1.0.0)'
+        required: false
+        default: ''
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Important for full history
+
+      - name: Set up Git user
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Install Git-Cliff
+        uses: orhun/git-cliff-action@v2
+        with:
+          config: cliff.toml
+          args: --verbose
+
+      - name: Generate changelog
+        run: |
+          echo "# Changelog" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git cliff --output CHANGELOG.md
+
+      - name: Commit and push changes
+        run: |
+          git add CHANGELOG.md
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "docs: update changelog"
+          git push
