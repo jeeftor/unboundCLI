@@ -98,12 +98,22 @@ func (c *CloudflareClient) GetTunnelHostnames() (map[string]string, error) {
 	// Get tunnel information
 	tunnel, err := c.api.GetTunnel(ctx, cloudflare.ResourceIdentifier(c.accountID), c.tunnelID)
 	if err != nil {
+		logging.Error("Failed to get tunnel",
+			"accountID", c.accountID,
+			"tunnelID", c.tunnelID,
+			"error", err,
+		)
 		return nil, fmt.Errorf("error getting tunnel: %w", err)
 	}
 
 	// Get the tunnel configuration
 	config, err := c.api.GetTunnelConfiguration(ctx, cloudflare.ResourceIdentifier(c.accountID), c.tunnelID)
 	if err != nil {
+		logging.Error("Failed to get tunnel configuration",
+			"accountID", c.accountID,
+			"tunnelID", c.tunnelID,
+			"error", err,
+		)
 		return nil, fmt.Errorf("error getting tunnel configuration: %w", err)
 	}
 
