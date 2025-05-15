@@ -67,7 +67,7 @@ func DefaultStyles() StyleConfig {
 		Subtitle: lipgloss.NewStyle().Foreground(lipgloss.Color("#bb9af7")),
 		Normal:   lipgloss.NewStyle().Foreground(lipgloss.Color("#c0caf5")),
 		Bold:     lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#c0caf5")),
-		Dimmed:   lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("#565f89")),
+		Dimmed:   lipgloss.NewStyle().Faint(false).Bold(true).Foreground(lipgloss.Color("#e0af68")),
 
 		// Status styles
 		Success: lipgloss.NewStyle().Foreground(lipgloss.Color("#9ece6a")),

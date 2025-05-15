@@ -366,10 +366,13 @@ func (ui *CloudflareUI) RenderNoTunnelID() string {
 	var sb strings.Builder
 	sb.WriteString(ui.Styles.Warning.Render(" ⚠️ No tunnel ID provided "))
 	sb.WriteString("\n\n")
-	sb.WriteString("Please provide a tunnel ID using the --tunnel-id flag, or use one of the tunnels listed above.")
+	sb.WriteString("Please provide a tunnel ID using the --tunnel-id flag, the CLOUDFLARE_TUNNEL_ID environment variable, or use one of the tunnels listed above.")
 	sb.WriteString("\n\n")
 	sb.WriteString("Example: ")
 	sb.WriteString(ui.Styles.Dimmed.Render("unboundCLI cloudflare-sync --tunnel-id=<tunnel-id>"))
+	sb.WriteString("\n")
+	sb.WriteString("Or set the environment variable: ")
+	sb.WriteString(ui.Styles.Dimmed.Render("export CLOUDFLARE_TUNNEL_ID=<tunnel-id>"))
 	sb.WriteString("\n")
 	return sb.String()
 }
