@@ -1,21 +1,41 @@
-UnboundCLI
-A CLI tool for managing Unbound DNS on OPNSense routers. This application allows you to create, read, update, and delete DNS overrides through the OPNSense API.
-Features
+# 🌐 UnboundCLI
 
-Modern CLI interface with color output using Cobra and Viper
-Interactive TUI (Text User Interface) using Bubble Tea and Lipgloss
-CRUD operations for DNS overrides
-Secure configuration management
-Cross-platform support (macOS, Linux, Windows)
+[![Go Version](https://img.shields.io/badge/Go-1.18+-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/jeeftor/unboundCLI?style=for-the-badge&logo=github)](https://github.com/jeeftor/unboundCLI/releases)
+[![SLSA 3](https://img.shields.io/badge/SLSA-Level%203-green?style=for-the-badge)](https://slsa.dev)
 
-Installation
-Using Homebrew (macOS and Linux)
+> 🚀 A powerful CLI tool for managing Unbound DNS on OPNSense routers with a beautiful interactive interface
+
+UnboundCLI provides seamless DNS override management through the OPNSense API, featuring both command-line operations and an intuitive Text User Interface (TUI).
+
+## ✨ Features
+
+- 🎨 **Modern CLI interface** with color output using Cobra and Viper
+- 🖥️ **Interactive TUI** powered by Bubble Tea and Lipgloss
+- 📝 **Complete CRUD operations** for DNS overrides
+- 🔐 **Secure configuration management**
+- 🌍 **Cross-platform support** (macOS, Linux, Windows)
+- 🔄 **Caddy integration** for automatic DNS synchronization
+- 🛡️ **SLSA Level 3** security compliance
+
+## 📦 Installation
+
+### Using Homebrew (Recommended for macOS and Linux)
+
+```bash
 brew tap jeeftor/tap
 brew install unboundcli
+```
 
-Manual Installation
-Download the latest binary from the Releases page.
-Building from Source
+### Manual Installation
+
+1. Download the latest binary from the [Releases page](https://github.com/jeeftor/unboundCLI/releases)
+2. Extract and move to your `$PATH`
+
+### Building from Source
+
+```bash
 # Clone the repository
 git clone https://github.com/jeeftor/unboundCLI.git
 cd unboundCLI
@@ -25,84 +45,138 @@ make build
 
 # Install to your GOPATH/bin
 make install
+```
 
-Usage
-Initial Configuration
-Before using UnboundCLI, you need to configure it with your OPNSense API credentials:
+## 🚀 Quick Start
+
+### Initial Setup
+
+Configure UnboundCLI with your OPNSense API credentials:
+
+```bash
 unboundCLI config
+```
 
-Follow the prompts to enter your API key, API secret, and OPNSense URL.
-Commands
+Follow the interactive prompts to enter:
+- 🔑 API Key
+- 🔐 API Secret
+- 🌐 OPNSense URL
+
+### Launch the TUI
+
+Experience the beautiful interactive interface:
+
+```bash
+unboundCLI tui
+```
+
+## 📖 Usage
+
+```
 Usage:
-unboundCLI [command]
+  unboundCLI [command]
 
 Available Commands:
-add         Add a DNS override
-apply       Apply pending DNS changes
-caddy-sync  Synchronize DNS entries with Caddy server
-completion  Generate the autocompletion script for the specified shell
-config      Configure API connection settings
-delete      Delete a DNS override
-edit        Edit a DNS override
-find        Find DNS overrides by host, domain, or both
-help        Help about any command
-list        List DNS overrides
-tui         Launch the Text User Interface
+  add         ➕ Add a DNS override
+  apply       ✅ Apply pending DNS changes
+  caddy-sync  🔄 Synchronize DNS entries with Caddy server
+  completion  📝 Generate shell autocompletion script
+  config      ⚙️  Configure API connection settings
+  delete      🗑️  Delete a DNS override
+  edit        ✏️  Edit a DNS override
+  find        🔍 Find DNS overrides by host, domain, or both
+  help        ❓ Help about any command
+  list        📋 List DNS overrides
+  tui         💻 Launch the Text User Interface
 
 Flags:
---config string      config file (default is $HOME/.unboundCLI.yaml)
--h, --help               help for unboundCLI
---log-level string   set logging level (debug, info, warn, error) (default "info")
--v, --verbose            enable verbose output
---version            version for unboundCLI
+  --config string      config file (default: $HOME/.unboundCLI.yaml)
+  -h, --help          help for unboundCLI
+  --log-level string  set logging level (debug, info, warn, error) (default: "info")
+  -v, --verbose       enable verbose output
+  --version           version for unboundCLI
 
 Use "unboundCLI [command] --help" for more information about a command.
+```
 
-Development
-Prerequisites
+### Examples
 
-Go 1.18 or higher
-Make
-GoReleaser (optional, for releases)
+```bash
+# List all DNS overrides
+unboundCLI list
 
-Makefile Commands
-# Build the application
-make build
+# Add a new DNS override
+unboundCLI add --host myserver --domain local.lan --ip 192.168.1.100
 
-# Run tests
-make test
+# Find specific overrides
+unboundCLI find --host myserver
 
-# Format code and run linters
-make check
+# Launch interactive mode
+unboundCLI tui
+```
 
-# Cross-compile for multiple platforms
-make cross-build
+## 🛠️ Development
 
-# Run GoReleaser in dry-run mode
-make release-dry-run
+### Prerequisites
 
-# Show all available commands
-make help
+- Go 1.18 or higher
+- Make
+- GoReleaser (optional, for releases)
 
-Release Process
-This project uses GoReleaser with SLSA Level 3 provenance for secure releases.
-To create a new release:
+### Available Make Commands
 
-Tag the commit:
-git tag -a v0.1.0 -m "First release"
-git push origin v0.1.0
+```bash
+make build          # 🔨 Build the application
+make test           # 🧪 Run tests
+make check          # 🔍 Format code and run linters
+make cross-build    # 🌍 Cross-compile for multiple platforms
+make release-dry-run # 🚀 Test GoReleaser configuration
+make help           # 📚 Show all available commands
+```
 
+## 🚢 Release Process
 
-GitHub Actions will automatically build and publish the release with SLSA provenance.
+This project uses **GoReleaser** with **SLSA Level 3** provenance for secure, automated releases.
 
+### Creating a New Release
 
-SLSA Provenance
-This project follows SLSA Level 3 security practices for its releases, providing:
+1. **Tag the commit:**
+   ```bash
+   git tag -a v0.1.0 -m "Release v0.1.0"
+   git push origin v0.1.0
+   ```
 
-Source verification
-Build integrity guarantees
-Provenance generation
-Tamper resistance
+2. **Automated build:** GitHub Actions automatically builds and publishes the release with SLSA provenance
 
-License
-MIT License
+## 🛡️ Security & SLSA Provenance
+
+This project follows **SLSA Level 3** security practices, providing:
+
+- ✅ **Source verification**
+- 🔒 **Build integrity guarantees**
+- 📋 **Provenance generation**
+- 🛡️ **Tamper resistance**
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+**Made with ❤️ by [jeeftor](https://github.com/jeeftor)**
+
+⭐ If you find this project helpful, please give it a star!
+
+</div>
