@@ -18,12 +18,13 @@ var (
 	caddyServerPort    int
 	entryDescription   string
 	legacyDescriptions []string
+	unboundPrompt      bool
 )
 
-// caddySyncCmd represents the caddy-sync command
-var caddySyncCmd = &cobra.Command{
-	Use:   "caddy-sync",
-	Short: "Synchronize DNS entries with Caddy server",
+// caddySyncUnboundCmd represents the caddy-sync-unbound command
+var caddySyncUnboundCmd = &cobra.Command{
+	Use:   "caddy-sync-unbound",
+	Short: "Synchronize UnboundDNS entries with Caddy server",
 	Long: `Synchronize DNS entries in Unbound with hostnames from a Caddy server.
 
 This command queries the Caddy server for its configuration, extracts all
@@ -51,6 +52,7 @@ but are no longer present in Caddy.`,
 
 		// Create unbound client
 		unboundClient := api.NewClient(cfg)
+		unboundClient.Prompt = unboundPrompt
 
 		// Create sync UI
 		syncUI := sync2.NewSyncUI()
@@ -119,19 +121,21 @@ but are no longer present in Caddy.`,
 }
 
 func init() {
-	rootCmd.AddCommand(caddySyncCmd)
+	rootCmd.AddCommand(caddySyncUnboundCmd)
 
 	// Add flags
-	caddySyncCmd.Flags().
+	caddySyncUnboundCmd.Flags().
 		BoolVar(&dryRun, "dry-run", false, "Show what would be done without making any changes")
-	caddySyncCmd.Flags().
+	caddySyncUnboundCmd.Flags().
 		StringVar(&caddyServerIP, "caddy-ip", "192.168.1.15", "IP address of the Caddy server")
-	caddySyncCmd.Flags().
+	caddySyncUnboundCmd.Flags().
 		IntVar(&caddyServerPort, "caddy-port", 2019, "Admin port of the Caddy server")
-	caddySyncCmd.Flags().
-		StringVar(&entryDescription, "description", "Entry created by unboundCLI sync",
+	caddySyncUnboundCmd.Flags().
+		StringVar(&entryDescription, "description", "Entry created by unboundCLI caddy-sync-unbound",
 			"Description to use for created entries")
-	caddySyncCmd.Flags().
+	caddySyncUnboundCmd.Flags().
 		StringSliceVar(&legacyDescriptions, "legacy-desc", []string{"Route via Caddy"},
 			"Legacy descriptions to consider as created by sync")
+	caddySyncUnboundCmd.Flags().
+		BoolVar(&unboundPrompt, "prompt", false, "Prompt before each API call (useful for debugging)")
 }
