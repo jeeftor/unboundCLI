@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -52,6 +54,7 @@ type APIResponse struct {
 type Client struct {
 	config     Config
 	httpClient *http.Client
+	Prompt     bool // Enable interactive prompting for API calls
 }
 
 // NewClient creates a new OPNSense API client
@@ -80,6 +83,35 @@ func NewClient(config Config) *Client {
 			},
 		},
 	}
+}
+
+// promptForContinue prompts the user to continue with the API call
+func (c *Client) promptForContinue(method, url string, jsonData []byte) bool {
+	fmt.Printf("\n🔍 About to make UnboundDNS API call:\n")
+	fmt.Printf("📡 Method: %s\n", method)
+	fmt.Printf("🌐 URL: %s\n", url)
+
+	if jsonData != nil {
+		// Pretty print JSON
+		var prettyJSON bytes.Buffer
+		if err := json.Indent(&prettyJSON, jsonData, "", "  "); err == nil {
+			fmt.Printf("📄 JSON Data:\n%s\n", prettyJSON.String())
+		} else {
+			fmt.Printf("📄 JSON Data:\n%s\n", string(jsonData))
+		}
+	} else {
+		fmt.Printf("📄 JSON Data: (none)\n")
+	}
+
+	fmt.Printf("\nContinue? [Y/n]: ")
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return false
+	}
+
+	response = strings.TrimSpace(strings.ToLower(response))
+	return response == "" || response == "y" || response == "yes"
 }
 
 // generateCurlCommand creates a curl command equivalent to the HTTP request
@@ -166,6 +198,24 @@ func (c *Client) makeRequest(method, endpoint string, body io.Reader) (*APIRespo
 		"api_key", c.config.APIKey,
 	)
 	logging.Debug("Equivalent curl command", "curl", curlCmd)
+
+	// Prompt user if enabled
+	if c.Prompt {
+		var jsonData []byte
+		if body != nil {
+			// Try to read the body for display (need to recreate it after)
+			if bodyBytes, err := io.ReadAll(body); err == nil {
+				jsonData = bodyBytes
+				// Recreate the body reader for the actual request
+				body = bytes.NewReader(bodyBytes)
+				req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			}
+		}
+
+		if !c.promptForContinue(method, url, jsonData) {
+			return nil, fmt.Errorf("operation cancelled by user")
+		}
+	}
 
 	// Make the request
 	startTime := time.Now()
