@@ -88,8 +88,6 @@ func init() {
 	// Set version template
 	rootCmd.SetVersionTemplate(
 		`{{with .Name}}{{printf "%s " .}}{{end}}{{printf "version %s" .Version}}
-Commit: {{printf "%s" .Commit}}
-Built: {{printf "%s" .Date}}
 `,
 	)
 }
