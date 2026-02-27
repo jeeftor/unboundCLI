@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
 
 // CaddyCloudflareSyncOptions contains options for the Caddy-Cloudflare sync operation
@@ -91,15 +91,15 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 			serviceName = hostname[:idx]
 		}
 
-		// Create direct access hostname (service.dev.vookie.net)
+		// Create direct access hostname (service.dev.example.com)
 		if options.SyncDirect {
-			directHostname := fmt.Sprintf("%s.%s.vookie.net", serviceName, options.DirectSubdomain)
+			directHostname := fmt.Sprintf("%s.%s.example.com", serviceName, options.DirectSubdomain)
 			directEntries[directHostname] = serviceIP
 		}
 
-		// Create Caddy proxy hostname (service.caddy.vookie.net)
+		// Create Caddy proxy hostname (service.caddy.example.com)
 		if options.SyncCaddy {
-			caddyHostname := fmt.Sprintf("%s.%s.vookie.net", serviceName, options.CaddySubdomain)
+			caddyHostname := fmt.Sprintf("%s.%s.example.com", serviceName, options.CaddySubdomain)
 			caddyEntries[caddyHostname] = options.CaddyServerIP
 		}
 	}

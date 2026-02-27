@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jeeftor/unboundCLI/internal/logging"
-	"github.com/jeeftor/unboundCLI/internal/tui"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,19 +28,19 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "unboundCLI",
+	Use:   "caddy-dns-sync",
 	Short: "A CLI tool for managing Unbound DNS on OPNSense",
 	Long: `
-u2588u2588u2557   u2588u2588u2557u2588u2588u2588u2557   u2588u2588u2557u2588u2588u2588u2588u2588u2588u2557  u2588u2588u2588u2588u2588u2588u2557 u2588u2588u2557   u2588u2588u2557u2588u2588u2588u2557   u2588u2588u2557u2588u2588u2588u2588u2588u2588u2557  u2588u2588u2588u2588u2588u2588u2557u2588u2588u2557     u2588u2588u2557
-u2588u2588u2551   u2588u2588u2551u2588u2588u2588u2588u2557  u2588u2588u2551u2588u2588u2554u2550u2550u2588u2588u2557u2588u2588u2554u2550u2550u2550u2588u2588u2557u2588u2588u2551   u2588u2588u2551u2588u2588u2588u2588u2557  u2588u2588u2551u2588u2588u2554u2550u2550u2588u2588u2557u2588u2588u2554u2550u2550u2550u2550u255du2588u2588u2551     u2588u2588u2551
-u2588u2588u2551   u2588u2588u2551u2588u2588u2554u2588u2588u2557 u2588u2588u2551u2588u2588u2588u2588u2588u2588u2554u255du2588u2588u2551   u2588u2588u2551u2588u2588u2551   u2588u2588u2551u2588u2588u2554u2588u2588u2557 u2588u2588u2551u2588u2588u2551  u2588u2588u2551u2588u2588u2551     u2588u2588u2551     u2588u2588u2551
-u2588u2588u2551   u2588u2588u2551u2588u2588u2551u255au2588u2588u2557u2588u2588u2551u2588u2588u2554u2550u2550u2588u2588u2557u2588u2588u2551   u2588u2588u2551u2588u2588u2551   u2588u2588u2551u2588u2588u2551u255au2588u2588u2557u2588u2588u2551u2588u2588u2551  u2588u2588u2551u2588u2588u2551     u2588u2588u2551     u2588u2588u2551
-u255au2588u2588u2588u2588u2588u2588u2554u255du2588u2588u2551 u255au2588u2588u2588u2588u2551u2588u2588u2588u2588u2588u2588u2554u255du255au2588u2588u2588u2588u2588u2588u2554u255du255au2588u2588u2588u2588u2588u2588u2554u255du2588u2588u2551 u255au2588u2588u2588u2588u2551u2588u2588u2588u2588u2588u2588u2554u255du255au2588u2588u2588u2588u2588u2588u2557u2588u2588u2588u2588u2588u2588u2588u2557u2588u2588u2551
- u255au2550u2550u2550u2550u2550u255d u255au2550u255d  u255au2550u2550u2550u255du255au2550u2550u2550u2550u2550u255d  u255au2550u2550u2550u2550u2550u255d  u255au2550u2550u2550u2550u2550u255d u255au2550u255d  u255au2550u2550u2550u255du255au2550u2550u2550u2550u2550u255d  u255au2550u2550u2550u2550u2550u255du255au2550u2550u2550u2550u2550u2550u255du255au2550u255d
+   ______          __    __      _____
+  / ____/___ _____/ /___/ /_  __/ ___/__  ______  _____
+ / /   / __ \/ __  / __  / / / /\__ \/ / / / __ \/ ___/
+/ /___/ /_/ / /_/ / /_/ / /_/ /___/ / /_/ / / / / /__
+\____/\__,_/\__,_/\__,_/\__, //____/\__, /_/ /_/\___/
+                       /____/      /____/
 
-A CLI tool for managing Unbound DNS on OPNSense routers.
-This application allows you to create, read, update, and delete DNS overrides
-through the OPNSense API.`,
+A CLI tool for synchronizing DNS entries across Caddy, UnboundDNS, and AdguardHome.
+This application manages DNS overrides on OPNSense routers and AdguardHome instances
+by syncing hostname data from Caddy reverse proxy and Cloudflare tunnel configurations.`,
 	Version: Version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Initialize logger with the specified log level
@@ -76,7 +76,7 @@ func init() {
 
 	// Global flags
 	rootCmd.PersistentFlags().
-		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.unboundCLI.yaml)")
+		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.caddy-dns-sync.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().
 		StringVar(&logLevel, "log-level", "info", "set logging level (debug, info, warn, error)")
@@ -102,10 +102,10 @@ func initConfig() {
 		home, err := os.UserHomeDir()
 		cobra.CheckErr(err)
 
-		// Search config in home directory with name ".unboundCLI" (without extension)
+		// Search config in home directory with name ".caddy-dns-sync" (without extension)
 		viper.AddConfigPath(home)
 		viper.SetConfigType("yaml")
-		viper.SetConfigName(".unboundCLI")
+		viper.SetConfigName(".caddy-dns-sync")
 	}
 
 	// Read in environment variables that match

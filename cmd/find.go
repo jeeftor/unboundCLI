@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/config"
-	"github.com/jeeftor/unboundCLI/internal/logging"
-	"github.com/jeeftor/unboundCLI/internal/ui"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -30,11 +30,11 @@ This command searches for DNS overrides based on the specified criteria.
 It can be used to find the UUID of an entry for use in other commands.
 
 Examples:
-  unboundCLI find --host test
-  unboundCLI find --domain vookie.net
-  unboundCLI find --host test --domain vookie.net
-  unboundCLI find --host test --json
-  unboundCLI find --host test --script`,
+  caddy-dns-sync find --host test
+  caddy-dns-sync find --domain example.com
+  caddy-dns-sync find --host test --domain example.com
+  caddy-dns-sync find --host test --json
+  caddy-dns-sync find --host test --script`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Create UI component
 		findUI := newFindUI()

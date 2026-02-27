@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/config"
-	"github.com/jeeftor/unboundCLI/internal/tui"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +47,7 @@ AdguardHome:
 		// Create UI component
 		configUI := newConfigUI()
 
-		fmt.Println(configUI.RenderHeader("🔧 UnboundCLI Configuration Setup 🔧"))
+		fmt.Println(configUI.RenderHeader("🔧 caddy-dns-sync Configuration Setup 🔧"))
 		fmt.Println("This will configure both UnboundDNS (OPNSense) and AdguardHome settings.")
 		fmt.Println(configUI.RenderInfo("Press Enter to keep current values or type new ones."))
 		fmt.Println()
@@ -275,7 +275,7 @@ AdguardHome:
 		}
 
 		fmt.Println()
-		fmt.Println(configUI.RenderSuccess("🎉 Configuration complete! You can now run 'unboundCLI status' to check sync status."))
+		fmt.Println(configUI.RenderSuccess("🎉 Configuration complete! You can now run 'caddy-dns-sync status' to check sync status."))
 	},
 }
 
@@ -345,7 +345,7 @@ func init() {
 
 	// Add flags
 	configCmd.Flags().
-		StringVar(&configPath, "path", "", "Path to save the configuration file (default: ~/.unboundCLI.json)")
+		StringVar(&configPath, "path", "", "Path to save the configuration file (default: ~/.caddy-dns-sync.json)")
 	configCmd.Flags().
 		BoolVar(&forceConfig, "force", false, "Force overwrite of existing config file without prompting")
 }

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/config"
-	sync2 "github.com/jeeftor/unboundCLI/internal/exec/sync"
-	"github.com/jeeftor/unboundCLI/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	sync2 "github.com/jeeftor/caddy-dns-sync/internal/exec/sync"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -33,8 +33,8 @@ var caddySyncCloudflareCmd = &cobra.Command{
 This command queries the Caddy server for its configuration, extracts all hostnames from the routes,
 and creates DNS entries with two modes:
 
-1. Direct Mode (service.dev.vookie.net): Points directly to the service IP for LAN access
-2. Caddy Mode (service.caddy.vookie.net): Points to Caddy server for reverse proxy access
+1. Direct Mode (service.dev.example.com): Points directly to the service IP for LAN access
+2. Caddy Mode (service.caddy.example.com): Points to Caddy server for reverse proxy access
 
 This enables flexible routing where services can be accessed either directly or through Caddy,
 supporting both LAN optimization and external Cloudflare tunnel access patterns.`,
@@ -154,15 +154,15 @@ func init() {
 	caddySyncCloudflareCmd.Flags().
 		IntVar(&cfCaddyServerPort, "caddy-port", 2019, "Admin port of the Caddy server")
 	caddySyncCloudflareCmd.Flags().
-		StringVar(&cfEntryDescription, "description", "Entry created by unboundCLI caddy-sync-cloudflare",
+		StringVar(&cfEntryDescription, "description", "Entry created by caddy-dns-sync caddy-sync-cloudflare",
 			"Description to use for created entries")
 	caddySyncCloudflareCmd.Flags().
 		StringSliceVar(&cfLegacyDescriptions, "legacy-desc", []string{"Route via Cloudflare"},
 			"Legacy descriptions to consider as created by sync")
 	caddySyncCloudflareCmd.Flags().
-		StringVar(&cfDirectSubdomain, "direct-subdomain", "dev", "Subdomain for direct service access (e.g., 'dev' for service.dev.vookie.net)")
+		StringVar(&cfDirectSubdomain, "direct-subdomain", "dev", "Subdomain for direct service access (e.g., 'dev' for service.dev.example.com)")
 	caddySyncCloudflareCmd.Flags().
-		StringVar(&cfCaddySubdomain, "caddy-subdomain", "caddy", "Subdomain for Caddy proxy access (e.g., 'caddy' for service.caddy.vookie.net)")
+		StringVar(&cfCaddySubdomain, "caddy-subdomain", "caddy", "Subdomain for Caddy proxy access (e.g., 'caddy' for service.caddy.example.com)")
 	caddySyncCloudflareCmd.Flags().
 		BoolVar(&cfDirectOnly, "direct-only", false, "Sync only direct access entries (skip Caddy proxy entries)")
 	caddySyncCloudflareCmd.Flags().

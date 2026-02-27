@@ -1,13 +1,13 @@
-# Makefile for unboundCLI
+# Makefile for caddy-dns-sync
 
 # Variables
-BINARY_NAME=unboundCLI
+BINARY_NAME=caddy-dns-sync
 GOOS?=$(shell go env GOOS)
 GOARCH?=$(shell go env GOARCH)
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS=-ldflags "-s -w -X github.com/jeeftor/unboundCLI/cmd.Version=$(VERSION) -X github.com/jeeftor/unboundCLI/cmd.Commit=$(COMMIT) -X github.com/jeeftor/unboundCLI/cmd.Date=$(BUILD_DATE)"
+LDFLAGS=-ldflags "-s -w -X github.com/jeeftor/caddy-dns-sync/cmd.Version=$(VERSION) -X github.com/jeeftor/caddy-dns-sync/cmd.Commit=$(COMMIT) -X github.com/jeeftor/caddy-dns-sync/cmd.Date=$(BUILD_DATE)"
 
 .PHONY: all build clean test vet fmt check install release-dry-run
 

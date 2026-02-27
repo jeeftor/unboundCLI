@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/config"
-	"github.com/jeeftor/unboundCLI/internal/logging"
-	"github.com/jeeftor/unboundCLI/internal/ui"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/ui"
 	"github.com/spf13/cobra"
 )
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jeeftor/unboundCLI/internal/tui"
+	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 )
 
 // SyncUI handles the UI rendering for the sync operation
@@ -502,8 +502,8 @@ func (ui *SyncUI) RenderUnifiedChanges(result *UnifiedSyncResult, entryDescripti
 		sb.WriteString("\n\n")
 		sb.WriteString(ui.Styles.Success.Render("🌟 Split-horizon DNS is now fully configured! 🌟"))
 		sb.WriteString("\n")
-		sb.WriteString("  - UnboundDNS: Router-level *.vookie.net → Caddy\n")
-		sb.WriteString("  - AdguardHome: Client-level *.vookie.net → Caddy\n")
+		sb.WriteString("  - UnboundDNS: Router-level *.example.com → Caddy\n")
+		sb.WriteString("  - AdguardHome: Client-level *.example.com → Caddy\n")
 	} else {
 		sb.WriteString(ui.Styles.Info.Render("🎯 Sync completed with mixed results"))
 		sb.WriteString("\n")
@@ -759,10 +759,10 @@ func (ui *SyncUI) RenderCloudflareSyncTargets(syncDirect, syncCaddy bool, direct
 	sb.WriteString("📋 Sync Targets:\n")
 
 	if syncDirect {
-		sb.WriteString(fmt.Sprintf("  🎯 Direct Access: service.%s.vookie.net → Service IP\n", directSub))
+		sb.WriteString(fmt.Sprintf("  🎯 Direct Access: service.%s.example.com → Service IP\n", directSub))
 	}
 	if syncCaddy {
-		sb.WriteString(fmt.Sprintf("  🔄 Caddy Proxy: service.%s.vookie.net → Caddy IP\n", caddySub))
+		sb.WriteString(fmt.Sprintf("  🔄 Caddy Proxy: service.%s.example.com → Caddy IP\n", caddySub))
 	}
 
 	sb.WriteString("\n")
