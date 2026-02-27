@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/tui"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 )
 
 // CloudflareUI provides Cloudflare-specific UI rendering functions
@@ -115,7 +115,7 @@ func (ui *CloudflareUI) RenderNoTunnelID() string {
 	sb.WriteString("Please provide a tunnel ID using the --tunnel-id flag, or use one of the tunnels listed above.")
 	sb.WriteString("\n\n")
 	sb.WriteString("Example: ")
-	sb.WriteString(ui.Styles.Dimmed.Render("unboundCLI cloudflare-sync --tunnel-id=<tunnel-id>"))
+	sb.WriteString(ui.Styles.Dimmed.Render("caddy-dns-sync cloudflare-sync --tunnel-id=<tunnel-id>"))
 	sb.WriteString("\n")
 
 	return sb.String()

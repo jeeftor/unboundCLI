@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
-	"github.com/jeeftor/unboundCLI/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
 
 // CloudflareClient handles communication with the Cloudflare API

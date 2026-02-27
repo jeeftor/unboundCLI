@@ -26,7 +26,7 @@ metadata:
   mod_timestamp: "{{ .CommitTimestamp }}"
 
 builds:
-  - id: unboundCLI
+  - id: caddy-dns-sync
     env:
       - CGO_ENABLED=0
     goos:
@@ -50,7 +50,7 @@ universal_binaries:
     name_template: "{{ .ProjectName }}"
 
 archives:
-  - id: unboundCLI
+  - id: caddy-dns-sync
     formats: ["tar.gz"]
     format_overrides:
       - goos: windows
@@ -113,18 +113,18 @@ signs:
 #    build_flag_templates:
 #      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
 #      - "--label=org.opencontainers.image.description=CLI for syncing with UNBOUND DNS on OPNSENSE router"
-#      - "--label=org.opencontainers.image.url=https://github.com/jeeftor/unboundCLI"
-#      - "--label=org.opencontainers.image.source=https://github.com/jeeftor/unboundCLI"
+#      - "--label=org.opencontainers.image.url=https://github.com/jeeftor/caddy-dns-sync"
+#      - "--label=org.opencontainers.image.source=https://github.com/jeeftor/caddy-dns-sync"
 #      - "--label=org.opencontainers.image.version={{ .Version }}"
 #      - "--label=org.opencontainers.image.created={{ time \"2006-01-02T15:04:05Z07:00\" }}"
 #      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
 #      - "--label=org.opencontainers.image.licenses=MIT"
 
 nfpms:
-  - id: unboundCLI
-    package_name: unboundcli
+  - id: caddy-dns-sync
+    package_name: caddy-dns-sync
     vendor: jeeftor
-    homepage: https://github.com/jeeftor/unboundCLI
+    homepage: https://github.com/jeeftor/caddy-dns-sync
     maintainer: Jeef <jeeftor@github.com>
     description: CLI for syncing with UNBOUND DNS on OPNSENSE router
     license: MIT
@@ -135,9 +135,9 @@ nfpms:
     bindir: /usr/bin
     contents:
       - src: ./LICENSE
-        dst: /usr/share/doc/unboundcli/LICENSE
+        dst: /usr/share/doc/caddy-dns-sync/LICENSE
       - src: ./README.md
-        dst: /usr/share/doc/unboundcli/README.md
+        dst: /usr/share/doc/caddy-dns-sync/README.md
 
 
     #      - src: ./completion/bash/unboundCLI
@@ -158,7 +158,7 @@ nfpms:
 #      name: homebrew-tap
 #
 #
-#    homepage: "https://github.com/jeeftor/unboundCLI"
+#    homepage: "https://github.com/jeeftor/caddy-dns-sync"
 #    description: "CLI for syncing with UNBOUND DNS on OPNSENSE router"
 #    license: "MIT"
 #    install: |
@@ -204,14 +204,14 @@ changelog:
 release:
   github:
     owner: jeeftor
-    name: unboundCLI
+    name: caddy-dns-sync
   draft: false
   prerelease: auto
   mode: replace
   header: |
-    ## unboundCLI {{ .Tag }} ({{ .Date }})
+    ## caddy-dns-sync {{ .Tag }} ({{ .Date }})
 
-    Welcome to this new release of unboundCLI!
+    Welcome to this new release of caddy-dns-sync!
 
     This release includes SLSA Level 3 provenance for enhanced supply chain security.
   footer: |
@@ -219,5 +219,5 @@ release:
 
     ### Homebrew
     ```bash
-    brew install jeeftor/tap/unboundcli
+    brew install jeeftor/tap/caddy-dns-sync
     ```

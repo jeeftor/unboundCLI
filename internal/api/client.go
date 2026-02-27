@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jeeftor/unboundCLI/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
 
 // Config represents the API configuration
@@ -390,7 +390,10 @@ func (c *Client) AddOverride(override DNSOverride) (string, error) {
 	// Check result field instead of status
 	if resp.Result != "saved" {
 		logging.Error("API returned error", "result", resp.Result, "message", resp.Message)
-		return "", fmt.Errorf("API returned error: %s", resp.Result)
+		if resp.Message != "" {
+			return "", fmt.Errorf("API error: %s - %s", resp.Result, resp.Message)
+		}
+		return "", fmt.Errorf("API error: %s (no additional details provided)", resp.Result)
 	}
 
 	//// Extract UUID from the response

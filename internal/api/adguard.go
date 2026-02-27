@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jeeftor/unboundCLI/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
 
 // AdguardClient handles communication with the AdguardHome DNS rewrite API

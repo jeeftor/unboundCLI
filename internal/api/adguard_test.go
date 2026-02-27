@@ -36,8 +36,8 @@ func TestAdguardClient_AddRewrite(t *testing.T) {
 		}
 
 		// Verify request data
-		if rewrite.Domain != "test.vookie.net" {
-			t.Errorf("Expected domain 'test.vookie.net', got '%s'", rewrite.Domain)
+		if rewrite.Domain != "test.example.com" {
+			t.Errorf("Expected domain 'test.example.com', got '%s'", rewrite.Domain)
 		}
 		if rewrite.Answer != "192.168.1.15" {
 			t.Errorf("Expected answer '192.168.1.15', got '%s'", rewrite.Answer)
@@ -58,7 +58,7 @@ func TestAdguardClient_AddRewrite(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test AddRewrite
-	err := client.AddRewrite("test.vookie.net", "192.168.1.15")
+	err := client.AddRewrite("test.example.com", "192.168.1.15")
 	if err != nil {
 		t.Errorf("AddRewrite failed: %v", err)
 	}
@@ -67,8 +67,8 @@ func TestAdguardClient_AddRewrite(t *testing.T) {
 func TestAdguardClient_ListRewrites(t *testing.T) {
 	// Create test response data
 	testRewrites := []Rewrite{
-		{Domain: "test1.vookie.net", Answer: "192.168.1.15"},
-		{Domain: "test2.vookie.net", Answer: "192.168.1.15"},
+		{Domain: "test1.example.com", Answer: "192.168.1.15"},
+		{Domain: "test2.example.com", Answer: "192.168.1.15"},
 	}
 
 	// Create a test server
@@ -106,8 +106,8 @@ func TestAdguardClient_ListRewrites(t *testing.T) {
 		t.Errorf("Expected 2 rewrites, got %d", len(rewrites))
 	}
 
-	if rewrites[0].Domain != "test1.vookie.net" {
-		t.Errorf("Expected first domain 'test1.vookie.net', got '%s'", rewrites[0].Domain)
+	if rewrites[0].Domain != "test1.example.com" {
+		t.Errorf("Expected first domain 'test1.example.com', got '%s'", rewrites[0].Domain)
 	}
 }
 
@@ -129,11 +129,11 @@ func TestAdguardClient_UpdateRewrite(t *testing.T) {
 		}
 
 		// Verify request data
-		if updatePayload.Target.Domain != "old.vookie.net" {
-			t.Errorf("Expected target domain 'old.vookie.net', got '%s'", updatePayload.Target.Domain)
+		if updatePayload.Target.Domain != "old.example.com" {
+			t.Errorf("Expected target domain 'old.example.com', got '%s'", updatePayload.Target.Domain)
 		}
-		if updatePayload.Update.Domain != "new.vookie.net" {
-			t.Errorf("Expected update domain 'new.vookie.net', got '%s'", updatePayload.Update.Domain)
+		if updatePayload.Update.Domain != "new.example.com" {
+			t.Errorf("Expected update domain 'new.example.com', got '%s'", updatePayload.Update.Domain)
 		}
 
 		// Return success response
@@ -151,8 +151,8 @@ func TestAdguardClient_UpdateRewrite(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test UpdateRewrite
-	target := Rewrite{Domain: "old.vookie.net", Answer: "192.168.1.15"}
-	update := Rewrite{Domain: "new.vookie.net", Answer: "192.168.1.16"}
+	target := Rewrite{Domain: "old.example.com", Answer: "192.168.1.15"}
+	update := Rewrite{Domain: "new.example.com", Answer: "192.168.1.16"}
 
 	err := client.UpdateRewrite(target, update)
 	if err != nil {
@@ -178,8 +178,8 @@ func TestAdguardClient_DeleteRewrite(t *testing.T) {
 		}
 
 		// Verify request data
-		if rewrite.Domain != "test.vookie.net" {
-			t.Errorf("Expected domain 'test.vookie.net', got '%s'", rewrite.Domain)
+		if rewrite.Domain != "test.example.com" {
+			t.Errorf("Expected domain 'test.example.com', got '%s'", rewrite.Domain)
 		}
 		if rewrite.Answer != "192.168.1.15" {
 			t.Errorf("Expected answer '192.168.1.15', got '%s'", rewrite.Answer)
@@ -200,7 +200,7 @@ func TestAdguardClient_DeleteRewrite(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test DeleteRewrite
-	err := client.DeleteRewrite("test.vookie.net", "192.168.1.15")
+	err := client.DeleteRewrite("test.example.com", "192.168.1.15")
 	if err != nil {
 		t.Errorf("DeleteRewrite failed: %v", err)
 	}
@@ -209,8 +209,8 @@ func TestAdguardClient_DeleteRewrite(t *testing.T) {
 func TestAdguardClient_RewriteExists(t *testing.T) {
 	// Create test response data
 	testRewrites := []Rewrite{
-		{Domain: "existing.vookie.net", Answer: "192.168.1.15"},
-		{Domain: "another.vookie.net", Answer: "192.168.1.16"},
+		{Domain: "existing.example.com", Answer: "192.168.1.15"},
+		{Domain: "another.example.com", Answer: "192.168.1.16"},
 	}
 
 	// Create a test server
@@ -230,7 +230,7 @@ func TestAdguardClient_RewriteExists(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test existing rewrite
-	exists, err := client.RewriteExists("existing.vookie.net", "192.168.1.15")
+	exists, err := client.RewriteExists("existing.example.com", "192.168.1.15")
 	if err != nil {
 		t.Errorf("RewriteExists failed: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestAdguardClient_RewriteExists(t *testing.T) {
 	}
 
 	// Test non-existing rewrite
-	exists, err = client.RewriteExists("nonexistent.vookie.net", "192.168.1.15")
+	exists, err = client.RewriteExists("nonexistent.example.com", "192.168.1.15")
 	if err != nil {
 		t.Errorf("RewriteExists failed: %v", err)
 	}
@@ -251,9 +251,9 @@ func TestAdguardClient_RewriteExists(t *testing.T) {
 func TestAdguardClient_GetRewritesForDomain(t *testing.T) {
 	// Create test response data
 	testRewrites := []Rewrite{
-		{Domain: "test.vookie.net", Answer: "192.168.1.15"},
-		{Domain: "test.vookie.net", Answer: "192.168.1.16"},
-		{Domain: "other.vookie.net", Answer: "192.168.1.17"},
+		{Domain: "test.example.com", Answer: "192.168.1.15"},
+		{Domain: "test.example.com", Answer: "192.168.1.16"},
+		{Domain: "other.example.com", Answer: "192.168.1.17"},
 	}
 
 	// Create a test server
@@ -273,19 +273,19 @@ func TestAdguardClient_GetRewritesForDomain(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test getting rewrites for specific domain
-	rewrites, err := client.GetRewritesForDomain("test.vookie.net")
+	rewrites, err := client.GetRewritesForDomain("test.example.com")
 	if err != nil {
 		t.Errorf("GetRewritesForDomain failed: %v", err)
 	}
 
 	if len(rewrites) != 2 {
-		t.Errorf("Expected 2 rewrites for test.vookie.net, got %d", len(rewrites))
+		t.Errorf("Expected 2 rewrites for test.example.com, got %d", len(rewrites))
 	}
 
 	// Verify all returned rewrites are for the requested domain
 	for _, rewrite := range rewrites {
-		if rewrite.Domain != "test.vookie.net" {
-			t.Errorf("Expected domain 'test.vookie.net', got '%s'", rewrite.Domain)
+		if rewrite.Domain != "test.example.com" {
+			t.Errorf("Expected domain 'test.example.com', got '%s'", rewrite.Domain)
 		}
 	}
 }

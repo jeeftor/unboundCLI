@@ -1,13 +1,13 @@
-# 🌐 UnboundCLI
+# 🌐 caddy-dns-sync
 
 [![Go Version](https://img.shields.io/badge/Go-1.18+-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/jeeftor/unboundCLI?style=for-the-badge&logo=github)](https://github.com/jeeftor/unboundCLI/releases)
+[![Release](https://img.shields.io/github/v/release/jeeftor/caddy-dns-sync?style=for-the-badge&logo=github)](https://github.com/jeeftor/caddy-dns-sync/releases)
 [![SLSA 3](https://img.shields.io/badge/SLSA-Level%203-green?style=for-the-badge)](https://slsa.dev)
 
 > 🚀 A powerful CLI tool for managing Unbound DNS on OPNSense routers with a beautiful interactive interface
 
-UnboundCLI provides seamless DNS override management through the OPNSense API, featuring both command-line operations and an intuitive Text User Interface (TUI).
+caddy-dns-sync provides seamless DNS override management through the OPNSense API, featuring both command-line operations and an intuitive Text User Interface (TUI).
 
 ## ✨ Features
 
@@ -25,20 +25,20 @@ UnboundCLI provides seamless DNS override management through the OPNSense API, f
 
 ```bash
 brew tap jeeftor/tap
-brew install unboundcli
+brew install caddy-dns-sync
 ```
 
 ### Manual Installation
 
-1. Download the latest binary from the [Releases page](https://github.com/jeeftor/unboundCLI/releases)
+1. Download the latest binary from the [Releases page](https://github.com/jeeftor/caddy-dns-sync/releases)
 2. Extract and move to your `$PATH`
 
 ### Building from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/jeeftor/unboundCLI.git
-cd unboundCLI
+git clone https://github.com/jeeftor/caddy-dns-sync.git
+cd caddy-dns-sync
 
 # Build the application
 make build
@@ -51,10 +51,10 @@ make install
 
 ### Initial Setup
 
-Configure UnboundCLI with your OPNSense API credentials:
+Configure caddy-dns-sync with your OPNSense API credentials:
 
 ```bash
-unboundCLI config
+caddy-dns-sync config
 ```
 
 Follow the interactive prompts to enter:
@@ -67,14 +67,14 @@ Follow the interactive prompts to enter:
 Experience the beautiful interactive interface:
 
 ```bash
-unboundCLI tui
+caddy-dns-sync tui
 ```
 
 ## 📖 Usage
 
 ```
 Usage:
-  unboundCLI [command]
+  caddy-dns-sync [command]
 
 Available Commands:
   add         ➕ Add a DNS override
@@ -90,29 +90,29 @@ Available Commands:
   tui         💻 Launch the Text User Interface
 
 Flags:
-  --config string      config file (default: $HOME/.unboundCLI.yaml)
-  -h, --help          help for unboundCLI
+  --config string      config file (default: $HOME/.caddy-dns-sync.yaml)
+  -h, --help          help for caddy-dns-sync
   --log-level string  set logging level (debug, info, warn, error) (default: "info")
   -v, --verbose       enable verbose output
-  --version           version for unboundCLI
+  --version           version for caddy-dns-sync
 
-Use "unboundCLI [command] --help" for more information about a command.
+Use "caddy-dns-sync [command] --help" for more information about a command.
 ```
 
 ### Examples
 
 ```bash
 # List all DNS overrides
-unboundCLI list
+caddy-dns-sync list
 
 # Add a new DNS override
-unboundCLI add --host myserver --domain local.lan --ip 192.168.1.100
+caddy-dns-sync add --host myserver --domain local.lan --ip 192.168.1.100
 
 # Find specific overrides
-unboundCLI find --host myserver
+caddy-dns-sync find --host myserver
 
 # Launch interactive mode
-unboundCLI tui
+caddy-dns-sync tui
 ```
 
 ## 🛠️ Development

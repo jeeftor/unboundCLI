@@ -1,137 +1,174 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/config"
-	"github.com/jeeftor/unboundCLI/internal/logging"
-	"github.com/jeeftor/unboundCLI/internal/ui"
+	"github.com/jeeftor/caddy-dns-sync/internal/commands"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/spf13/cobra"
 )
 
 var (
-	jsonOutput bool
-	quietMode  bool
+	listJsonOutput bool
+	listQuietMode  bool
 )
 
-type listUI struct {
-	*ui.BaseUI
-}
-
-func newListUI() *listUI {
-	return &listUI{ui.NewBaseUI()}
-}
-
-func (ui *listUI) RenderTable(overrides []api.DNSOverride) string {
-	var sb strings.Builder
-	// Table header
-	sb.WriteString(fmt.Sprintf("%-36s %-20s %-20s %-15s %-30s %-10s\n",
-		"UUID", "HOST", "DOMAIN", "IP ADDRESS", "DESCRIPTION", "ENABLED"))
-	sb.WriteString(strings.Repeat("─", 140))
-	sb.WriteString("\n")
-	// Table rows
-	for _, o := range overrides {
-		enabled := "No"
-		if o.Enabled == "1" {
-			enabled = "Yes"
-		}
-		sb.WriteString(fmt.Sprintf("%-36s %-20s %-20s %-15s %-30s %-10s\n",
-			o.UUID, o.Host, o.Domain, o.Server, o.Description, enabled))
-	}
-	// Add summary
-	sb.WriteString("\n")
-	sb.WriteString(ui.RenderInfo(fmt.Sprintf("Total DNS Overrides: %d", len(overrides))))
-	return sb.String()
-}
-
-func (ui *listUI) RenderEmpty() string {
-	return ui.RenderWarning("No DNS overrides found.")
-}
-
-func (ui *listUI) RenderError(err error) string {
-	return ui.BaseUI.RenderError(err)
-}
-
-// listCmd represents the list command
+// listCmd is the parent command for listing entries from various services
 var listCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List DNS overrides",
-	Long: `List all DNS overrides configured in Unbound DNS.
+	Short:   "List entries from various services",
+	Long: `List DNS entries, DHCP leases, or routes from different services.
 
-This command retrieves all DNS overrides from the OPNSense API and displays them
-in a table format. You can also output the results in JSON format using the --json flag.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Create UI component
-		listUI := newListUI()
+Available subcommands:
+  all      - Show 3-way sync status across all services
+  unbound  - List UnboundDNS host overrides
+  adguard  - List AdguardHome DNS rewrites
+  dhcp     - List DNSMasq DHCP leases
+  caddy    - List Caddy reverse proxy routes`,
+}
 
-		// Load config
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			logging.Error("Error loading configuration", "error", err)
-			fmt.Println(
-				listUI.RenderError(
-					fmt.Errorf(
-						"error loading configuration: %v\nPlease run 'config' command to set up API access",
-						err,
-					),
-				),
-			)
-			os.Exit(1)
+// allCmd shows 3-way sync status
+var allCmd = &cobra.Command{
+	Use:     "all",
+	Aliases: []string{"status"},
+	Short:   "Show 3-way sync status across all services",
+	Long: `Show the sync status of all hostnames across Caddy, UnboundDNS, and AdguardHome.
+
+This command displays a table showing which services are configured in Caddy and whether
+they are properly synchronized to UnboundDNS and AdguardHome. It's similar to the
+interactive dashboard but outputs a static table for quick status checks.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		source := commands.NewAllDataSource()
+		runner := commands.NewListCommandRunner(source)
+		runner.SetJSONOutput(listJsonOutput)
+		runner.SetQuietMode(listQuietMode)
+
+		if err := runner.Run(); err != nil {
+			logging.Error("Error listing sync status", "error", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return err
 		}
-
-		// Create client
-		client := api.NewClient(cfg)
-
-		// Get overrides
-		if !quietMode {
-			fmt.Println("Fetching DNS overrides...")
-		}
-		overrides, err := client.GetOverrides()
-		if err != nil {
-			logging.Error("Error fetching overrides", "error", err)
-			fmt.Println(listUI.RenderError(err))
-			os.Exit(1)
-		}
-
-		if len(overrides) == 0 {
-			if !quietMode {
-				fmt.Println(listUI.RenderEmpty())
-			}
-			return
-		}
-
-		// Display results
-		if jsonOutput {
-			// Output as JSON
-			printOverridesJSON(overrides, listUI)
-		} else {
-			// Output as table
-			fmt.Println(listUI.RenderTable(overrides))
-		}
-		logging.Info("Successfully displayed overrides", "count", len(overrides))
+		return nil
 	},
 }
 
-// printOverridesJSON prints the overrides in JSON format
-func printOverridesJSON(overrides []api.DNSOverride, ui *listUI) {
-	jsonData, err := json.MarshalIndent(overrides, "", "  ")
-	if err != nil {
-		logging.Error("Error formatting JSON", "error", err)
-		fmt.Println(ui.RenderError(fmt.Errorf("error formatting JSON: %v", err)))
-		return
-	}
-	fmt.Println(string(jsonData))
+// unboundCmd lists Unbound DNS overrides
+var unboundCmd = &cobra.Command{
+	Use:     "unbound",
+	Aliases: []string{"u"},
+	Short:   "List UnboundDNS host overrides",
+	Long: `List all DNS host overrides from UnboundDNS.
+
+This command retrieves all host override entries from the OPNSense UnboundDNS API
+and displays them in a table format. You can also output the results in JSON format
+using the --json flag.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		source := commands.NewUnboundDataSource()
+		runner := commands.NewListCommandRunner(source)
+		runner.SetJSONOutput(listJsonOutput)
+		runner.SetQuietMode(listQuietMode)
+
+		if err := runner.Run(); err != nil {
+			logging.Error("Error listing Unbound overrides", "error", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return err
+		}
+		return nil
+	},
+}
+
+// adguardCmd lists AdguardHome DNS rewrites
+var adguardCmd = &cobra.Command{
+	Use:     "adguard",
+	Aliases: []string{"a"},
+	Short:   "List AdguardHome DNS rewrites",
+	Long: `List all DNS rewrite rules from AdguardHome.
+
+This command retrieves all DNS rewrite rules from the AdguardHome API and displays
+them in a table format. You can also output the results in JSON format using the
+--json flag.
+
+Note: AdguardHome must be enabled in the configuration for this command to work.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		source := commands.NewAdguardDataSource()
+		runner := commands.NewListCommandRunner(source)
+		runner.SetJSONOutput(listJsonOutput)
+		runner.SetQuietMode(listQuietMode)
+
+		if err := runner.Run(); err != nil {
+			logging.Error("Error listing Adguard rewrites", "error", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return err
+		}
+		return nil
+	},
+}
+
+// dhcpCmd lists DNSMasq DHCP leases
+var dhcpCmd = &cobra.Command{
+	Use:     "dhcp",
+	Aliases: []string{"dnsmasq", "d"},
+	Short:   "List DNSMasq DHCP leases",
+	Long: `List all DHCP leases from DNSMasq.
+
+This command retrieves all DHCP leases from the OPNSense DNSMasq API and displays them
+in a table format. You can also output the results in JSON format using the --json flag.
+
+The table shows both static reservations and dynamic leases, along with their MAC addresses
+and expiration times (for dynamic leases).`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		source := commands.NewDHCPDataSource()
+		runner := commands.NewListCommandRunner(source)
+		runner.SetJSONOutput(listJsonOutput)
+		runner.SetQuietMode(listQuietMode)
+
+		if err := runner.Run(); err != nil {
+			logging.Error("Error listing DHCP leases", "error", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return err
+		}
+		return nil
+	},
+}
+
+// caddyCmd lists Caddy reverse proxy routes
+var caddyCmd = &cobra.Command{
+	Use:     "caddy",
+	Aliases: []string{"c"},
+	Short:   "List Caddy reverse proxy routes",
+	Long: `List all reverse proxy routes from Caddy.
+
+This command retrieves all configured reverse proxy routes from the Caddy Admin API
+and displays them in a table format showing the hostname and upstream target (IP:Port).
+You can also output the results in JSON format using the --json flag.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		source := commands.NewCaddyDataSource()
+		runner := commands.NewListCommandRunner(source)
+		runner.SetJSONOutput(listJsonOutput)
+		runner.SetQuietMode(listQuietMode)
+
+		if err := runner.Run(); err != nil {
+			logging.Error("Error listing Caddy routes", "error", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return err
+		}
+		return nil
+	},
 }
 
 func init() {
 	rootCmd.AddCommand(listCmd)
 
-	// Add flags
-	listCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
-	listCmd.Flags().BoolVarP(&quietMode, "quiet", "q", false, "Suppress informational output")
+	// Add subcommands
+	listCmd.AddCommand(allCmd)
+	listCmd.AddCommand(unboundCmd)
+	listCmd.AddCommand(adguardCmd)
+	listCmd.AddCommand(dhcpCmd)
+	listCmd.AddCommand(caddyCmd)
+
+	// Persistent flags (apply to all subcommands)
+	listCmd.PersistentFlags().BoolVar(&listJsonOutput, "json", false, "Output in JSON format")
+	listCmd.PersistentFlags().BoolVarP(&listQuietMode, "quiet", "q", false, "Suppress informational output")
 }

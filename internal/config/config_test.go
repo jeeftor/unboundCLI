@@ -21,7 +21,7 @@ func TestAdguardConfigDefaults(t *testing.T) {
 		t.Errorf("Expected default Enabled=false, got %v", config.Enabled)
 	}
 
-	expectedDesc := "Entry created by unboundCLI adguard-sync"
+	expectedDesc := "Entry created by caddy-dns-sync adguard-sync"
 	if config.Description != expectedDesc {
 		t.Errorf("Expected default Description='%s', got '%s'", expectedDesc, config.Description)
 	}

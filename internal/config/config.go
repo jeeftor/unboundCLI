@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/spf13/viper"
 )
 
 const (
 	// DefaultConfigFileName is the default name for the config file
-	DefaultConfigFileName = ".unboundCLI.json"
+	DefaultConfigFileName = ".caddy-dns-sync.json"
 
 	// Environment variable names
 	EnvAPIKey    = "UNBOUND_CLI_API_KEY"
@@ -28,6 +28,12 @@ const (
 	EnvAdguardInsecure = "ADGUARD_INSECURE"
 )
 
+// CaddyConfig represents configuration specific to Caddy server integration
+type CaddyConfig struct {
+	ServerIP   string `json:"server_ip,omitempty" mapstructure:"server_ip"`
+	ServerPort int    `json:"server_port,omitempty" mapstructure:"server_port"`
+}
+
 // AdguardConfig represents configuration specific to AdguardHome integration
 type AdguardConfig struct {
 	Enabled     bool   `json:"enabled" mapstructure:"enabled"`
@@ -38,9 +44,10 @@ type AdguardConfig struct {
 	Description string `json:"description" mapstructure:"description"`
 }
 
-// ExtendedConfig represents the full application configuration including AdguardHome
+// ExtendedConfig represents the full application configuration including AdguardHome and Caddy
 type ExtendedConfig struct {
 	api.Config `json:",inline" mapstructure:",squash"`
+	Caddy      CaddyConfig   `json:"caddy" mapstructure:"caddy"`
 	Adguard    AdguardConfig `json:"adguard" mapstructure:"adguard"`
 }
 
@@ -147,7 +154,7 @@ func LoadAdguardConfig() (AdguardConfig, error) {
 
 	// Set defaults
 	config.Enabled = false
-	config.Description = "Entry created by unboundCLI adguard-sync"
+	config.Description = "Entry created by caddy-dns-sync adguard-sync"
 
 	// Check environment variables first
 	if enabledEnv := os.Getenv(EnvAdguardEnabled); enabledEnv != "" {
@@ -242,4 +249,29 @@ func SaveExtendedConfig(cfg ExtendedConfig, path string) error {
 	}
 
 	return nil
+}
+
+// LoadExtendedConfig loads the extended configuration (including Caddy and AdguardHome) from the default config file
+func LoadExtendedConfig() (ExtendedConfig, error) {
+	var cfg ExtendedConfig
+
+	configPath, err := GetDefaultConfigPath()
+	if err != nil {
+		return cfg, err
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return cfg, fmt.Errorf("config file not found at %s", configPath)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return cfg, fmt.Errorf("error reading config file: %w", err)
+	}
+
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return cfg, fmt.Errorf("error parsing config file: %w", err)
+	}
+
+	return cfg, nil
 }

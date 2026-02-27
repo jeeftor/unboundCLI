@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jeeftor/unboundCLI/internal/api"
-	"github.com/jeeftor/unboundCLI/internal/config"
-	"github.com/jeeftor/unboundCLI/internal/logging"
-	"github.com/jeeftor/unboundCLI/internal/tui"
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -49,11 +49,15 @@ Use this command to quickly identify services that need synchronization.`,
 		// Create clients
 		var unboundClient *api.Client
 		var adguardClient *api.AdguardClient
+		var dnsmasqClient *api.DNSMasqClient
 
 		// Create UnboundDNS client (unless skipped)
 		if !statusSkipUnbound {
 			unboundClient = api.NewClient(cfg)
 		}
+
+		// Create DNSMasq client (uses same config as Unbound)
+		dnsmasqClient = api.NewDNSMasqClient(cfg)
 
 		// Create AdguardHome client (unless skipped)
 		if !statusSkipAdguard {
@@ -80,7 +84,7 @@ Use this command to quickly identify services that need synchronization.`,
 		caddyClient := api.NewCaddyClient(statusCaddyServerIP, statusCaddyServerPort)
 
 		// Create dashboard
-		dashboard := tui.NewSyncStatusDashboard()
+		dashboard := tui.NewSyncStatusDashboard(statusCaddyServerIP)
 
 		// Set up filters
 		filters := tui.StatusFilters{
@@ -94,7 +98,7 @@ Use this command to quickly identify services that need synchronization.`,
 			fmt.Print("🔍 Fetching sync status from all systems...")
 		}
 
-		err = dashboard.LoadSyncData(caddyClient, unboundClient, adguardClient)
+		err = dashboard.LoadSyncData(caddyClient, unboundClient, adguardClient, dnsmasqClient)
 		if err != nil {
 			fmt.Printf("\n❌ Error loading sync data: %v\n", err)
 			os.Exit(1)
@@ -120,8 +124,8 @@ Use this command to quickly identify services that need synchronization.`,
 		if summary.OutOfSync > 0 || summary.PartiallyInSync > 0 {
 			if !statusCompact {
 				fmt.Printf("\n💡 TIP: Run sync commands to fix out-of-sync services:\n")
-				fmt.Printf("   unboundCLI caddy-sync-all --dry-run  # Preview changes\n")
-				fmt.Printf("   unboundCLI caddy-sync-all            # Apply changes\n")
+				fmt.Printf("   caddy-dns-sync caddy-sync-all --dry-run  # Preview changes\n")
+				fmt.Printf("   caddy-dns-sync caddy-sync-all            # Apply changes\n")
 			}
 			os.Exit(1) // Exit with error code for scripting
 		}

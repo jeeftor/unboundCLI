@@ -40,7 +40,7 @@ linters-settings:
 
   goimports:
     # Put imports beginning with prefix after 3rd-party packages
-    local-prefixes: github.com/jeeftor/unboundCLI
+    local-prefixes: github.com/jeeftor/caddy-dns-sync
 
   gocritic:
     # Enable multiple checks by tags, run `GL_DEBUG=gocritic golangci-lint run` to see all tags and checks
