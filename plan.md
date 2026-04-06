@@ -2,17 +2,27 @@
 
 ## Background & Context
 
-### Current state
+### Current state (as of commit dbf6479)
 
-The codebase already has:
-- `github.com/cloudflare/cloudflare-go` SDK in `go.mod`
+The codebase has:
+- `github.com/cloudflare/cloudflare-go v0.115.0` SDK in `go.mod`
 - `internal/api/cloudflare.go` — `CloudflareClient` with:
-  - `GetTunnelHostnames()` — reads ingress rules from an existing tunnel (working)
+  - `GetTunnelHostnames()` — reads ingress rules from an existing tunnel ✅
+  - `ListTunnels()` — lists all account tunnels ✅
+  - `ListZones()` — lists all zones accessible by the token ✅
+  - `NewCloudflareClientWithBaseURL()` — testable constructor ✅
   - `AddTunnelHostname()` / `DeleteTunnelHostname()` — **stubs only** (log but do nothing)
-- `internal/exec/sync/cloudflare.go` — `SyncCloudflareWithUnbound()` — syncs CF tunnel hostnames → local UnboundDNS (read-only from CF side)
-- `cmd/caddy-sync-cloudflare.go` — dual-mode DNS entry creation for LAN routing (not a CF tunnel write operation)
+- `internal/config/config.go` — `CloudflareConfig` wired into `ExtendedConfig` ✅
+  - `LoadCloudflareConfig()` with env → viper → file precedence ✅
+  - Env vars: `CF_ENABLED`, `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_ZONE_ID`, `CF_TUNNEL_ID`, `CF_CADDY_SERVICE_URL` ✅
+- `cmd/cloudflare-setup` — interactive Bubble Tea wizard (token → account → tunnel picker → zone picker → Caddy URL → save) ✅
+- `cmd/config` — non-TUI config with optional Cloudflare section; preserves all existing fields on save ✅
+- `cmd/config-tui` — real `ConfigWizard` TUI (ctrl+s save, ctrl+t test connections, ctrl+p toggle password visibility) ✅
+- `internal/widgets/config_editor.go` — `TogglePasswordVisibility()` for show/hide secrets ✅
+- Connection test output shows all 3 services (UnboundDNS / AdguardHome / Cloudflare) with disabled/success/fail states ✅
+- 57 unit tests passing ✅
 
-### What's missing
+### What's still missing
 
 The "push to Cloudflare" direction: reading Caddy hostnames and writing them as ingress rules into the CF tunnel plus creating the corresponding CF DNS CNAME records.
 
@@ -61,32 +71,9 @@ The tunnel's catch-all rule (`service: http_status:404`) must always be the last
 
 ## Implementation Steps
 
-### Step 1 — Cloudflare config in `ExtendedConfig`
+### Step 1 — Cloudflare config in `ExtendedConfig` ✅ DONE
 
-**File**: `internal/config/config.go`
-
-Add a `CloudflareConfig` struct and wire it into `ExtendedConfig`:
-
-```go
-type CloudflareConfig struct {
-    Enabled   bool   `json:"enabled" mapstructure:"enabled"`
-    APIToken  string `json:"api_token,omitempty" mapstructure:"api_token"`
-    AccountID string `json:"account_id,omitempty" mapstructure:"account_id"`
-    ZoneID    string `json:"zone_id,omitempty" mapstructure:"zone_id"`
-    TunnelID  string `json:"tunnel_id,omitempty" mapstructure:"tunnel_id"`
-    // IP/port Caddy listens on — used as the tunnel ingress service target
-    CaddyServiceURL string `json:"caddy_service_url,omitempty" mapstructure:"caddy_service_url"`
-}
-```
-
-Add `Cloudflare CloudflareConfig` field to `ExtendedConfig`.
-
-Add env vars (follow existing pattern):
-```
-CF_ENABLED, CF_API_TOKEN, CF_ACCOUNT_ID, CF_ZONE_ID, CF_TUNNEL_ID, CF_CADDY_SERVICE_URL
-```
-
-Add `LoadCloudflareConfig()` following the same env → viper → file pattern as `LoadAdguardConfig()`.
+`CloudflareConfig` struct added to `internal/config/config.go`, wired into `ExtendedConfig`, with `LoadCloudflareConfig()` and all env vars. See commit dbf6479.
 
 ---
 
@@ -184,17 +171,9 @@ Config is loaded from `ExtendedConfig.Cloudflare`; flags override.
 
 ---
 
-### Step 5 — Config TUI support
+### Step 5 — Config TUI support ✅ DONE
 
-**File**: `internal/widgets/config_editor.go`
-
-Add a "Cloudflare" section to the config editor widget, with fields:
-- Enabled toggle
-- API Token (masked)
-- Account ID
-- Zone ID
-- Tunnel ID
-- Caddy Service URL
+`internal/widgets/config_editor.go` has Cloudflare section in `config-tui` wizard with all fields (enabled, api_token masked, account_id, zone_id, tunnel_id, caddy_service_url). Password visibility toggled with `ctrl+p`. See commit dbf6479.
 
 ---
 
@@ -244,7 +223,7 @@ Use `cloudflare.ResourceIdentifier(accountID)` and `cloudflare.ResourceIdentifie
 
 ## Testing Plan
 
-- Unit tests for `SetTunnelIngress` / DNS record methods using a mock HTTP server (follow `internal/api/caddy_test.go` pattern)
+- Unit tests for `SetTunnelIngress` / DNS record methods using a mock HTTP server (follow `internal/api/cloudflare_test.go` pattern — `NewCloudflareClientWithBaseURL` + `httptest.NewServer`)
 - Unit tests for `SyncCaddyToCloudflare` with stubbed clients
 - Integration test notes: requires real CF credentials — mark with `//go:build integration`
 
@@ -252,12 +231,17 @@ Use `cloudflare.ResourceIdentifier(accountID)` and `cloudflare.ResourceIdentifie
 
 ## File Checklist
 
-| File | Action |
-|------|--------|
-| `internal/config/config.go` | Add `CloudflareConfig`, update `ExtendedConfig`, add `LoadCloudflareConfig()` |
-| `internal/api/cloudflare.go` | Implement `SetTunnelIngress`, `EnsureDNSRecord`, `DeleteDNSRecord`, `ListManagedDNSRecords` |
-| `internal/exec/sync/caddy_push_cloudflare.go` | New — `SyncCaddyToCloudflare` |
-| `cmd/caddy-push-cloudflare.go` | New — CLI command |
-| `internal/widgets/config_editor.go` | Add Cloudflare section |
-| `internal/api/cloudflare_test.go` | New — unit tests |
-| `internal/exec/sync/caddy_push_cloudflare_test.go` | New — sync engine tests |
+| File | Status | Notes |
+|------|--------|-------|
+| `internal/config/config.go` | ✅ Done | `CloudflareConfig`, `ExtendedConfig`, `LoadCloudflareConfig()` |
+| `internal/api/cloudflare.go` | ⏳ Partial | `ListTunnels`, `ListZones` done; need `SetTunnelIngress`, `EnsureDNSRecord`, `DeleteDNSRecord`, `ListManagedDNSRecords` |
+| `cmd/cloudflare-setup.go` | ✅ Done | Interactive wizard with tunnel/zone picker |
+| `internal/tui/config_wizard.go` | ✅ Done | Real config TUI with ctrl+s/t/p |
+| `internal/widgets/config_editor.go` | ✅ Done | Cloudflare section + password toggle |
+| `internal/api/cloudflare_test.go` | ✅ Done | `TestListTunnels`, `TestListZones` |
+| `internal/config/cloudflare_config_test.go` | ✅ Done | Env/file loading tests |
+| `internal/tui/config_wizard_test.go` | ✅ Done | Connection test logic, config building |
+| `internal/widgets/config_editor_test.go` | ✅ Done | Password toggle, values round-trip |
+| `internal/exec/sync/caddy_push_cloudflare.go` | ❌ TODO | `SyncCaddyToCloudflare` |
+| `cmd/caddy-push-cloudflare.go` | ❌ TODO | CLI command |
+| `internal/exec/sync/caddy_push_cloudflare_test.go` | ❌ TODO | Sync engine tests |
