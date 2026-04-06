@@ -40,6 +40,7 @@ type ConfigEditorWidget struct {
 	// State
 	editing          bool
 	showHelp         bool
+	showPasswords    bool
 	validationErrors map[string]string
 
 	// Navigation
@@ -287,7 +288,7 @@ func (w *ConfigEditorWidget) rebuildInputs() {
 			input.SetValue(field.Value)
 			input.Width = 50
 
-			if field.IsPassword {
+			if field.IsPassword && !w.showPasswords {
 				input.EchoMode = textinput.EchoPassword
 				input.EchoCharacter = '•'
 			}
@@ -498,4 +499,25 @@ func (w *ConfigEditorWidget) GetErrors() map[string]string {
 // Focused returns true if the editor is currently editing a field
 func (w *ConfigEditorWidget) Focused() bool {
 	return w.editing
+}
+
+// TogglePasswordVisibility toggles whether password fields show their content
+func (w *ConfigEditorWidget) TogglePasswordVisibility() {
+	w.showPasswords = !w.showPasswords
+	// Save current values before rebuilding
+	for i, section := range w.sections {
+		for j := range section.Fields {
+			offset := w.getFieldOffset(i)
+			idx := offset + j
+			if idx < len(w.inputs) {
+				w.sections[i].Fields[j].Value = w.inputs[idx].Value()
+			}
+		}
+	}
+	w.rebuildInputs()
+}
+
+// ShowingPasswords returns whether password fields are currently visible
+func (w *ConfigEditorWidget) ShowingPasswords() bool {
+	return w.showPasswords
 }

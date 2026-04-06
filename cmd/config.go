@@ -55,6 +55,7 @@ AdguardHome:
 		// Try to load existing configs
 		existingConfig, _ := config.LoadConfig()
 		existingAdguardConfig, _ := config.LoadAdguardConfig()
+		existingExtended, _ := config.LoadExtendedConfig()
 
 		scanner := bufio.NewScanner(os.Stdin)
 
@@ -171,25 +172,94 @@ AdguardHome:
 			fmt.Println(configUI.RenderInfo("AdguardHome integration disabled. You can enable it later by re-running this command."))
 		}
 
+		// ========== Cloudflare Configuration ==========
+		fmt.Println()
+		fmt.Println(configUI.RenderSectionHeader("☁️  Cloudflare Configuration (optional)"))
+		fmt.Println(configUI.RenderInfo("Tip: Use 'cloudflare-setup' for an interactive tunnel/zone picker."))
+
+		cfEnabled := existingExtended.Cloudflare.Enabled
+		cfEnabledStr := "n"
+		if cfEnabled {
+			cfEnabledStr = "y"
+		}
+		fmt.Printf("Enable Cloudflare tunnel integration (y/n) [%s]: ", cfEnabledStr)
+		scanner.Scan()
+		input = scanner.Text()
+		if input != "" {
+			cfEnabled = strings.ToLower(input) == "y"
+		}
+
+		cfAPIToken := existingExtended.Cloudflare.APIToken
+		cfAccountID := existingExtended.Cloudflare.AccountID
+		cfZoneID := existingExtended.Cloudflare.ZoneID
+		cfTunnelID := existingExtended.Cloudflare.TunnelID
+		cfCaddyServiceURL := existingExtended.Cloudflare.CaddyServiceURL
+
+		if cfEnabled {
+			fmt.Printf("CF API Token [%s]: ", maskString(cfAPIToken))
+			scanner.Scan()
+			input = scanner.Text()
+			if input != "" {
+				cfAPIToken = input
+			}
+
+			fmt.Printf("CF Account ID [%s]: ", maskString(cfAccountID))
+			scanner.Scan()
+			input = scanner.Text()
+			if input != "" {
+				cfAccountID = input
+			}
+
+			fmt.Printf("CF Zone ID [%s]: ", maskString(cfZoneID))
+			scanner.Scan()
+			input = scanner.Text()
+			if input != "" {
+				cfZoneID = input
+			}
+
+			fmt.Printf("CF Tunnel ID [%s]: ", maskString(cfTunnelID))
+			scanner.Scan()
+			input = scanner.Text()
+			if input != "" {
+				cfTunnelID = input
+			}
+
+			fmt.Printf("Caddy Service URL [%s]: ", cfCaddyServiceURL)
+			scanner.Scan()
+			input = scanner.Text()
+			if input != "" {
+				cfCaddyServiceURL = input
+			}
+		} else {
+			fmt.Println(configUI.RenderInfo("Cloudflare integration disabled. Existing credentials preserved."))
+		}
+
 		// ========== Save Configuration ==========
 		fmt.Println()
 		fmt.Println(configUI.RenderSectionHeader("💾 Save Configuration"))
 
-		// Create the extended config
-		extendedConfig := config.ExtendedConfig{
-			Config: api.Config{
-				APIKey:    apiKey,
-				APISecret: apiSecret,
-				BaseURL:   baseURL,
-				Insecure:  insecure,
-			},
-			Adguard: config.AdguardConfig{
-				Enabled:  enabled,
-				Username: adguardUsername,
-				Password: adguardPassword,
-				BaseURL:  adguardBaseURL,
-				Insecure: adguardInsecure,
-			},
+		// Create the extended config, preserving fields not prompted for
+		extendedConfig := existingExtended
+		extendedConfig.Config = api.Config{
+			APIKey:    apiKey,
+			APISecret: apiSecret,
+			BaseURL:   baseURL,
+			Insecure:  insecure,
+		}
+		extendedConfig.Adguard = config.AdguardConfig{
+			Enabled:  enabled,
+			Username: adguardUsername,
+			Password: adguardPassword,
+			BaseURL:  adguardBaseURL,
+			Insecure: adguardInsecure,
+		}
+		extendedConfig.Cloudflare = config.CloudflareConfig{
+			Enabled:         cfEnabled,
+			APIToken:        cfAPIToken,
+			AccountID:       cfAccountID,
+			ZoneID:          cfZoneID,
+			TunnelID:        cfTunnelID,
+			CaddyServiceURL: cfCaddyServiceURL,
 		}
 
 		// Determine config path
