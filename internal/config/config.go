@@ -26,6 +26,14 @@ const (
 	EnvAdguardPassword = "ADGUARD_PASSWORD"
 	EnvAdguardBaseURL  = "ADGUARD_BASE_URL"
 	EnvAdguardInsecure = "ADGUARD_INSECURE"
+
+	// Cloudflare specific environment variables
+	EnvCFEnabled         = "CF_ENABLED"
+	EnvCFAPIToken        = "CF_API_TOKEN"
+	EnvCFAccountID       = "CF_ACCOUNT_ID"
+	EnvCFZoneID          = "CF_ZONE_ID"
+	EnvCFTunnelID        = "CF_TUNNEL_ID"
+	EnvCFCaddyServiceURL = "CF_CADDY_SERVICE_URL"
 )
 
 // CaddyConfig represents configuration specific to Caddy server integration
@@ -44,11 +52,32 @@ type AdguardConfig struct {
 	Description string `json:"description" mapstructure:"description"`
 }
 
+// CloudflareConfig represents configuration specific to Cloudflare integration
+type CloudflareConfig struct {
+	Enabled         bool   `json:"enabled" mapstructure:"enabled"`
+	APIToken        string `json:"api_token,omitempty" mapstructure:"api_token"`
+	AccountID       string `json:"account_id,omitempty" mapstructure:"account_id"`
+	ZoneID          string `json:"zone_id,omitempty" mapstructure:"zone_id"`
+	TunnelID        string `json:"tunnel_id,omitempty" mapstructure:"tunnel_id"`
+	CaddyServiceURL string `json:"caddy_service_url,omitempty" mapstructure:"caddy_service_url"`
+}
+
+// GetCloudflareAPIConfig creates a CloudflareConfig suitable for API client use
+func (c CloudflareConfig) GetCloudflareAPIConfig() api.CloudflareConfig {
+	return api.CloudflareConfig{
+		APIToken:  c.APIToken,
+		AccountID: c.AccountID,
+		ZoneID:    c.ZoneID,
+		TunnelID:  c.TunnelID,
+	}
+}
+
 // ExtendedConfig represents the full application configuration including AdguardHome and Caddy
 type ExtendedConfig struct {
 	api.Config `json:",inline" mapstructure:",squash"`
-	Caddy      CaddyConfig   `json:"caddy" mapstructure:"caddy"`
-	Adguard    AdguardConfig `json:"adguard" mapstructure:"adguard"`
+	Caddy      CaddyConfig      `json:"caddy" mapstructure:"caddy"`
+	Adguard    AdguardConfig    `json:"adguard" mapstructure:"adguard"`
+	Cloudflare CloudflareConfig `json:"cloudflare" mapstructure:"cloudflare"`
 }
 
 // GetDefaultConfigPath returns the default path for the config file
@@ -219,6 +248,56 @@ func LoadAdguardConfig() (AdguardConfig, error) {
 	viper.Set("adguard", config)
 
 	return config, nil
+}
+
+// LoadCloudflareConfig loads Cloudflare-specific configuration from environment variables, viper, or config file
+func LoadCloudflareConfig() (CloudflareConfig, error) {
+	var cfg CloudflareConfig
+
+	// Check environment variables first
+	if enabledEnv := os.Getenv(EnvCFEnabled); enabledEnv != "" {
+		cfg.Enabled = enabledEnv == "true" || enabledEnv == "1"
+		cfg.APIToken = os.Getenv(EnvCFAPIToken)
+		cfg.AccountID = os.Getenv(EnvCFAccountID)
+		cfg.ZoneID = os.Getenv(EnvCFZoneID)
+		cfg.TunnelID = os.Getenv(EnvCFTunnelID)
+		cfg.CaddyServiceURL = os.Getenv(EnvCFCaddyServiceURL)
+		return cfg, nil
+	}
+
+	// Try to load from viper
+	if viper.IsSet("cloudflare") {
+		if err := viper.UnmarshalKey("cloudflare", &cfg); err != nil {
+			return cfg, fmt.Errorf("error parsing Cloudflare config from viper: %w", err)
+		}
+		return cfg, nil
+	}
+
+	// Try to load from config file
+	configPath, err := GetDefaultConfigPath()
+	if err != nil {
+		return cfg, err
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return cfg, nil
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return cfg, fmt.Errorf("error reading config file: %w", err)
+	}
+
+	var extendedConfig ExtendedConfig
+	if err := json.Unmarshal(data, &extendedConfig); err != nil {
+		return cfg, fmt.Errorf("error parsing extended config file: %w", err)
+	}
+
+	cfg = extendedConfig.Cloudflare
+
+	viper.Set("cloudflare", cfg)
+
+	return cfg, nil
 }
 
 // GetAdguardAPIConfig creates an AdguardConfig from the configuration suitable for API client use

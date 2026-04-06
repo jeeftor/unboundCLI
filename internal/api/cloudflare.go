@@ -42,9 +42,30 @@ type CloudflareTunnelConnection struct {
 	Status      string    `json:"status"`
 }
 
+// CloudflareZone represents a Cloudflare DNS zone
+type CloudflareZone struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // NewCloudflareClient creates a new Cloudflare API client
 func NewCloudflareClient(config CloudflareConfig) (*CloudflareClient, error) {
 	api, err := cloudflare.NewWithAPIToken(config.APIToken)
+	if err != nil {
+		return nil, fmt.Errorf("error creating Cloudflare API client: %w", err)
+	}
+
+	return &CloudflareClient{
+		api:       api,
+		zoneID:    config.ZoneID,
+		accountID: config.AccountID,
+		tunnelID:  config.TunnelID,
+	}, nil
+}
+
+// NewCloudflareClientWithBaseURL creates a new Cloudflare API client with a custom base URL (useful for testing)
+func NewCloudflareClientWithBaseURL(config CloudflareConfig, baseURL string) (*CloudflareClient, error) {
+	api, err := cloudflare.NewWithAPIToken(config.APIToken, cloudflare.BaseURL(baseURL))
 	if err != nil {
 		return nil, fmt.Errorf("error creating Cloudflare API client: %w", err)
 	}
@@ -86,6 +107,26 @@ func (c *CloudflareClient) ListTunnels() ([]CloudflareTunnel, error) {
 		}
 
 		result = append(result, t)
+	}
+
+	return result, nil
+}
+
+// ListZones returns all zones accessible with the current API token
+func (c *CloudflareClient) ListZones() ([]CloudflareZone, error) {
+	ctx := context.Background()
+
+	zones, err := c.api.ListZones(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error listing zones: %w", err)
+	}
+
+	result := make([]CloudflareZone, 0, len(zones))
+	for _, z := range zones {
+		result = append(result, CloudflareZone{
+			ID:   z.ID,
+			Name: z.Name,
+		})
 	}
 
 	return result, nil

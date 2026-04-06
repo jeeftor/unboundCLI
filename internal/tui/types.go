@@ -298,17 +298,3 @@ func (r *SyncStatusRenderer) RenderDashboard() string {
 	}
 	return "Dashboard view (TUI removed - to be rebuilt)"
 }
-
-// ConfigWizard is a stub for the config wizard
-type ConfigWizard struct{}
-
-// NewConfigWizard creates a new config wizard (stub)
-func NewConfigWizard() *ConfigWizard {
-	return &ConfigWizard{}
-}
-
-// Start starts the wizard (stub)
-func (w *ConfigWizard) Start() error {
-	// TODO: Implement when TUI is rebuilt
-	return nil
-}

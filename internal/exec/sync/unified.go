@@ -119,7 +119,7 @@ func UnifiedCaddySync(
 		} else {
 			errorMsg = fmt.Sprintf("AdguardHome sync failed: %v", result.AdguardError)
 		}
-		return result, fmt.Errorf(errorMsg)
+		return result, fmt.Errorf("%s", errorMsg)
 	}
 
 	return result, nil
