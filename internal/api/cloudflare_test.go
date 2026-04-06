@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -139,3 +140,452 @@ func TestListZones(t *testing.T) {
 		t.Errorf("Expected zone name 'other.com', got '%s'", zones[1].Name)
 	}
 }
+
+// --- helpers ---
+
+func newTestClient(t *testing.T, handler http.Handler) (*CloudflareClient, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	cfg := CloudflareConfig{
+		APIToken:  "test-token",
+		AccountID: "test-account",
+		ZoneID:    "test-zone",
+		TunnelID:  "test-tunnel-uuid",
+	}
+	client, err := NewCloudflareClientWithBaseURL(cfg, srv.URL+"/client/v4")
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+	return client, srv
+}
+
+func tunnelConfigResponse() string {
+	return `{
+		"success": true,
+		"errors": [],
+		"messages": [],
+		"result": {
+			"tunnel_id": "test-tunnel-uuid",
+			"version": 1,
+			"config": {
+				"ingress": [
+					{"hostname": "app.example.com", "service": "http://192.168.1.15:80"},
+					{"service": "http_status:404"}
+				]
+			}
+		}
+	}`
+}
+
+func dnsListResponse(records []map[string]interface{}) string {
+	resp := map[string]interface{}{
+		"success":     true,
+		"errors":      []interface{}{},
+		"messages":    []interface{}{},
+		"result":      records,
+		"result_info": map[string]interface{}{"page": 1, "per_page": 100, "total_pages": 1, "count": len(records), "total_count": len(records)},
+	}
+	b, _ := json.Marshal(resp)
+	return string(b)
+}
+
+func dnsRecordResponse(id, name, content string) string {
+	resp := map[string]interface{}{
+		"success":  true,
+		"errors":   []interface{}{},
+		"messages": []interface{}{},
+		"result":   map[string]interface{}{"id": id, "type": "CNAME", "name": name, "content": content, "proxied": true, "ttl": 1},
+	}
+	b, _ := json.Marshal(resp)
+	return string(b)
+}
+
+// --- SetTunnelIngress ---
+
+func TestSetTunnelIngress_SendsRulesWithCatchAll(t *testing.T) {
+	var capturedBody map[string]interface{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel/test-tunnel-uuid/configurations",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPut {
+				t.Errorf("expected PUT, got %s", r.Method)
+			}
+			json.NewDecoder(r.Body).Decode(&capturedBody)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelConfigResponse())
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	err := client.SetTunnelIngress(map[string]string{
+		"app.example.com": "http://192.168.1.15:80",
+	})
+	if err != nil {
+		t.Fatalf("SetTunnelIngress failed: %v", err)
+	}
+
+	config, _ := capturedBody["config"].(map[string]interface{})
+	ingress, _ := config["ingress"].([]interface{})
+
+	if len(ingress) != 2 {
+		t.Fatalf("expected 2 ingress rules (1 rule + catch-all), got %d", len(ingress))
+	}
+
+	// Last rule must be the catch-all
+	last := ingress[len(ingress)-1].(map[string]interface{})
+	if last["service"] != "http_status:404" {
+		t.Errorf("last ingress rule should be catch-all, got %v", last["service"])
+	}
+
+	// First rule should be our hostname
+	first := ingress[0].(map[string]interface{})
+	if first["hostname"] != "app.example.com" {
+		t.Errorf("expected hostname 'app.example.com', got %v", first["hostname"])
+	}
+	if first["service"] != "http://192.168.1.15:80" {
+		t.Errorf("expected service 'http://192.168.1.15:80', got %v", first["service"])
+	}
+}
+
+func TestSetTunnelIngress_EmptyRulesOnlyCatchAll(t *testing.T) {
+	var capturedBody map[string]interface{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel/test-tunnel-uuid/configurations",
+		func(w http.ResponseWriter, r *http.Request) {
+			json.NewDecoder(r.Body).Decode(&capturedBody)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelConfigResponse())
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.SetTunnelIngress(map[string]string{}); err != nil {
+		t.Fatalf("SetTunnelIngress failed: %v", err)
+	}
+
+	config, _ := capturedBody["config"].(map[string]interface{})
+	ingress, _ := config["ingress"].([]interface{})
+
+	if len(ingress) != 1 {
+		t.Fatalf("empty rules should produce exactly 1 catch-all rule, got %d", len(ingress))
+	}
+	only := ingress[0].(map[string]interface{})
+	if only["service"] != "http_status:404" {
+		t.Errorf("only rule should be catch-all, got %v", only["service"])
+	}
+}
+
+func TestSetTunnelIngress_MultipleRules(t *testing.T) {
+	var capturedBody map[string]interface{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel/test-tunnel-uuid/configurations",
+		func(w http.ResponseWriter, r *http.Request) {
+			json.NewDecoder(r.Body).Decode(&capturedBody)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelConfigResponse())
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	rules := map[string]string{
+		"app.example.com":  "http://192.168.1.15:80",
+		"api.example.com":  "http://192.168.1.16:8080",
+		"home.example.com": "http://192.168.1.17:443",
+	}
+	if err := client.SetTunnelIngress(rules); err != nil {
+		t.Fatalf("SetTunnelIngress failed: %v", err)
+	}
+
+	config, _ := capturedBody["config"].(map[string]interface{})
+	ingress, _ := config["ingress"].([]interface{})
+
+	// 3 rules + catch-all
+	if len(ingress) != 4 {
+		t.Fatalf("expected 4 ingress rules, got %d", len(ingress))
+	}
+	last := ingress[len(ingress)-1].(map[string]interface{})
+	if last["service"] != "http_status:404" {
+		t.Errorf("last rule must be catch-all, got %v", last["service"])
+	}
+}
+
+// --- ListManagedDNSRecords ---
+
+func TestListManagedDNSRecords_FiltersToTunnelCNAMEs(t *testing.T) {
+	records := []map[string]interface{}{
+		{"id": "r1", "type": "CNAME", "name": "app.example.com", "content": "test-tunnel-uuid.cfargotunnel.com"},
+		{"id": "r2", "type": "CNAME", "name": "api.example.com", "content": "test-tunnel-uuid.cfargotunnel.com"},
+		{"id": "r3", "type": "CNAME", "name": "other.example.com", "content": "some-other-host.com"}, // not a tunnel CNAME
+		{"id": "r4", "type": "A", "name": "plain.example.com", "content": "1.2.3.4"},
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, dnsListResponse(records))
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	managed, err := client.ListManagedDNSRecords()
+	if err != nil {
+		t.Fatalf("ListManagedDNSRecords failed: %v", err)
+	}
+
+	if len(managed) != 2 {
+		t.Fatalf("expected 2 managed records, got %d", len(managed))
+	}
+	if managed["app.example.com"] != "test-tunnel-uuid.cfargotunnel.com" {
+		t.Errorf("wrong content for app.example.com: %q", managed["app.example.com"])
+	}
+	if managed["api.example.com"] != "test-tunnel-uuid.cfargotunnel.com" {
+		t.Errorf("wrong content for api.example.com: %q", managed["api.example.com"])
+	}
+	if _, ok := managed["other.example.com"]; ok {
+		t.Error("non-tunnel CNAME should not appear in managed records")
+	}
+}
+
+func TestListManagedDNSRecords_EmptyZone(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, dnsListResponse([]map[string]interface{}{}))
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	managed, err := client.ListManagedDNSRecords()
+	if err != nil {
+		t.Fatalf("ListManagedDNSRecords failed: %v", err)
+	}
+	if len(managed) != 0 {
+		t.Errorf("expected 0 records, got %d", len(managed))
+	}
+}
+
+// --- EnsureDNSRecord ---
+
+func TestEnsureDNSRecord_CreatesWhenAbsent(t *testing.T) {
+	var createCalled bool
+	var capturedCreate map[string]interface{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.Method {
+			case http.MethodGet:
+				// No existing records
+				fmt.Fprint(w, dnsListResponse([]map[string]interface{}{}))
+			case http.MethodPost:
+				createCalled = true
+				json.NewDecoder(r.Body).Decode(&capturedCreate)
+				fmt.Fprint(w, dnsRecordResponse("new-id", "app.example.com", "test-tunnel-uuid.cfargotunnel.com"))
+			default:
+				t.Errorf("unexpected method %s", r.Method)
+			}
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.EnsureDNSRecord("app.example.com"); err != nil {
+		t.Fatalf("EnsureDNSRecord failed: %v", err)
+	}
+
+	if !createCalled {
+		t.Error("expected POST to create DNS record")
+	}
+	if capturedCreate["type"] != "CNAME" {
+		t.Errorf("expected type CNAME, got %v", capturedCreate["type"])
+	}
+	if capturedCreate["name"] != "app.example.com" {
+		t.Errorf("expected name 'app.example.com', got %v", capturedCreate["name"])
+	}
+	wantContent := "test-tunnel-uuid.cfargotunnel.com"
+	if capturedCreate["content"] != wantContent {
+		t.Errorf("expected content %q, got %v", wantContent, capturedCreate["content"])
+	}
+}
+
+func TestEnsureDNSRecord_NoOpWhenCorrect(t *testing.T) {
+	requestCount := 0
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			requestCount++
+			w.Header().Set("Content-Type", "application/json")
+			if r.Method == http.MethodGet {
+				// Record already exists with correct target
+				records := []map[string]interface{}{
+					{"id": "existing-id", "type": "CNAME", "name": "app.example.com", "content": "test-tunnel-uuid.cfargotunnel.com"},
+				}
+				fmt.Fprint(w, dnsListResponse(records))
+			} else {
+				t.Errorf("unexpected %s request — should be no-op", r.Method)
+			}
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.EnsureDNSRecord("app.example.com"); err != nil {
+		t.Fatalf("EnsureDNSRecord failed: %v", err)
+	}
+
+	if requestCount != 1 {
+		t.Errorf("expected exactly 1 request (GET only), got %d", requestCount)
+	}
+}
+
+func TestEnsureDNSRecord_UpdatesWrongTarget(t *testing.T) {
+	var patchCalled bool
+	var capturedPatch map[string]interface{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.Method == http.MethodGet {
+				records := []map[string]interface{}{
+					{"id": "stale-id", "type": "CNAME", "name": "app.example.com", "content": "old-tunnel.cfargotunnel.com"},
+				}
+				fmt.Fprint(w, dnsListResponse(records))
+			} else {
+				t.Errorf("unexpected method on collection endpoint: %s", r.Method)
+			}
+		})
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records/stale-id",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.Method == http.MethodPatch {
+				patchCalled = true
+				json.NewDecoder(r.Body).Decode(&capturedPatch)
+				fmt.Fprint(w, dnsRecordResponse("stale-id", "app.example.com", "test-tunnel-uuid.cfargotunnel.com"))
+			} else {
+				t.Errorf("unexpected method on record endpoint: %s", r.Method)
+			}
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.EnsureDNSRecord("app.example.com"); err != nil {
+		t.Fatalf("EnsureDNSRecord failed: %v", err)
+	}
+
+	if !patchCalled {
+		t.Error("expected PATCH to update DNS record with wrong target")
+	}
+	if capturedPatch["content"] != "test-tunnel-uuid.cfargotunnel.com" {
+		t.Errorf("expected updated content to be tunnel target, got %v", capturedPatch["content"])
+	}
+}
+
+// --- DeleteDNSRecord ---
+
+func TestDeleteDNSRecord_DeletesExistingRecord(t *testing.T) {
+	var deleteCalled bool
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			records := []map[string]interface{}{
+				{"id": "del-id", "type": "CNAME", "name": "app.example.com", "content": "test-tunnel-uuid.cfargotunnel.com"},
+			}
+			fmt.Fprint(w, dnsListResponse(records))
+		})
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records/del-id",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodDelete {
+				t.Errorf("expected DELETE, got %s", r.Method)
+			}
+			deleteCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"success":true,"errors":[],"messages":[],"result":{"id":"del-id"}}`)
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.DeleteDNSRecord("app.example.com"); err != nil {
+		t.Fatalf("DeleteDNSRecord failed: %v", err)
+	}
+	if !deleteCalled {
+		t.Error("expected DELETE request to be made")
+	}
+}
+
+func TestDeleteDNSRecord_NoOpWhenAbsent(t *testing.T) {
+	deleteCount := 0
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, dnsListResponse([]map[string]interface{}{}))
+		})
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records/",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodDelete {
+				deleteCount++
+			}
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.DeleteDNSRecord("gone.example.com"); err != nil {
+		t.Fatalf("DeleteDNSRecord should not error when record absent: %v", err)
+	}
+	if deleteCount != 0 {
+		t.Error("should not issue DELETE when record does not exist")
+	}
+}
+
+func TestDeleteDNSRecord_IgnoresNonTunnelCNAMEs(t *testing.T) {
+	deleteCount := 0
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			// Record exists but points somewhere other than cfargotunnel.com
+			records := []map[string]interface{}{
+				{"id": "other-id", "type": "CNAME", "name": "app.example.com", "content": "some-other-cdn.com"},
+			}
+			fmt.Fprint(w, dnsListResponse(records))
+		})
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records/other-id",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodDelete {
+				deleteCount++
+			}
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.DeleteDNSRecord("app.example.com"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if deleteCount != 0 {
+		t.Error("should not delete a CNAME that doesn't point to cfargotunnel.com")
+	}
+}
+
+// ensure strings import is used (avoids lint warnings if helpers are inlined later)
+var _ = strings.Contains

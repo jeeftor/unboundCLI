@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
@@ -187,25 +188,139 @@ func extractServiceIP(service string) string {
 	return service
 }
 
-// AddTunnelHostname adds a new hostname to the tunnel configuration
-func (c *CloudflareClient) AddTunnelHostname(hostname, service string) error {
-	// In a real implementation, this would modify the tunnel configuration
-	// to add a new ingress rule
-	// For now, we'll just log this as it requires detailed Cloudflare API knowledge
-	logging.Info("Would add hostname to tunnel",
-		"hostname", hostname,
-		"service", service,
-		"tunnelID", c.tunnelID)
+// SetTunnelIngress replaces the entire ingress rule list atomically.
+// rules maps hostname → internal service URL (e.g. "http://192.168.1.15:80").
+// The catch-all rule (http_status:404) is always appended as the last entry.
+func (c *CloudflareClient) SetTunnelIngress(rules map[string]string) error {
+	ctx := context.Background()
+
+	ingress := make([]cloudflare.UnvalidatedIngressRule, 0, len(rules)+1)
+	for hostname, service := range rules {
+		ingress = append(ingress, cloudflare.UnvalidatedIngressRule{
+			Hostname: hostname,
+			Service:  service,
+		})
+	}
+	ingress = append(ingress, cloudflare.UnvalidatedIngressRule{Service: "http_status:404"})
+
+	_, err := c.api.UpdateTunnelConfiguration(ctx,
+		cloudflare.ResourceIdentifier(c.accountID),
+		cloudflare.TunnelConfigurationParams{
+			TunnelID: c.tunnelID,
+			Config:   cloudflare.TunnelConfiguration{Ingress: ingress},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("error updating tunnel configuration: %w", err)
+	}
+
+	logging.Info("Updated tunnel ingress", "tunnelID", c.tunnelID, "rules", len(rules))
 	return nil
 }
 
-// DeleteTunnelHostname removes a hostname from the tunnel configuration
-func (c *CloudflareClient) DeleteTunnelHostname(hostname string) error {
-	// In a real implementation, this would modify the tunnel configuration
-	// to remove an ingress rule
-	// For now, we'll just log this as it requires detailed Cloudflare API knowledge
-	logging.Info("Would remove hostname from tunnel",
-		"hostname", hostname,
-		"tunnelID", c.tunnelID)
+// ListManagedDNSRecords returns all CNAME records in the zone that point to
+// cfargotunnel.com, keyed by hostname. Used to diff current vs desired state.
+func (c *CloudflareClient) ListManagedDNSRecords() (map[string]string, error) {
+	ctx := context.Background()
+
+	records, _, err := c.api.ListDNSRecords(ctx,
+		cloudflare.ResourceIdentifier(c.zoneID),
+		cloudflare.ListDNSRecordsParams{Type: "CNAME"},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error listing DNS records: %w", err)
+	}
+
+	result := make(map[string]string)
+	for _, r := range records {
+		if strings.Contains(r.Content, "cfargotunnel.com") {
+			result[r.Name] = r.Content
+		}
+	}
+	return result, nil
+}
+
+// EnsureDNSRecord creates a proxied CNAME record pointing hostname to
+// <tunnelID>.cfargotunnel.com. If a cfargotunnel.com record already exists for
+// the hostname it is updated in-place; if it is already correct it is left alone.
+func (c *CloudflareClient) EnsureDNSRecord(hostname string) error {
+	ctx := context.Background()
+	target := c.tunnelID + ".cfargotunnel.com"
+	proxied := true
+
+	existing, _, err := c.api.ListDNSRecords(ctx,
+		cloudflare.ResourceIdentifier(c.zoneID),
+		cloudflare.ListDNSRecordsParams{Type: "CNAME", Name: hostname},
+	)
+	if err != nil {
+		return fmt.Errorf("error looking up DNS record for %s: %w", hostname, err)
+	}
+
+	for _, r := range existing {
+		if strings.Contains(r.Content, "cfargotunnel.com") {
+			if r.Content == target {
+				logging.Debug("DNS record already correct", "hostname", hostname)
+				return nil
+			}
+			_, err := c.api.UpdateDNSRecord(ctx,
+				cloudflare.ResourceIdentifier(c.zoneID),
+				cloudflare.UpdateDNSRecordParams{
+					ID:      r.ID,
+					Type:    "CNAME",
+					Name:    hostname,
+					Content: target,
+					Proxied: &proxied,
+					TTL:     1,
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("error updating DNS record for %s: %w", hostname, err)
+			}
+			logging.Info("Updated DNS record", "hostname", hostname, "target", target)
+			return nil
+		}
+	}
+
+	_, err = c.api.CreateDNSRecord(ctx,
+		cloudflare.ResourceIdentifier(c.zoneID),
+		cloudflare.CreateDNSRecordParams{
+			Type:    "CNAME",
+			Name:    hostname,
+			Content: target,
+			Proxied: &proxied,
+			TTL:     1,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("error creating DNS record for %s: %w", hostname, err)
+	}
+	logging.Info("Created DNS record", "hostname", hostname, "target", target)
+	return nil
+}
+
+// DeleteDNSRecord removes the cfargotunnel.com CNAME for hostname, if present.
+// It is a no-op if the record does not exist.
+func (c *CloudflareClient) DeleteDNSRecord(hostname string) error {
+	ctx := context.Background()
+
+	records, _, err := c.api.ListDNSRecords(ctx,
+		cloudflare.ResourceIdentifier(c.zoneID),
+		cloudflare.ListDNSRecordsParams{Type: "CNAME", Name: hostname},
+	)
+	if err != nil {
+		return fmt.Errorf("error looking up DNS record for %s: %w", hostname, err)
+	}
+
+	for _, r := range records {
+		if strings.Contains(r.Content, "cfargotunnel.com") {
+			if err := c.api.DeleteDNSRecord(ctx, cloudflare.ResourceIdentifier(c.zoneID), r.ID); err != nil {
+				return fmt.Errorf("error deleting DNS record for %s: %w", hostname, err)
+			}
+			logging.Info("Deleted DNS record", "hostname", hostname, "recordID", r.ID)
+			return nil
+		}
+	}
+
+	logging.Warn("DNS record not found, nothing to delete", "hostname", hostname)
 	return nil
 }
