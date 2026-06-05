@@ -597,7 +597,7 @@ func fetchCFTunnelsCmd(token, accountID string) tea.Cmd {
 func cfZonesCurl(token string) string {
 	return fmt.Sprintf(
 		`curl -s "https://api.cloudflare.com/client/v4/zones" -H "Authorization: Bearer %s"`,
-		token,
+		"<redacted>",
 	)
 }
 
@@ -605,6 +605,6 @@ func cfZonesCurl(token string) string {
 func cfTunnelsCurl(accountID, token string) string {
 	return fmt.Sprintf(
 		`curl -s "https://api.cloudflare.com/client/v4/accounts/%s/cfdtunnel" -H "Authorization: Bearer %s"`,
-		accountID, token,
+		accountID, "<redacted>",
 	)
 }

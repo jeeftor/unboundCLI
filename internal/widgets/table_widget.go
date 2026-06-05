@@ -71,7 +71,7 @@ type TableWidget struct {
 	sortMode SortMode
 
 	// Selection state
-	selectedIndices map[int]bool // Map of selected row indices in filteredEntries
+	selectedHostnames map[string]bool
 
 	// Service loading status (for column dimming)
 	serviceStatus ServiceLoadStatus
@@ -108,19 +108,19 @@ func NewTableWidget() *TableWidget {
 	vp := viewport.New(0, 10)
 
 	w := &TableWidget{
-		BaseWidget:      NewBaseWidget(),
-		entries:         []*models.Entry{},
-		filterMode:      models.FilterNone,
-		searchQuery:     "",
-		showSearchBar:   false,
-		textInput:       ti,
-		sortMode:        SortByHostname,
-		selectedIndices: make(map[int]bool),
-		serviceStatus:   ServiceLoadStatus{},
-		columnConfigs:   configs,
-		viewport:        vp,
-		cursor:          0,
-		theme:           CurrentTheme,
+		BaseWidget:        NewBaseWidget(),
+		entries:           []*models.Entry{},
+		filterMode:        models.FilterNone,
+		searchQuery:       "",
+		showSearchBar:     false,
+		textInput:         ti,
+		sortMode:          SortByHostname,
+		selectedHostnames: make(map[string]bool),
+		serviceStatus:     ServiceLoadStatus{},
+		columnConfigs:     configs,
+		viewport:          vp,
+		cursor:            0,
+		theme:             CurrentTheme,
 	}
 
 	return w
@@ -538,15 +538,7 @@ func (w *TableWidget) rebuildTable() {
 func (w *TableWidget) buildRow(entry *models.Entry) []string {
 	row := make([]string, 0, len(w.columnConfigs))
 
-	// Find if this entry is selected
-	entryIdx := -1
-	for i, e := range w.filteredEntries {
-		if e == entry {
-			entryIdx = i
-			break
-		}
-	}
-	isSelected := entryIdx >= 0 && w.selectedIndices[entryIdx]
+	isSelected := w.selectedHostnames[selectionKey(entry)]
 
 	for i, config := range w.columnConfigs {
 		// Skip hidden columns
@@ -750,61 +742,53 @@ func (w *TableWidget) toggleSelection() {
 		return
 	}
 
-	if w.selectedIndices[w.cursor] {
-		delete(w.selectedIndices, w.cursor)
+	key := selectionKey(w.filteredEntries[w.cursor])
+	if w.selectedHostnames[key] {
+		delete(w.selectedHostnames, key)
 	} else {
-		w.selectedIndices[w.cursor] = true
+		w.selectedHostnames[key] = true
 	}
 }
 
 // GetSelectedEntries returns all selected entries in order
 func (w *TableWidget) GetSelectedEntries() []*models.Entry {
-	// Collect indices and sort them to ensure consistent order
-	indices := make([]int, 0, len(w.selectedIndices))
-	for idx := range w.selectedIndices {
-		if idx >= 0 && idx < len(w.filteredEntries) {
-			indices = append(indices, idx)
+	selected := make([]*models.Entry, 0, len(w.selectedHostnames))
+	for _, entry := range w.filteredEntries {
+		if w.selectedHostnames[selectionKey(entry)] {
+			selected = append(selected, entry)
 		}
-	}
-
-	// Sort indices
-	for i := 0; i < len(indices)-1; i++ {
-		for j := i + 1; j < len(indices); j++ {
-			if indices[i] > indices[j] {
-				indices[i], indices[j] = indices[j], indices[i]
-			}
-		}
-	}
-
-	// Build selected entries in order
-	selected := make([]*models.Entry, 0, len(indices))
-	for _, idx := range indices {
-		selected = append(selected, w.filteredEntries[idx])
 	}
 	return selected
 }
 
 // ClearSelection clears all selections
 func (w *TableWidget) ClearSelection() {
-	w.selectedIndices = make(map[int]bool)
+	w.selectedHostnames = make(map[string]bool)
 }
 
 // SelectAll selects all visible (filtered) entries
 func (w *TableWidget) SelectAll() {
-	w.selectedIndices = make(map[int]bool)
-	for i := range w.filteredEntries {
-		w.selectedIndices[i] = true
+	w.selectedHostnames = make(map[string]bool)
+	for _, entry := range w.filteredEntries {
+		w.selectedHostnames[selectionKey(entry)] = true
 	}
 }
 
 // HasSelections returns true if any items are selected
 func (w *TableWidget) HasSelections() bool {
-	return len(w.selectedIndices) > 0
+	return len(w.selectedHostnames) > 0
 }
 
 // GetSelectionCount returns the number of selected items
 func (w *TableWidget) GetSelectionCount() int {
-	return len(w.selectedIndices)
+	return len(w.selectedHostnames)
+}
+
+func selectionKey(entry *models.Entry) string {
+	if entry == nil {
+		return ""
+	}
+	return entry.Hostname
 }
 
 // CycleSort cycles through the available sort modes

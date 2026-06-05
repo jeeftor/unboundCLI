@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -25,6 +26,22 @@ var (
 	// Global UI instance for consistent styling
 	UI = tui.NewUI()
 )
+
+type exitCodeError struct {
+	Code int
+	Err  error
+}
+
+func (e exitCodeError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return fmt.Sprintf("exit code %d", e.Code)
+}
+
+func exitCode(code int) error {
+	return exitCodeError{Code: code}
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -66,6 +83,13 @@ by syncing hostname data from Caddy reverse proxy and Cloudflare tunnel configur
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
+		var codeErr exitCodeError
+		if errors.As(err, &codeErr) {
+			if codeErr.Err != nil {
+				fmt.Println(UI.RenderError(codeErr.Err))
+			}
+			os.Exit(codeErr.Code)
+		}
 		fmt.Println(UI.RenderError(err))
 		os.Exit(1)
 	}

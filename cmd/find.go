@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -35,111 +34,84 @@ Examples:
   caddy-dns-sync find --host test --domain example.com
   caddy-dns-sync find --host test --json
   caddy-dns-sync find --host test --script`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Create UI component
-		findUI := newFindUI()
+	RunE: runFind,
+}
 
-		// Validate that at least one search parameter is provided
-		if findHost == "" && findDomain == "" {
-			fmt.Println(
-				findUI.RenderError(
-					fmt.Errorf(
-						"at least one search parameter (--host or --domain) must be provided",
-					),
-				),
-			)
-			os.Exit(1)
+func runFind(cmd *cobra.Command, args []string) error {
+	findUI := newFindUI()
+
+	if findHost == "" && findDomain == "" {
+		return fmt.Errorf("at least one search parameter (--host or --domain) must be provided")
+	}
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		if logging.GetLogLevel() == logging.LogLevelDebug {
+			logging.Error("Error loading configuration", "error", err)
 		}
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
+	}
 
-		// Load config
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			if logging.GetLogLevel() == logging.LogLevelDebug {
-				logging.Error("Error loading configuration", "error", err)
-			}
-			fmt.Println(
-				findUI.RenderError(
-					fmt.Errorf(
-						"error loading configuration: %v\nPlease run 'config' command to set up API access",
-						err,
-					),
-				),
-			)
-			os.Exit(1)
+	client := api.NewClient(cfg)
+
+	if !findJsonOutput && !scriptOutput {
+		fmt.Fprintln(cmd.OutOrStdout(), findUI.RenderSearchingMessage())
+	}
+	overrides, err := client.GetOverrides()
+	if err != nil {
+		if logging.GetLogLevel() == logging.LogLevelDebug {
+			logging.Error("Error fetching overrides", "error", err)
 		}
+		return fmt.Errorf("error fetching overrides: %w", err)
+	}
 
-		// Create client
-		client := api.NewClient(cfg)
-
-		// Get all overrides
-		if !findJsonOutput && !scriptOutput {
-			fmt.Println(findUI.RenderSearchingMessage())
-		}
-		overrides, err := client.GetOverrides()
-		if err != nil {
-			if logging.GetLogLevel() == logging.LogLevelDebug {
-				logging.Error("Error fetching overrides", "error", err)
-			}
-			fmt.Println(
-				findUI.RenderError(
-					fmt.Errorf("error fetching overrides: %v", err),
-				),
-			)
-			os.Exit(1)
-		}
-
-		// Filter overrides based on search criteria
-		var matches []api.DNSOverride
-		for _, override := range overrides {
-			if findHost != "" && findDomain != "" {
-				// Match both host and domain
-				if strings.EqualFold(override.Host, findHost) &&
-					strings.EqualFold(override.Domain, findDomain) {
-					matches = append(matches, override)
-				}
-			} else if findHost != "" {
-				// Match only host
-				if strings.EqualFold(override.Host, findHost) {
-					matches = append(matches, override)
-				}
-			} else if findDomain != "" {
-				// Match only domain
-				if strings.EqualFold(override.Domain, findDomain) {
-					matches = append(matches, override)
-				}
-			}
-		}
-
-		// Display results
-		if len(matches) == 0 {
-			if findJsonOutput {
-				fmt.Println("[]")
-			} else if scriptOutput {
-				// For script mode, just exit silently with error code 1 when no matches are found
-				os.Exit(1)
-			} else {
-				fmt.Println(findUI.RenderNoMatches())
-			}
-			if !scriptOutput {
-				os.Exit(0)
-			} else {
-				os.Exit(1) // Exit with error code for scripting
-			}
-		}
-
+	matches := filterOverrides(overrides, findHost, findDomain)
+	if len(matches) == 0 {
 		if findJsonOutput {
-			// Output in JSON format
-			fmt.Println(findUI.RenderJSON(matches))
-		} else if scriptOutput {
-			// Output just the UUIDs for scripting
-			for _, override := range matches {
-				fmt.Println(override.UUID)
-			}
-		} else {
-			// Output in human-readable format
-			fmt.Println(findUI.RenderMatches(matches))
+			fmt.Fprintln(cmd.OutOrStdout(), "[]")
+			return nil
 		}
-	},
+		if scriptOutput {
+			return exitCode(1)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), findUI.RenderNoMatches())
+		return nil
+	}
+
+	if findJsonOutput {
+		fmt.Fprintln(cmd.OutOrStdout(), findUI.RenderJSON(matches))
+		return nil
+	}
+	if scriptOutput {
+		for _, override := range matches {
+			fmt.Fprintln(cmd.OutOrStdout(), override.UUID)
+		}
+		return nil
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), findUI.RenderMatches(matches))
+	return nil
+}
+
+func filterOverrides(overrides []api.DNSOverride, host, domain string) []api.DNSOverride {
+	var matches []api.DNSOverride
+	for _, override := range overrides {
+		if host != "" && domain != "" {
+			if strings.EqualFold(override.Host, host) &&
+				strings.EqualFold(override.Domain, domain) {
+				matches = append(matches, override)
+			}
+		} else if host != "" {
+			if strings.EqualFold(override.Host, host) {
+				matches = append(matches, override)
+			}
+		} else if domain != "" {
+			if strings.EqualFold(override.Domain, domain) {
+				matches = append(matches, override)
+			}
+		}
+	}
+	return matches
 }
 
 type findUI struct {

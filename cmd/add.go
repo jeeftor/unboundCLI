@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -29,104 +28,85 @@ var addCmd = &cobra.Command{
 
 This command adds a new DNS override to Unbound DNS. You must specify
 the host, domain, and server (IP address) for the override.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Create UI component
-		addUI := newAddUI()
+	RunE: runAdd,
+}
 
-		// Validate required flags
-		if host == "" || domain == "" || server == "" {
-			logging.Error("Missing required flags",
+func runAdd(cmd *cobra.Command, args []string) error {
+	addUI := newAddUI()
+
+	if host == "" || domain == "" || server == "" {
+		logging.Error("Missing required flags",
+			"host", host,
+			"domain", domain,
+			"server", server)
+		_ = cmd.Help()
+		return fmt.Errorf("host, domain, and server are required")
+	}
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logging.Error("Error loading configuration", "error", err)
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
+	}
+
+	client := api.NewClient(cfg)
+
+	if !forceAdd {
+		if logging.GetLogLevel() != logging.LogLevelDebug {
+			fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderCheckingMessage())
+		}
+		exists, uuid, err := client.IsOverrideExists(host, domain)
+		if err != nil {
+			logging.Error("Error checking existing overrides", "error", err)
+			return fmt.Errorf("error checking existing overrides: %w", err)
+		}
+
+		if exists {
+			logging.Warn("DNS override already exists",
 				"host", host,
 				"domain", domain,
-				"server", server)
-			fmt.Println(addUI.RenderError("host, domain, and server are required"))
-			cmd.Help()
-			os.Exit(1)
+				"uuid", uuid)
+			fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderDuplicateWarning(host, domain, uuid))
+			return nil
 		}
+	}
 
-		// Load config
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			logging.Error("Error loading configuration", "error", err)
-			fmt.Println(
-				addUI.RenderError(fmt.Sprintf("error loading configuration: %v\nPlease run 'config' command to set up API access", err)),
-			)
-			os.Exit(1)
+	enabled := "1"
+	if disabled {
+		enabled = "0"
+	}
+
+	override := api.DNSOverride{
+		Enabled:     enabled,
+		Host:        host,
+		Domain:      domain,
+		Server:      server,
+		Description: description,
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderAddingMessage())
+	uuid, err := client.AddOverride(override)
+	if err != nil {
+		logging.Error("Error adding override", "error", err)
+		if strings.Contains(err.Error(), "already exists") {
+			fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderWarning(err.Error()))
+			fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderWarning("Use --force flag to add anyway"))
+			return nil
 		}
+		return fmt.Errorf("error adding override: %w", err)
+	}
 
-		// Create client
-		client := api.NewClient(cfg)
+	fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderApplyingMessage())
+	if err := client.ApplyChanges(); err != nil {
+		logging.Error("Error applying changes", "error", err)
+		return fmt.Errorf("error applying changes: %w\nThe override was added but changes were not applied", err)
+	}
 
-		// Check if override already exists
-		if !forceAdd {
-			// Display a user-friendly message when checking for existing overrides
-			if logging.GetLogLevel() != logging.LogLevelDebug {
-				fmt.Println(addUI.RenderCheckingMessage())
-			}
-			exists, uuid, err := client.IsOverrideExists(host, domain)
-			if err != nil {
-				logging.Error("Error checking existing overrides", "error", err)
-				fmt.Println(addUI.RenderError(fmt.Sprintf("error checking existing overrides: %v", err)))
-				os.Exit(1)
-			}
-
-			if exists {
-				logging.Warn("DNS override already exists",
-					"host", host,
-					"domain", domain,
-					"uuid", uuid)
-				fmt.Println(addUI.RenderDuplicateWarning(host, domain, uuid))
-				os.Exit(0)
-			}
-		}
-
-		// Create override
-		enabled := "1"
-		if disabled {
-			enabled = "0"
-		}
-
-		override := api.DNSOverride{
-			Enabled:     enabled,
-			Host:        host,
-			Domain:      domain,
-			Server:      server,
-			Description: description,
-		}
-
-		// Add override
-		fmt.Println(addUI.RenderAddingMessage())
-		uuid, err := client.AddOverride(override)
-		if err != nil {
-			logging.Error("Error adding override", "error", err)
-
-			// Check if it's a duplicate error
-			if strings.Contains(err.Error(), "already exists") {
-				fmt.Println(addUI.RenderWarning(err.Error()))
-				fmt.Println(addUI.RenderWarning("Use --force flag to add anyway"))
-				os.Exit(0)
-			}
-
-			fmt.Println(addUI.RenderError(fmt.Sprintf("error adding override: %v", err)))
-			os.Exit(1)
-		}
-
-		// Apply changes
-		fmt.Println(addUI.RenderApplyingMessage())
-		err = client.ApplyChanges()
-		if err != nil {
-			logging.Error("Error applying changes", "error", err)
-			fmt.Println(
-				addUI.RenderError(fmt.Sprintf("error applying changes: %v\nThe override was added but changes were not applied", err)),
-			)
-			os.Exit(1)
-		}
-
-		fmt.Println(addUI.RenderSuccess(fmt.Sprintf("DNS override added successfully with UUID: %s", uuid)))
-		if logging.GetLogLevel() == logging.LogLevelDebug {
-			logging.Info("DNS override added successfully", "uuid", uuid)
-		}
-	},
+	fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderSuccess(fmt.Sprintf("DNS override added successfully with UUID: %s", uuid)))
+	if logging.GetLogLevel() == logging.LogLevelDebug {
+		logging.Info("DNS override added successfully", "uuid", uuid)
+	}
+	return nil
 }
 
 type addUI struct {

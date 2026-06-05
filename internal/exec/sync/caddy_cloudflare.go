@@ -79,6 +79,10 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 			otherOverrides[key] = override
 		}
 	}
+	remainingSyncOverrides := make(map[string]api.DNSOverride, len(syncCreatedOverrides))
+	for key, override := range syncCreatedOverrides {
+		remainingSyncOverrides[key] = override
+	}
 
 	// Create dual-mode entries for each Caddy hostname
 	directEntries := make(map[string]string)
@@ -119,7 +123,7 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 				toUpdate = append(toUpdate, entry)
 			}
 			// Remove from sync overrides so we know it's still needed
-			delete(syncCreatedOverrides, key)
+			delete(remainingSyncOverrides, key)
 		} else {
 			toAdd = append(toAdd, entry)
 		}
@@ -135,14 +139,14 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 				toUpdate = append(toUpdate, entry)
 			}
 			// Remove from sync overrides so we know it's still needed
-			delete(syncCreatedOverrides, key)
+			delete(remainingSyncOverrides, key)
 		} else {
 			toAdd = append(toAdd, entry)
 		}
 	}
 
 	// Any remaining sync overrides should be removed
-	for _, override := range syncCreatedOverrides {
+	for _, override := range remainingSyncOverrides {
 		toRemove = append(toRemove, override)
 	}
 

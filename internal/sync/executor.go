@@ -45,11 +45,6 @@ func (e *SyncExecutor) SyncToUnbound() (*execsync.SyncResult, error) {
 		Verbose:            e.options.Verbose,
 	}
 
-	// Set prompt mode if requested
-	if e.options.UnboundPrompt {
-		e.unboundClient.Prompt = true
-	}
-
 	return execsync.SyncCaddyWithUnbound(e.unboundClient, opts)
 }
 
@@ -69,11 +64,6 @@ func (e *SyncExecutor) SyncToAdguard() (*execsync.AdguardSyncResult, error) {
 		Verbose:            e.options.Verbose,
 	}
 
-	// Set prompt mode if requested
-	if e.options.AdguardPrompt {
-		e.adguardClient.Prompt = true
-	}
-
 	return execsync.SyncCaddyWithAdguard(e.adguardClient, opts)
 }
 
@@ -85,16 +75,10 @@ func (e *SyncExecutor) SyncAll() (*execsync.UnifiedSyncResult, error) {
 
 	if !e.options.AdguardOnly && e.unboundClient != nil {
 		unboundClient = e.unboundClient
-		if e.options.UnboundPrompt {
-			unboundClient.Prompt = true
-		}
 	}
 
 	if !e.options.UnboundOnly && e.adguardClient != nil {
 		adguardClient = e.adguardClient
-		if e.options.AdguardPrompt {
-			adguardClient.Prompt = true
-		}
 	}
 
 	// Convert options to the format expected by exec/sync

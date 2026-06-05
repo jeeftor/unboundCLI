@@ -1,0 +1,20 @@
+{
+  "tunnels": [
+    {
+      "id": "tunnel-default",
+      "name": "default",
+      "status": "healthy",
+      "ingress": [
+        {
+          "hostname": "app.example.test",
+          "service": "https://caddy.example.test",
+          "originRequest": {
+            "httpHostHeader": "app.example.test",
+            "noTLSVerify": true,
+            "http2Origin": true
+          }
+        }
+      ]
+    }
+  ]
+}

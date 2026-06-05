@@ -1,15 +1,59 @@
-package tui
+package status
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
 	"sync"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
 )
+
+type ServiceName string
+
+const (
+	ServiceCaddy      ServiceName = "caddy"
+	ServiceUnbound    ServiceName = "unbound"
+	ServiceAdguard    ServiceName = "adguard"
+	ServiceDHCP       ServiceName = "dhcp"
+	ServiceCloudflare ServiceName = "cloudflare"
+	ServiceDNS        ServiceName = "dns"
+)
+
+type ServiceState string
+
+const (
+	ServicePending ServiceState = "pending"
+	ServiceLoaded  ServiceState = "loaded"
+	ServiceSkipped ServiceState = "skipped"
+	ServiceFailed  ServiceState = "failed"
+)
+
+type ServiceReport struct {
+	Status ServiceState `json:"status"`
+	Count  int          `json:"count"`
+	Error  string       `json:"error"`
+}
+
+type LoadReport struct {
+	Services map[ServiceName]ServiceReport `json:"services"`
+}
+
+type ProgressEvent struct {
+	Service ServiceName  `json:"service"`
+	Status  ServiceState `json:"status"`
+	Count   int          `json:"count"`
+	Error   string       `json:"error"`
+}
+
+type Options struct {
+	CaddyServerIP string
+	Progress      func(ProgressEvent)
+}
 
 // DataLoader handles loading data from all API clients and building unified Entry models
 type DataLoader struct {
@@ -19,6 +63,33 @@ type DataLoader struct {
 	dnsmasqClient *api.DNSMasqClient
 	cfClient      *api.CloudflareClient
 	caddyServerIP string
+	progress      func(ProgressEvent)
+	ctx           context.Context
+}
+
+func LoadEntries(ctx context.Context, clients app.ClientSet, options Options) ([]*models.Entry, LoadReport, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	loader := NewDataLoader(
+		clients.Caddy,
+		clients.Unbound,
+		clients.Adguard,
+		clients.DNSMasq,
+		options.CaddyServerIP,
+	)
+	loader.WithCloudflareClient(clients.Cloudflare)
+	loader.WithContext(ctx)
+	loader.progress = options.Progress
+	return loader.LoadDataWithReport()
+}
+
+// WithContext sets the cancellation context for load phases that support it.
+func (d *DataLoader) WithContext(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	d.ctx = ctx
 }
 
 // WithCloudflareClient sets an optional Cloudflare client for loading CF tunnel data.
@@ -41,6 +112,7 @@ func NewDataLoader(
 		adguardClient: adguardClient,
 		dnsmasqClient: dnsmasqClient,
 		caddyServerIP: caddyServerIP,
+		ctx:           context.Background(),
 	}
 }
 
@@ -48,12 +120,28 @@ func NewDataLoader(
 // Caddy, Unbound, AdGuard, DHCP, and Cloudflare are fetched in parallel.
 // DNS resolution for all entries is also parallelized with a worker pool.
 func (d *DataLoader) LoadData() ([]*models.Entry, error) {
+	entries, _, err := d.LoadDataWithReport()
+	return entries, err
+}
+
+func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
+	report := newLoadReport()
+	for _, service := range loadReportServices() {
+		d.emit(ProgressEvent{Service: service, Status: ServicePending})
+	}
+	if err := d.contextErr(); err != nil {
+		report.markUnfinished(ServiceFailed, err.Error())
+		d.emitAllReports(report)
+		return nil, report, err
+	}
+
 	// --- Phase 1: parallel API fetches ---
 	var (
 		caddyHostnames   map[string]models.CaddyRouteInfo
 		unboundOverrides map[string]*api.DNSOverride
 		adguardRewrites  map[string]*api.Rewrite
 		dhcpLeases       map[string]*api.DNSMasqLease
+		dhcpLeaseCount   int
 		cfDetails        map[string]api.CloudflareIngressEntry
 
 		caddyErr   error
@@ -68,6 +156,9 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
 		logging.Info("Loading Caddy configuration...")
 		caddyHostnames, caddyErr = d.loadCaddyHostnames()
 		if caddyErr != nil {
@@ -80,7 +171,14 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
 		logging.Info("Loading Unbound DNS overrides...")
+		if d.unboundClient == nil {
+			unboundOverrides = make(map[string]*api.DNSOverride)
+			return
+		}
 		unboundOverrides, unboundErr = d.loadUnboundOverrides()
 		if unboundErr != nil {
 			logging.Warn("Failed to load Unbound overrides", "error", unboundErr)
@@ -93,6 +191,9 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
 		if d.adguardClient == nil {
 			adguardRewrites = make(map[string]*api.Rewrite)
 			return
@@ -110,13 +211,22 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
 		logging.Info("Loading DHCP leases...")
+		if d.dnsmasqClient == nil {
+			dhcpLeases = make(map[string]*api.DNSMasqLease)
+			return
+		}
 		dhcpLeases, dhcpErr = d.loadDHCPLeases()
+		dhcpLeaseCount = countUniqueDHCPLeases(dhcpLeases)
 		if dhcpErr != nil {
 			logging.Warn("Failed to load DHCP leases", "error", dhcpErr)
 			dhcpLeases = make(map[string]*api.DNSMasqLease)
+			dhcpLeaseCount = 0
 		} else {
-			logging.Info("Loaded DHCP leases", "count", len(dhcpLeases))
+			logging.Info("Loaded DHCP leases", "count", dhcpLeaseCount)
 		}
 	}()
 
@@ -124,6 +234,9 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			if d.contextErr() != nil {
+				return
+			}
 			logging.Info("Loading Cloudflare tunnel details...")
 			cfDetails, cfErr = d.cfClient.GetAllTunnelsDetails()
 			if cfErr != nil {
@@ -135,9 +248,33 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 	}
 
 	wg.Wait()
+	if err := d.contextErr(); err != nil {
+		report.markUnfinished(ServiceFailed, err.Error())
+		d.emitAllReports(report)
+		return nil, report, err
+	}
+
+	report.set(ServiceCaddy, serviceReport(caddyHostnames, caddyErr, false))
+	report.set(ServiceUnbound, serviceReport(unboundOverrides, unboundErr, d.unboundClient == nil))
+	report.set(ServiceAdguard, serviceReport(adguardRewrites, adguardErr, d.adguardClient == nil))
+	report.set(ServiceDHCP, serviceReport(dhcpLeases, dhcpErr, d.dnsmasqClient == nil))
+	if report.Services[ServiceDHCP].Status == ServiceLoaded {
+		dhcpReport := report.Services[ServiceDHCP]
+		dhcpReport.Count = dhcpLeaseCount
+		report.set(ServiceDHCP, dhcpReport)
+	}
+	report.set(ServiceCloudflare, serviceReport(cfDetails, cfErr, d.cfClient == nil))
+	d.emitReports(report, []ServiceName{ServiceCaddy, ServiceUnbound, ServiceAdguard, ServiceDHCP, ServiceCloudflare})
 
 	if caddyErr != nil {
-		return nil, fmt.Errorf("failed to load Caddy hostnames: %w", caddyErr)
+		report.set(ServiceDNS, ServiceReport{Status: ServiceSkipped, Error: "skipped because Caddy load failed"})
+		d.emitServiceReport(ServiceDNS, report.Services[ServiceDNS])
+		return nil, report, fmt.Errorf("failed to load Caddy hostnames: %w", caddyErr)
+	}
+	if err := d.contextErr(); err != nil {
+		report.markUnfinished(ServiceFailed, err.Error())
+		d.emitAllReports(report)
+		return nil, report, err
 	}
 
 	// --- Phase 2: build entry models ---
@@ -147,7 +284,14 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 
 	// --- Phase 3: parallel DNS resolution ---
 	logging.Info("Resolving DNS hostnames in parallel...")
+	if err := d.contextErr(); err != nil {
+		report.markUnfinished(ServiceFailed, err.Error())
+		d.emitAllReports(report)
+		return nil, report, err
+	}
 	d.resolveAllDNS(entries)
+	report.set(ServiceDNS, ServiceReport{Status: ServiceLoaded, Count: len(entries)})
+	d.emitServiceReport(ServiceDNS, report.Services[ServiceDNS])
 
 	// --- Phase 4: enrich with Cloudflare data ---
 	if cfDetails != nil {
@@ -185,7 +329,94 @@ func (d *DataLoader) LoadData() ([]*models.Entry, error) {
 		e.OverallStatus = models.ComputeSyncStatus(e, d.caddyServerIP)
 	}
 
-	return entries, nil
+	return entries, report, nil
+}
+
+func loadReportServices() []ServiceName {
+	return []ServiceName{
+		ServiceCaddy,
+		ServiceUnbound,
+		ServiceAdguard,
+		ServiceDHCP,
+		ServiceCloudflare,
+		ServiceDNS,
+	}
+}
+
+func newLoadReport() LoadReport {
+	services := map[ServiceName]ServiceReport{
+		ServiceCaddy:      {Status: ServicePending},
+		ServiceUnbound:    {Status: ServicePending},
+		ServiceAdguard:    {Status: ServicePending},
+		ServiceDHCP:       {Status: ServicePending},
+		ServiceCloudflare: {Status: ServicePending},
+		ServiceDNS:        {Status: ServicePending},
+	}
+	return LoadReport{Services: services}
+}
+
+func (r LoadReport) set(service ServiceName, serviceReport ServiceReport) {
+	r.Services[service] = serviceReport
+}
+
+func (r LoadReport) markUnfinished(status ServiceState, err string) {
+	for _, service := range loadReportServices() {
+		if r.Services[service].Status == ServicePending {
+			r.set(service, ServiceReport{Status: status, Error: err})
+		}
+	}
+}
+
+func (d *DataLoader) contextErr() error {
+	if d.ctx == nil {
+		return nil
+	}
+	return d.ctx.Err()
+}
+
+func (d *DataLoader) emitReports(report LoadReport, services []ServiceName) {
+	for _, service := range services {
+		d.emitServiceReport(service, report.Services[service])
+	}
+}
+
+func (d *DataLoader) emitAllReports(report LoadReport) {
+	d.emitReports(report, loadReportServices())
+}
+
+func (d *DataLoader) emitServiceReport(service ServiceName, report ServiceReport) {
+	d.emit(ProgressEvent{
+		Service: service,
+		Status:  report.Status,
+		Count:   report.Count,
+		Error:   report.Error,
+	})
+}
+
+func (d *DataLoader) emit(event ProgressEvent) {
+	if d.progress != nil {
+		d.progress(event)
+	}
+}
+
+func serviceReport[T any](items map[string]T, err error, skipped bool) ServiceReport {
+	if skipped {
+		return ServiceReport{Status: ServiceSkipped}
+	}
+	if err != nil {
+		return ServiceReport{Status: ServiceFailed, Error: err.Error()}
+	}
+	return ServiceReport{Status: ServiceLoaded, Count: len(items)}
+}
+
+func countUniqueDHCPLeases(leases map[string]*api.DNSMasqLease) int {
+	seen := make(map[*api.DNSMasqLease]bool)
+	for _, lease := range leases {
+		if lease != nil {
+			seen[lease] = true
+		}
+	}
+	return len(seen)
 }
 
 // resolveAllDNS resolves DNS for all entries in parallel using a worker pool.
@@ -420,18 +651,19 @@ func (d *DataLoader) buildEntry(
 
 // resolveDNS performs a DNS lookup for the hostname and returns the first IP address
 func (d *DataLoader) resolveDNS(hostname string) string {
-	// Perform DNS lookup
-	addrs, err := net.LookupHost(hostname)
+	ctx := d.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	addrs, err := net.DefaultResolver.LookupHost(ctx, hostname)
 	if err != nil {
-		// DNS resolution failed
 		return "FAIL"
 	}
 
 	if len(addrs) == 0 {
-		// No addresses returned
 		return "NONE"
 	}
 
-	// Return the first IP address
 	return addrs[0]
 }

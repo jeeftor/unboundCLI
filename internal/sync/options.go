@@ -12,10 +12,6 @@ type SyncOptions struct {
 	LegacyDescriptions []string
 	Verbose            bool
 
-	// Target-specific prompting
-	UnboundPrompt bool
-	AdguardPrompt bool
-
 	// Target selection for unified sync
 	UnboundOnly bool
 	AdguardOnly bool
@@ -40,8 +36,6 @@ func DefaultSyncOptions() *SyncOptions {
 		CaddyServerPort:  2019,
 		EntryDescription: "Entry created by CaddySync",
 		Verbose:          false,
-		UnboundPrompt:    false,
-		AdguardPrompt:    false,
 		UnboundOnly:      false,
 		AdguardOnly:      false,
 	}

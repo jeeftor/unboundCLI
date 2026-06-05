@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
@@ -23,13 +22,15 @@ The wizard will guide you through:
 
 The configuration is saved to ~/.caddy-dns-sync.json and used by
 the caddy-push-cloudflare command.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		wizard := tui.NewCloudflareSetupWizard()
-		if err := wizard.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error running Cloudflare setup wizard: %v\n", err)
-			os.Exit(1)
-		}
-	},
+	RunE: runCloudflareSetup,
+}
+
+func runCloudflareSetup(cmd *cobra.Command, args []string) error {
+	wizard := tui.NewCloudflareSetupWizard()
+	if err := wizard.Run(); err != nil {
+		return fmt.Errorf("error running Cloudflare setup wizard: %w", err)
+	}
+	return nil
 }
 
 func init() {

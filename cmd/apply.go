@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
@@ -22,42 +21,28 @@ var applyCmd = &cobra.Command{
 This command applies any pending changes to Unbound DNS. Changes made with
 the add, edit, or delete commands are not applied immediately. You must use
 this command to apply the changes.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Create UI component
-		applyUI := newApplyUI()
+	RunE: runApply,
+}
 
-		// Load config
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			logging.Error("Error loading configuration", "error", err)
-			fmt.Println(
-				applyUI.RenderError(
-					fmt.Errorf(
-						"error loading configuration: %v\nPlease run 'config' command to set up API access",
-						err,
-					),
-				),
-			)
-			os.Exit(1)
-		}
+func runApply(cmd *cobra.Command, args []string) error {
+	applyUI := newApplyUI()
 
-		// Create client
-		client := api.NewClient(cfg)
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logging.Error("Error loading configuration", "error", err)
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
+	}
 
-		// Apply changes
-		fmt.Println(applyUI.RenderApplyingMessage())
-		if err := client.ApplyChanges(); err != nil {
-			logging.Error("Error applying changes", "error", err)
-			fmt.Println(
-				applyUI.RenderError(
-					fmt.Errorf("error applying changes: %v", err),
-				),
-			)
-			os.Exit(1)
-		}
+	client := api.NewClient(cfg)
 
-		fmt.Println(applyUI.RenderSuccess())
-	},
+	fmt.Fprintln(cmd.OutOrStdout(), applyUI.RenderApplyingMessage())
+	if err := client.ApplyChanges(); err != nil {
+		logging.Error("Error applying changes", "error", err)
+		return fmt.Errorf("error applying changes: %w", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), applyUI.RenderSuccess())
+	return nil
 }
 
 type applyUI struct {

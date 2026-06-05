@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -34,141 +33,138 @@ Hostnames in the default tunnel that are no longer in Caddy are removed.
 
 Configuration is loaded from ~/.caddy-dns-sync.json (cloudflare section) or environment
 variables (CF_API_TOKEN, CF_ACCOUNT_ID, CF_ZONE_ID, CF_TUNNEL_ID, CF_CADDY_SERVICE_URL).`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Load Cloudflare config
-		cfCfg, err := config.LoadCloudflareConfig()
-		if err != nil {
-			logging.Error("Error loading Cloudflare configuration", "error", err)
-			fmt.Fprintf(os.Stderr, "Error loading Cloudflare configuration: %v\n", err)
-			fmt.Fprintln(os.Stderr, "Run 'config-tui' or 'cloudflare-setup' to configure Cloudflare.")
-			os.Exit(1)
-		}
+	RunE: runCaddyPushCloudflare,
+}
 
-		if !cfCfg.Enabled {
-			fmt.Fprintln(os.Stderr, "Cloudflare integration is disabled. Set enabled=true in config or CF_ENABLED=true.")
-			os.Exit(1)
-		}
+func runCaddyPushCloudflare(cmd *cobra.Command, args []string) error {
+	cfCfg, err := config.LoadCloudflareConfig()
+	if err != nil {
+		logging.Error("Error loading Cloudflare configuration", "error", err)
+		return fmt.Errorf("error loading Cloudflare configuration: %w\nRun 'config-tui' or 'cloudflare-setup' to configure Cloudflare", err)
+	}
 
-		// Flags override config for Caddy coordinates
-		caddyIP := cpCFCaddyIP
-		caddyPort := cpCFCaddyPort
-		serviceURL := cpCFCaddyServiceURL
+	if !cfCfg.Enabled {
+		return fmt.Errorf("Cloudflare integration is disabled. Set enabled=true in config or CF_ENABLED=true")
+	}
 
-		// Fall back to extended config for Caddy IP/port
-		if caddyIP == "" || caddyPort == 0 {
-			extCfg, extErr := config.LoadExtendedConfig()
-			if extErr == nil {
-				if caddyIP == "" && extCfg.Caddy.ServerIP != "" {
-					caddyIP = extCfg.Caddy.ServerIP
-				}
-				if caddyPort == 0 && extCfg.Caddy.ServerPort != 0 {
-					caddyPort = extCfg.Caddy.ServerPort
-				}
+	caddyIP := cpCFCaddyIP
+	caddyPort := cpCFCaddyPort
+	serviceURL := cpCFCaddyServiceURL
+
+	if caddyIP == "" || caddyPort == 0 {
+		extCfg, extErr := config.LoadExtendedConfig()
+		if extErr == nil {
+			if caddyIP == "" && extCfg.Caddy.ServerIP != "" {
+				caddyIP = extCfg.Caddy.ServerIP
+			}
+			if caddyPort == 0 && extCfg.Caddy.ServerPort != 0 {
+				caddyPort = extCfg.Caddy.ServerPort
 			}
 		}
-		if caddyPort == 0 {
-			caddyPort = 2019
-		}
+	}
+	if caddyPort == 0 {
+		caddyPort = 2019
+	}
 
-		if serviceURL == "" {
-			serviceURL = cfCfg.CaddyServiceURL
-		}
-		if serviceURL == "" {
-			fmt.Fprintln(os.Stderr, "Caddy service URL is required (--caddy-service-url or caddy_service_url in config).")
-			os.Exit(1)
-		}
+	if serviceURL == "" {
+		serviceURL = cfCfg.CaddyServiceURL
+	}
+	if serviceURL == "" {
+		return fmt.Errorf("Caddy service URL is required (--caddy-service-url or caddy_service_url in config)")
+	}
 
-		// Create Cloudflare client
-		cfClient, err := api.NewCloudflareClient(cfCfg.GetCloudflareAPIConfig())
-		if err != nil {
-			logging.Error("Error creating Cloudflare client", "error", err)
-			fmt.Fprintf(os.Stderr, "Error creating Cloudflare client: %v\n", err)
-			os.Exit(1)
-		}
+	cfClient, err := api.NewCloudflareClient(cfCfg.GetCloudflareAPIConfig())
+	if err != nil {
+		logging.Error("Error creating Cloudflare client", "error", err)
+		return fmt.Errorf("error creating Cloudflare client: %w", err)
+	}
 
-		caddyClient := api.NewCaddyClient(caddyIP, caddyPort)
+	caddyClient := api.NewCaddyClient(caddyIP, caddyPort)
 
-		options := sync2.CaddyToCloudflareSyncOptions{
-			DryRun:          cpCFDryRun,
-			CaddyServiceURL: serviceURL,
-			HostFilter:      cpCFHostFilter,
-			Verbose:         cpCFVerbose,
-		}
+	options := sync2.CaddyToCloudflareSyncOptions{
+		DryRun:          cpCFDryRun,
+		CaddyServiceURL: serviceURL,
+		HostFilter:      cpCFHostFilter,
+		Verbose:         cpCFVerbose,
+	}
 
+	if cpCFDryRun {
+		fmt.Fprintln(cmd.OutOrStdout(), "DRY RUN - no changes will be applied")
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Fetching hostnames from Caddy at %s:%d...\n", caddyIP, caddyPort)
+
+	result, err := sync2.SyncCaddyToCloudflare(caddyClient, cfClient, options)
+	if err != nil {
+		logging.Error("Error during sync", "error", err)
+		return fmt.Errorf("error during sync: %w", err)
+	}
+
+	renderCaddyPushCloudflareResult(cmd, result)
+	return nil
+}
+
+func renderCaddyPushCloudflareResult(cmd *cobra.Command, result *sync2.CaddyToCloudflareSyncResult) {
+	fmt.Fprintf(cmd.OutOrStdout(), "\nCaddy hostnames found: %d\n", len(result.CaddyHostnames))
+
+	if len(result.TunnelAdded) > 0 {
+		sort.Strings(result.TunnelAdded)
 		if cpCFDryRun {
-			fmt.Println("DRY RUN — no changes will be applied")
+			fmt.Fprintf(cmd.OutOrStdout(), "  [dry-run] Would add %d tunnel rule(s):\n", len(result.TunnelAdded))
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "  Added %d tunnel rule(s):\n", len(result.TunnelAdded))
 		}
-		fmt.Printf("Fetching hostnames from Caddy at %s:%d...\n", caddyIP, caddyPort)
-
-		result, err := sync2.SyncCaddyToCloudflare(caddyClient, cfClient, options)
-		if err != nil {
-			logging.Error("Error during sync", "error", err)
-			fmt.Fprintf(os.Stderr, "Error during sync: %v\n", err)
-			os.Exit(1)
+		for _, h := range result.TunnelAdded {
+			fmt.Fprintf(cmd.OutOrStdout(), "    + %s\n", h)
 		}
+	}
 
-		fmt.Printf("\nCaddy hostnames found: %d\n", len(result.CaddyHostnames))
-
-		if len(result.TunnelAdded) > 0 {
-			sort.Strings(result.TunnelAdded)
-			if cpCFDryRun {
-				fmt.Printf("  [dry-run] Would add %d tunnel rule(s):\n", len(result.TunnelAdded))
-			} else {
-				fmt.Printf("  Added %d tunnel rule(s):\n", len(result.TunnelAdded))
-			}
-			for _, h := range result.TunnelAdded {
-				fmt.Printf("    + %s\n", h)
-			}
+	if len(result.TunnelRemoved) > 0 {
+		sort.Strings(result.TunnelRemoved)
+		if cpCFDryRun {
+			fmt.Fprintf(cmd.OutOrStdout(), "  [dry-run] Would remove %d tunnel rule(s):\n", len(result.TunnelRemoved))
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "  Removed %d tunnel rule(s):\n", len(result.TunnelRemoved))
 		}
-
-		if len(result.TunnelRemoved) > 0 {
-			sort.Strings(result.TunnelRemoved)
-			if cpCFDryRun {
-				fmt.Printf("  [dry-run] Would remove %d tunnel rule(s):\n", len(result.TunnelRemoved))
-			} else {
-				fmt.Printf("  Removed %d tunnel rule(s):\n", len(result.TunnelRemoved))
-			}
-			for _, h := range result.TunnelRemoved {
-				fmt.Printf("    - %s\n", h)
-			}
+		for _, h := range result.TunnelRemoved {
+			fmt.Fprintf(cmd.OutOrStdout(), "    - %s\n", h)
 		}
+	}
 
-		if cpCFVerbose && len(result.AlreadyCovered) > 0 {
-			sort.Strings(result.AlreadyCovered)
-			fmt.Printf("  Skipped %d hostname(s) covered by other tunnels:\n", len(result.AlreadyCovered))
-			for _, h := range result.AlreadyCovered {
-				fmt.Printf("    ~ %s\n", h)
+	if cpCFVerbose && len(result.AlreadyCovered) > 0 {
+		sort.Strings(result.AlreadyCovered)
+		fmt.Fprintf(cmd.OutOrStdout(), "  Skipped %d hostname(s) covered by other tunnels:\n", len(result.AlreadyCovered))
+		for _, h := range result.AlreadyCovered {
+			fmt.Fprintf(cmd.OutOrStdout(), "    ~ %s\n", h)
+		}
+	}
+
+	if len(result.StaleElsewhere) > 0 {
+		stale := make([]string, 0, len(result.StaleElsewhere))
+		for h := range result.StaleElsewhere {
+			stale = append(stale, h)
+		}
+		sort.Strings(stale)
+		fmt.Fprintf(cmd.OutOrStdout(), "  Stale in other tunnels (not in Caddy): %d\n", len(stale))
+		if cpCFVerbose {
+			for _, h := range stale {
+				fmt.Fprintf(cmd.OutOrStdout(), "    ? %s (tunnel: %s)\n", h, result.StaleElsewhere[h])
 			}
 		}
+	}
 
-		if len(result.StaleElsewhere) > 0 {
-			stale := make([]string, 0, len(result.StaleElsewhere))
-			for h := range result.StaleElsewhere {
-				stale = append(stale, h)
-			}
-			sort.Strings(stale)
-			fmt.Printf("  Stale in other tunnels (not in Caddy): %d\n", len(stale))
-			if cpCFVerbose {
-				for _, h := range stale {
-					fmt.Printf("    ? %s (tunnel: %s)\n", h, result.StaleElsewhere[h])
-				}
-			}
+	if !cpCFDryRun {
+		if len(result.DNSAdded) > 0 {
+			sort.Strings(result.DNSAdded)
+			fmt.Fprintf(cmd.OutOrStdout(), "  DNS records created: %s\n", strings.Join(result.DNSAdded, ", "))
 		}
-
-		if !cpCFDryRun {
-			if len(result.DNSAdded) > 0 {
-				sort.Strings(result.DNSAdded)
-				fmt.Printf("  DNS records created: %s\n", strings.Join(result.DNSAdded, ", "))
-			}
-			if len(result.DNSRemoved) > 0 {
-				sort.Strings(result.DNSRemoved)
-				fmt.Printf("  DNS records removed: %s\n", strings.Join(result.DNSRemoved, ", "))
-			}
-			if len(result.TunnelAdded) == 0 && len(result.TunnelRemoved) == 0 {
-				fmt.Println("  No changes needed — tunnel is already in sync.")
-			}
+		if len(result.DNSRemoved) > 0 {
+			sort.Strings(result.DNSRemoved)
+			fmt.Fprintf(cmd.OutOrStdout(), "  DNS records removed: %s\n", strings.Join(result.DNSRemoved, ", "))
 		}
-	},
+		if len(result.TunnelAdded) == 0 && len(result.TunnelRemoved) == 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "  No changes needed - tunnel is already in sync.")
+		}
+	}
 }
 
 func init() {

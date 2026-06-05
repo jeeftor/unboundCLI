@@ -129,6 +129,9 @@ func generateCurlCommand(method, url string, headers map[string]string, body io.
 
 	// Add headers
 	for k, v := range headers {
+		if isSensitiveHeader(k) {
+			v = "<redacted>"
+		}
 		cmd += fmt.Sprintf(" -H '%s: %s'", k, v)
 	}
 
@@ -148,6 +151,15 @@ func generateCurlCommand(method, url string, headers map[string]string, body io.
 	cmd += fmt.Sprintf(" '%s'", url)
 
 	return cmd
+}
+
+func isSensitiveHeader(header string) bool {
+	switch strings.ToLower(header) {
+	case "authorization", "proxy-authorization", "x-api-key", "x-auth-token", "cookie", "set-cookie":
+		return true
+	default:
+		return false
+	}
 }
 
 // makeRequest handles the HTTP request to OPNSense API
@@ -194,8 +206,8 @@ func (c *Client) makeRequest(method, endpoint string, body io.Reader) (*APIRespo
 
 	// Log headers, auth details, and curl command at debug level
 	logging.Debug("Request headers",
-		"auth_header", "Basic "+auth,
-		"api_key", c.config.APIKey,
+		"auth_header", "<redacted>",
+		"api_key", "<redacted>",
 	)
 	logging.Debug("Equivalent curl command", "curl", curlCmd)
 

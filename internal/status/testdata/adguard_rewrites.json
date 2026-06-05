@@ -1,0 +1,10 @@
+[
+  {
+    "domain": "app.example.test",
+    "answer": "10.0.0.1"
+  },
+  {
+    "domain": "stale.example.test",
+    "answer": "10.0.0.9"
+  }
+]

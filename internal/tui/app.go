@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
+	"github.com/jeeftor/caddy-dns-sync/internal/status"
 	"github.com/jeeftor/caddy-dns-sync/internal/widgets"
 )
 
@@ -795,7 +796,7 @@ func (m *AppModel) loadData() tea.Cmd {
 
 	return func() tea.Msg {
 		// Create data loader
-		loader := NewDataLoader(
+		loader := status.NewDataLoader(
 			m.caddyClient,
 			m.unboundClient,
 			m.adguardClient,
