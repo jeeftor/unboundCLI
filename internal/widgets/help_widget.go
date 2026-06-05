@@ -38,6 +38,9 @@ type KeyMap struct {
 	ToggleHelp key.Binding
 	ToggleLogs key.Binding
 	Config     key.Binding
+	Detail     key.Binding
+	CFDetail   key.Binding
+	CFEdit     key.Binding
 
 	// Selection
 	ToggleSelect key.Binding
@@ -124,7 +127,7 @@ func DefaultKeyMap() KeyMap {
 		// View Controls
 		ToggleIPs: key.NewBinding(
 			key.WithKeys("i"),
-			key.WithHelp("i", "toggle IPs"),
+			key.WithHelp("i", "CF detail"),
 		),
 		ToggleHelp: key.NewBinding(
 			key.WithKeys("?"),
@@ -137,6 +140,18 @@ func DefaultKeyMap() KeyMap {
 		Config: key.NewBinding(
 			key.WithKeys("C"),
 			key.WithHelp("C", "config"),
+		),
+		Detail: key.NewBinding(
+			key.WithKeys("v"),
+			key.WithHelp("v", "entry detail"),
+		),
+		CFDetail: key.NewBinding(
+			key.WithKeys("i"),
+			key.WithHelp("i", "CF detail"),
+		),
+		CFEdit: key.NewBinding(
+			key.WithKeys("e"),
+			key.WithHelp("e", "edit CF"),
 		),
 
 		// Selection
@@ -177,10 +192,10 @@ func (k KeyMap) ShortHelp() []key.Binding {
 // FullHelp returns all help bindings (implements help.KeyMap)
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Up, k.Down, k.PageUp, k.PageDown, k.Home, k.End},       // Navigation
-		{k.ToggleSelect, k.Sync, k.SyncSingle, k.Refresh},         // Selection & Actions
-		{k.Filter, k.Search, k.ClearFilter, k.Sort, k.ToggleLogs}, // View
-		{k.Config, k.ToggleHelp, k.Escape, k.Quit},                // Global
+		{k.Up, k.Down, k.PageUp, k.PageDown, k.Home, k.End},                        // Navigation
+		{k.ToggleSelect, k.Sync, k.SyncSingle, k.Refresh},                          // Selection & Actions
+		{k.Filter, k.Search, k.ClearFilter, k.Sort, k.ToggleLogs},                  // View
+		{k.Detail, k.CFDetail, k.CFEdit, k.Config, k.ToggleHelp, k.Escape, k.Quit}, // Global
 	}
 }
 
@@ -260,7 +275,7 @@ func (w *HelpWidget) View() string {
 		}).
 		BorderForeground(w.theme.ColorDim).
 		Padding(0, 1).
-		Width(w.width - 4).
+		Width(w.width - 2).
 		Foreground(w.theme.ColorDim)
 
 	bordered := style.Render(helpView)

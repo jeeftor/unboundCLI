@@ -40,6 +40,9 @@ Keyboard shortcuts:
   c             Clear filter
   /             Search (type to filter, Enter/Esc to exit)
   t             Cycle sort (Hostname/IP/Status)
+  i             Show Cloudflare detail overlay
+  e             Edit CF tunnel settings for selected entry
+  v             View full entry details
   C             Open config editor
   l             Toggle logs
   ?             Toggle help
@@ -93,6 +96,29 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	// Create DNSMasq client
 	dnsmasqClient := api.NewDNSMasqClient(cfg)
 
+	// Load Cloudflare config (optional — TUI works without it).
+	// The "enabled" flag gates write operations (sync commands); the TUI only reads
+	// CF data, so we create a client whenever credentials are present.
+	var cfClient *api.CloudflareClient
+	cfConfig, cfErr := config.LoadCloudflareConfig()
+	if cfErr == nil && cfConfig.APIToken != "" && cfConfig.AccountID != "" {
+		if c, err := api.NewCloudflareClient(cfConfig.GetCloudflareAPIConfig()); err == nil {
+			cfClient = c
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: could not create Cloudflare client: %v\n", err)
+		}
+	}
+
+	// Determine Caddy service URL for CF edit quick-fill.
+	// Prefer configured CF_CADDY_SERVICE_URL; fall back to http://<caddyIP>:80.
+	caddyServiceURL := ""
+	if cfErr == nil {
+		caddyServiceURL = cfConfig.CaddyServiceURL
+	}
+	if caddyServiceURL == "" {
+		caddyServiceURL = fmt.Sprintf("http://%s:80", tuiCaddyServerIP)
+	}
+
 	// Create TUI application
 	app := tui.NewAppModel(
 		caddyClient,
@@ -100,6 +126,8 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		adguardClient,
 		dnsmasqClient,
 		tuiCaddyServerIP,
+		cfClient,
+		caddyServiceURL,
 	)
 
 	// NOW redirect logging to TUI log widget
@@ -112,6 +140,9 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		app.AddLog("INFO", "AdGuard client initialized")
 	} else {
 		app.AddLog("INFO", "AdGuard client not available (disabled or not configured)")
+	}
+	if cfClient != nil {
+		app.AddLog("INFO", "Cloudflare client initialized")
 	}
 
 	// Reset logging to stderr when TUI exits

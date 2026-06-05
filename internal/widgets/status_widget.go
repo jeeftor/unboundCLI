@@ -13,11 +13,12 @@ import (
 
 // ServiceLoadStatus tracks which services have been loaded
 type ServiceLoadStatus struct {
-	Caddy    bool
-	Unbound  bool
-	AdGuard  bool
-	DHCP     bool
-	Complete bool
+	Caddy      bool
+	Unbound    bool
+	AdGuard    bool
+	DHCP       bool
+	Cloudflare bool
+	Complete   bool
 }
 
 // LoadingPhase represents the current loading phase
@@ -30,6 +31,7 @@ const (
 	PhaseAdGuard    LoadingPhase = "adguard"
 	PhaseDHCP       LoadingPhase = "dhcp"
 	PhaseDNSResolve LoadingPhase = "dns-resolve"
+	PhaseCloudflare LoadingPhase = "cloudflare"
 	PhaseComplete   LoadingPhase = "complete"
 )
 
@@ -160,7 +162,7 @@ func (w *StatusWidget) View() string {
 		}).
 		BorderForeground(w.theme.ColorInfo).
 		Padding(0, 1).
-		Width(w.width - 4)
+		Width(w.width - 2)
 
 	bordered := style.Render(content)
 
@@ -193,6 +195,8 @@ func (w *StatusWidget) renderLoadingBanner() string {
 		message = "LOADING DHCP LEASES"
 	case PhaseDNSResolve:
 		message = "RESOLVING DNS HOSTNAMES"
+	case PhaseCloudflare:
+		message = "LOADING CLOUDFLARE TUNNEL DATA"
 	default:
 		message = "LOADING SERVICES IN BACKGROUND"
 	}
@@ -200,7 +204,7 @@ func (w *StatusWidget) renderLoadingBanner() string {
 	banner := fmt.Sprintf("%s %s", w.spinner.View(), message)
 
 	style := lipgloss.NewStyle().
-		Width(w.width).
+		Width(w.width-4).
 		Background(w.theme.ColorInfo).
 		Foreground(lipgloss.Color("#ffffff")).
 		Bold(true).
@@ -239,6 +243,13 @@ func (w *StatusWidget) renderServiceStatus() string {
 		parts = append(parts, w.theme.Success.Render("✓ DHCP"))
 	} else {
 		parts = append(parts, w.theme.Dimmed.Render("○ DHCP"))
+	}
+
+	// Cloudflare (only show if it was attempted)
+	if w.serviceStatus.Cloudflare {
+		parts = append(parts, w.theme.Success.Render("✓ Cloudflare"))
+	} else if w.loadingPhase == PhaseCloudflare {
+		parts = append(parts, w.theme.Dimmed.Render("○ Cloudflare"))
 	}
 
 	return strings.Join(parts, "  ")
@@ -442,6 +453,8 @@ func (w *StatusWidget) SetLoadingPhase(phase LoadingPhase) {
 		w.serviceStatus.AdGuard = true
 	case PhaseDHCP:
 		w.serviceStatus.DHCP = true
+	case PhaseCloudflare:
+		w.serviceStatus.Cloudflare = true
 	case PhaseComplete:
 		w.serviceStatus.Complete = true
 	}

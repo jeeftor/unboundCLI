@@ -53,9 +53,9 @@ func (s SyncStatus) Icon() string {
 	case OutOfSync:
 		return "✗"
 	case CaddyOnly:
-		return "📋"
+		return "+"
 	case Stale:
-		return "🗑"
+		return "-"
 	case DHCPMismatch:
 		return "⚠"
 	default:
@@ -136,6 +136,9 @@ const (
 	FilterUnboundIssues
 	FilterAdguardIssues
 	FilterDHCPMismatches
+	FilterInCF            // Any entry configured in a Cloudflare tunnel
+	FilterNotInCF         // Caddy entries NOT in any Cloudflare tunnel
+	FilterCFMissingHeader // In CF but HTTPHostHeader not set (routing risk)
 )
 
 // String returns the string representation of FilterMode
@@ -157,6 +160,12 @@ func (f FilterMode) String() string {
 		return "AdGuard Issues"
 	case FilterDHCPMismatches:
 		return "DHCP Mismatches"
+	case FilterInCF:
+		return "In Cloudflare"
+	case FilterNotInCF:
+		return "Not in Cloudflare"
+	case FilterCFMissingHeader:
+		return "CF Missing Header"
 	default:
 		return "Unknown"
 	}
@@ -181,6 +190,12 @@ func ApplyFilter(entry *Entry, filter FilterMode) bool {
 		return entry.IsConfiguredInCaddy() && (!entry.AdguardStatus.Configured || !entry.AdguardStatus.InSync)
 	case FilterDHCPMismatches:
 		return !entry.DHCPStatus.InSync && entry.DHCPStatus.Configured
+	case FilterInCF:
+		return entry.CloudflareStatus.Configured
+	case FilterNotInCF:
+		return entry.IsConfiguredInCaddy() && !entry.CloudflareStatus.Configured
+	case FilterCFMissingHeader:
+		return entry.NeedsHTTPHostHeader()
 	default:
 		return true
 	}

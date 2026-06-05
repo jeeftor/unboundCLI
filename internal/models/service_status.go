@@ -86,3 +86,17 @@ func (d DHCPStatus) IsStatic() bool {
 func (d DHCPStatus) IsDynamic() bool {
 	return d.Configured && d.Type == "dynamic"
 }
+
+// CloudflareStatus holds the Cloudflare Zero Trust tunnel ingress state for a hostname.
+type CloudflareStatus struct {
+	Configured      bool
+	TunnelName      string
+	TunnelID        string
+	Service         string
+	Path            string
+	IsDefaultTunnel bool
+	HTTPHostHeader  string // empty means not configured (common Caddy routing issue)
+	NoTLSVerify     bool
+	Http2Origin     bool
+	HasAccessPolicy bool
+}

@@ -34,6 +34,7 @@ const (
 	EnvCFZoneID          = "CF_ZONE_ID"
 	EnvCFTunnelID        = "CF_TUNNEL_ID"
 	EnvCFCaddyServiceURL = "CF_CADDY_SERVICE_URL"
+	EnvCFInsecure        = "CF_INSECURE"
 )
 
 // CaddyConfig represents configuration specific to Caddy server integration
@@ -59,6 +60,7 @@ type CloudflareConfig struct {
 	AccountID       string `json:"account_id,omitempty" mapstructure:"account_id"`
 	ZoneID          string `json:"zone_id,omitempty" mapstructure:"zone_id"`
 	TunnelID        string `json:"tunnel_id,omitempty" mapstructure:"tunnel_id"`
+	Insecure        bool   `json:"insecure" mapstructure:"insecure"`
 	CaddyServiceURL string `json:"caddy_service_url,omitempty" mapstructure:"caddy_service_url"`
 }
 
@@ -69,6 +71,7 @@ func (c CloudflareConfig) GetCloudflareAPIConfig() api.CloudflareConfig {
 		AccountID: c.AccountID,
 		ZoneID:    c.ZoneID,
 		TunnelID:  c.TunnelID,
+		Insecure:  c.Insecure,
 	}
 }
 
@@ -262,6 +265,8 @@ func LoadCloudflareConfig() (CloudflareConfig, error) {
 		cfg.ZoneID = os.Getenv(EnvCFZoneID)
 		cfg.TunnelID = os.Getenv(EnvCFTunnelID)
 		cfg.CaddyServiceURL = os.Getenv(EnvCFCaddyServiceURL)
+		insecureEnv := os.Getenv(EnvCFInsecure)
+		cfg.Insecure = insecureEnv == "true" || insecureEnv == "1"
 		return cfg, nil
 	}
 
