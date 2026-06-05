@@ -1,0 +1,30 @@
+{
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "routes": [
+            {
+              "match": [{"host": ["app.example.test"]}],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [{"dial": "10.0.0.5:8080"}]
+                }
+              ]
+            },
+            {
+              "match": [{"host": ["stale.example.test"]}],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [{"dial": "10.0.0.6:8080"}]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -9,10 +9,24 @@ COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-s -w -X github.com/jeeftor/caddy-dns-sync/cmd.Version=$(VERSION) -X github.com/jeeftor/caddy-dns-sync/cmd.Commit=$(COMMIT) -X github.com/jeeftor/caddy-dns-sync/cmd.Date=$(BUILD_DATE)"
 
-.PHONY: all build clean test vet fmt check install release-dry-run
-
 # Default target
-all: check build
+help:
+	@echo "Available targets:"
+	@echo "  all            : Show this help message"
+	@echo "  build          : Build the application"
+	@echo "  clean          : Clean build artifacts"
+	@echo "  test           : Run tests"
+	@echo "  vet            : Run go vet"
+	@echo "  fmt            : Format code"
+	@echo "  check          : Run all checks (fmt, vet, test)"
+	@echo "  install        : Install the application"
+	@echo "  cross-build    : Cross-compile for multiple platforms"
+	@echo "  release-dry-run: Run GoReleaser in dry-run mode"
+	@echo "  help           : Show this help message"
+
+.PHONY: all help build clean test vet fmt check install release-dry-run
+
+all: help
 
 # Build the application
 build:
@@ -61,18 +75,3 @@ cross-build:
 release-dry-run:
 	@echo "Running GoReleaser in dry-run mode..."
 	goreleaser release --snapshot --clean --skip=publish
-
-# Help target
-help:
-	@echo "Available targets:"
-	@echo "  all            : Run checks and build the application (default)"
-	@echo "  build          : Build the application"
-	@echo "  clean          : Clean build artifacts"
-	@echo "  test           : Run tests"
-	@echo "  vet            : Run go vet"
-	@echo "  fmt            : Format code"
-	@echo "  check          : Run all checks (fmt, vet, test)"
-	@echo "  install        : Install the application"
-	@echo "  cross-build    : Cross-compile for multiple platforms"
-	@echo "  release-dry-run: Run GoReleaser in dry-run mode"
-	@echo "  help           : Show this help message"

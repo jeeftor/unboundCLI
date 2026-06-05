@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
-	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	runtimeapp "github.com/jeeftor/caddy-dns-sync/internal/app"
 	execsync "github.com/jeeftor/caddy-dns-sync/internal/exec/sync"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/sync"
@@ -84,8 +84,6 @@ func buildSyncOptions() *sync.SyncOptions {
 	opts.Verbose = verbose
 	opts.UnboundOnly = syncUnboundOnly
 	opts.AdguardOnly = syncAdguardOnly
-	opts.UnboundPrompt = syncPrompt
-	opts.AdguardPrompt = syncPrompt
 
 	// Parse legacy descriptions
 	if syncLegacyDescriptions != "" {
@@ -108,36 +106,21 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 	opts := buildSyncOptions()
 	syncUI := execsync.NewSyncUI()
 
-	// Load main config (required for UnboundDNS)
-	mainConfig, err := config.LoadConfig()
-	if err != nil && !syncAdguardOnly {
-		logging.Error("Error loading main configuration", "error", err)
-		fmt.Println(syncUI.RenderError(
-			fmt.Errorf("error loading main configuration: %v\nPlease run 'config' command to set up API access", err),
-		))
-		return err
-	}
-
-	// Load AdguardHome config (optional unless adguard-only)
-	var adguardConfig config.AdguardConfig
-	var adguardEnabled bool
-	if !syncUnboundOnly {
-		adguardConfig, err = config.LoadAdguardConfig()
-		if err != nil {
-			if syncAdguardOnly {
-				logging.Error("Error loading AdguardHome configuration", "error", err)
-				fmt.Println(syncUI.RenderError(fmt.Errorf("error loading AdguardHome configuration: %v", err)))
-				return err
-			}
-			adguardEnabled = false
-		} else {
-			adguardEnabled = adguardConfig.Enabled
-		}
+	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
+		CaddyServerIP:   opts.CaddyServerIP,
+		CaddyServerPort: opts.CaddyServerPort,
+		IncludeUnbound:  !syncAdguardOnly,
+		IncludeAdguard:  !syncUnboundOnly,
+		RequireAdguard:  syncAdguardOnly,
+	})
+	if err != nil {
+		logging.Error("Error loading sync runtime", "error", err)
+		return fmt.Errorf("error loading sync runtime: %w", err)
 	}
 
 	// Check what systems we'll sync to
 	syncToUnbound := !syncAdguardOnly
-	syncToAdguard := !syncUnboundOnly && adguardEnabled
+	syncToAdguard := !syncUnboundOnly && runtime.Clients.Adguard != nil
 
 	// Validate that we have at least one target
 	if !syncToUnbound && !syncToAdguard {
@@ -145,35 +128,17 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 		if syncAdguardOnly {
 			fmt.Println("  - AdguardHome sync was requested but AdguardHome is not enabled")
 			fmt.Println("  - Set ADGUARD_ENABLED=true and configure credentials")
-		} else if !adguardEnabled {
+		} else if runtime.Clients.Adguard == nil {
 			fmt.Println("  - UnboundDNS: Disabled by --adguard-only flag")
 			fmt.Println("  - AdguardHome: Not enabled (set ADGUARD_ENABLED=true)")
 		}
 		return fmt.Errorf("no sync targets available")
 	}
 
-	// Create clients
-	var unboundClient *api.Client
-	var adguardClient *api.AdguardClient
-
-	if syncToUnbound {
-		unboundClient = api.NewClient(mainConfig)
-		unboundClient.Prompt = syncPrompt
-	}
-	if syncToAdguard {
-		if adguardConfig.BaseURL == "" || adguardConfig.Username == "" || adguardConfig.Password == "" {
-			return fmt.Errorf("AdguardHome configuration missing required fields (BaseURL, Username, Password)")
-		}
-		adguardClient = api.NewAdguardClient(adguardConfig.GetAdguardAPIConfig())
-		adguardClient.Prompt = syncPrompt
-	}
-
-	// Create Caddy client
-	caddyClient := api.NewCaddyClient(opts.CaddyServerIP, opts.CaddyServerPort)
-
 	// Create executor and set clients
 	executor := sync.NewSyncExecutor(opts)
-	executor.SetClients(caddyClient, unboundClient, adguardClient)
+	unboundClient, adguardClient := syncCommandClients(runtime, !syncAdguardOnly, !syncUnboundOnly && runtime.Clients.Adguard != nil)
+	executor.SetClients(runtime.Clients.Caddy, unboundClient, adguardClient)
 
 	// Print header
 	fmt.Print(syncUI.RenderUnifiedHeader(syncToUnbound, syncToAdguard))
@@ -184,8 +149,7 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 	result, err := executor.SyncAll()
 	if err != nil {
 		logging.Error("Error during unified sync operation", "error", err)
-		fmt.Println(syncUI.RenderError(fmt.Errorf("error during unified sync operation: %v", err)))
-		return err
+		return fmt.Errorf("error during unified sync operation: %w", err)
 	}
 
 	if len(result.HostnameMap) == 0 {
@@ -220,24 +184,20 @@ func runSyncUnbound(cmd *cobra.Command, args []string) error {
 	opts := buildSyncOptions()
 	syncUI := execsync.NewSyncUI()
 
-	// Load config
-	cfg, err := config.LoadConfig()
+	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
+		CaddyServerIP:   opts.CaddyServerIP,
+		CaddyServerPort: opts.CaddyServerPort,
+		IncludeUnbound:  true,
+	})
 	if err != nil {
 		logging.Error("Error loading configuration", "error", err)
-		fmt.Println(syncUI.RenderError(
-			fmt.Errorf("error loading configuration: %v\nPlease run 'config' command to set up API access", err),
-		))
-		return err
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
 	}
-
-	// Create clients
-	unboundClient := api.NewClient(cfg)
-	unboundClient.Prompt = syncPrompt
-	caddyClient := api.NewCaddyClient(opts.CaddyServerIP, opts.CaddyServerPort)
 
 	// Create executor
 	executor := sync.NewSyncExecutor(opts)
-	executor.SetClients(caddyClient, unboundClient, nil)
+	unboundClient, _ := syncCommandClients(runtime, true, false)
+	executor.SetClients(runtime.Clients.Caddy, unboundClient, nil)
 
 	// Print header
 	fmt.Print(syncUI.RenderHeader())
@@ -247,8 +207,7 @@ func runSyncUnbound(cmd *cobra.Command, args []string) error {
 	result, err := executor.SyncToUnbound()
 	if err != nil {
 		logging.Error("Error during Unbound sync", "error", err)
-		fmt.Println(syncUI.RenderError(fmt.Errorf("error during Unbound sync: %v", err)))
-		return err
+		return fmt.Errorf("error during Unbound sync: %w", err)
 	}
 
 	if len(result.HostnameMap) == 0 {
@@ -283,30 +242,21 @@ func runSyncAdguard(cmd *cobra.Command, args []string) error {
 	opts := buildSyncOptions()
 	syncUI := execsync.NewSyncUI()
 
-	// Load AdguardHome config
-	adguardConfig, err := config.LoadAdguardConfig()
+	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
+		CaddyServerIP:   opts.CaddyServerIP,
+		CaddyServerPort: opts.CaddyServerPort,
+		IncludeAdguard:  true,
+		RequireAdguard:  true,
+	})
 	if err != nil {
-		logging.Error("Error loading AdguardHome configuration", "error", err)
-		fmt.Println(syncUI.RenderError(fmt.Errorf("error loading AdguardHome configuration: %v", err)))
-		return err
+		logging.Error("Error loading AdguardHome runtime", "error", err)
+		return fmt.Errorf("error loading AdguardHome runtime: %w", err)
 	}
-
-	if !adguardConfig.Enabled {
-		return fmt.Errorf("AdguardHome is not enabled. Set ADGUARD_ENABLED=true")
-	}
-
-	if adguardConfig.BaseURL == "" || adguardConfig.Username == "" || adguardConfig.Password == "" {
-		return fmt.Errorf("AdguardHome configuration missing required fields (BaseURL, Username, Password)")
-	}
-
-	// Create clients
-	adguardClient := api.NewAdguardClient(adguardConfig.GetAdguardAPIConfig())
-	adguardClient.Prompt = syncPrompt
-	caddyClient := api.NewCaddyClient(opts.CaddyServerIP, opts.CaddyServerPort)
 
 	// Create executor
 	executor := sync.NewSyncExecutor(opts)
-	executor.SetClients(caddyClient, nil, adguardClient)
+	_, adguardClient := syncCommandClients(runtime, false, true)
+	executor.SetClients(runtime.Clients.Caddy, nil, adguardClient)
 
 	// Print header
 	fmt.Print(syncUI.RenderHeader())
@@ -316,8 +266,7 @@ func runSyncAdguard(cmd *cobra.Command, args []string) error {
 	result, err := executor.SyncToAdguard()
 	if err != nil {
 		logging.Error("Error during Adguard sync", "error", err)
-		fmt.Println(syncUI.RenderError(fmt.Errorf("error during Adguard sync: %v", err)))
-		return err
+		return fmt.Errorf("error during Adguard sync: %w", err)
 	}
 
 	if len(result.HostnameMap) == 0 {
@@ -348,6 +297,28 @@ func runSyncAdguard(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func syncCommandClients(runtime *runtimeapp.Runtime, useUnbound, useAdguard bool) (*api.Client, *api.AdguardClient) {
+	var unboundClient *api.Client
+	if useUnbound {
+		unboundClient = runtime.Clients.Unbound
+		if syncPrompt && runtime.Clients.Unbound != nil {
+			unboundClient = api.NewClient(runtime.UnboundConfig)
+			unboundClient.Prompt = true
+		}
+	}
+
+	var adguardClient *api.AdguardClient
+	if useAdguard {
+		adguardClient = runtime.Clients.Adguard
+		if syncPrompt && runtime.Clients.Adguard != nil {
+			adguardClient = api.NewAdguardClient(runtime.AdguardConfig.GetAdguardAPIConfig())
+			adguardClient.Prompt = true
+		}
+	}
+
+	return unboundClient, adguardClient
+}
+
 func init() {
 	rootCmd.AddCommand(syncCmd)
 
@@ -358,8 +329,8 @@ func init() {
 
 	// Shared flags for all sync commands
 	syncCmd.PersistentFlags().BoolVar(&syncDryRun, "dry-run", false, "Show what would be changed without applying")
-	syncCmd.PersistentFlags().StringVar(&syncCaddyServerIP, "caddy-ip", "192.168.1.15", "Caddy server IP")
-	syncCmd.PersistentFlags().IntVar(&syncCaddyServerPort, "caddy-port", 2019, "Caddy admin API port")
+	syncCmd.PersistentFlags().StringVar(&syncCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "Caddy server IP")
+	syncCmd.PersistentFlags().IntVar(&syncCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Caddy admin API port")
 	syncCmd.PersistentFlags().StringVar(&syncEntryDescription, "description", "Entry created by CaddySync", "Description for DNS entries")
 	syncCmd.PersistentFlags().StringVar(&syncLegacyDescriptions, "legacy-desc", "Route via Caddy", "Comma-separated legacy descriptions")
 	syncCmd.PersistentFlags().BoolVar(&syncPrompt, "prompt", false, "Prompt before each API call")

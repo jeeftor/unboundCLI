@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
@@ -35,17 +34,17 @@ AdguardHome:
   ADGUARD_PASSWORD       - Password for AdguardHome
   ADGUARD_BASE_URL       - Base URL for AdguardHome (e.g., http://192.168.1.10:3000)
   ADGUARD_INSECURE       - Set to "true" or "1" to skip SSL verification`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Launch the configuration wizard
-		wizard := tui.NewConfigWizard()
-		if err := wizard.Start(); err != nil {
-			fmt.Println(UI.RenderError(fmt.Errorf("error in configuration wizard: %v", err)))
-			os.Exit(1)
-		}
+	RunE: runConfigTUI,
+}
 
-		// Wizard exits when complete or user quits
-		fmt.Println(UI.RenderSuccess("Configuration wizard complete!"))
-	},
+func runConfigTUI(cmd *cobra.Command, args []string) error {
+	wizard := tui.NewConfigWizard()
+	if err := wizard.Start(); err != nil {
+		return fmt.Errorf("error in configuration wizard: %w", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), UI.RenderSuccess("Configuration wizard complete!"))
+	return nil
 }
 
 func init() {

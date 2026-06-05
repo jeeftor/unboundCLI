@@ -12,18 +12,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
+	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
-
-// SyncAction represents a sync operation to be performed
-type SyncAction struct {
-	Type     string // "add", "update", "delete"
-	Hostname string
-	Service  string // "unbound", "adguard", "dhcp"
-	OldIP    string
-	NewIP    string
-	Details  string
-	Enabled  bool // Whether this action is enabled (will be applied)
-}
 
 // SyncDialogState represents the current state of the sync dialog
 type SyncDialogState int
@@ -36,16 +26,6 @@ const (
 	SyncStateCancelled                        // User cancelled the sync
 )
 
-// SyncResult represents the result of a sync operation
-type SyncResult struct {
-	Success      bool
-	ItemsAdded   int
-	ItemsUpdated int
-	ItemsDeleted int
-	Errors       []string
-	Message      string
-}
-
 // SyncProgressMsg is sent during sync execution to update progress
 type SyncProgressMsg struct {
 	ActionIndex int
@@ -55,7 +35,7 @@ type SyncProgressMsg struct {
 
 // SyncCompleteMsg is sent when sync completes
 type SyncCompleteMsg struct {
-	Result *SyncResult
+	Result *syncplan.Result
 }
 
 // SyncDialog displays sync operations and handles user confirmation
@@ -64,9 +44,9 @@ type SyncDialog struct {
 
 	// State
 	state            SyncDialogState
-	actions          []SyncAction
-	allActions       []SyncAction // All possible actions before filtering
-	result           *SyncResult
+	actions          []syncplan.Action
+	allActions       []syncplan.Action // All possible actions before filtering
+	result           *syncplan.Result
 	currentAction    int
 	totalActions     int
 	cursor           int  // Current cursor position in action list
@@ -88,7 +68,7 @@ type SyncDialog struct {
 	enableDHCP    bool
 
 	// Sync executor callback (injected from TUI layer)
-	syncExecutor func([]SyncAction) *SyncResult
+	syncExecutor func([]syncplan.Action) *syncplan.Result
 
 	// Components
 	spinner  spinner.Model
@@ -112,8 +92,8 @@ func NewSyncDialog(serviceName string) *SyncDialog {
 	return &SyncDialog{
 		BaseWidget:    NewBaseWidget(),
 		state:         SyncStatePreview,
-		actions:       []SyncAction{},
-		allActions:    []SyncAction{},
+		actions:       []syncplan.Action{},
+		allActions:    []syncplan.Action{},
 		serviceName:   serviceName,
 		confirmPrompt: "Press 'y' to confirm, 'n' to cancel",
 		enableUnbound: true, // DNS services enabled by default
@@ -507,7 +487,7 @@ func (w *SyncDialog) renderCancelled() string {
 }
 
 // formatAction formats a single sync action for display
-func (w *SyncDialog) formatAction(action SyncAction) string {
+func (w *SyncDialog) formatAction(action syncplan.Action) string {
 	var parts []string
 
 	// Action type with icon and color
@@ -545,7 +525,7 @@ func (w *SyncDialog) formatAction(action SyncAction) string {
 }
 
 // formatActionInline formats a single sync action for inline display in checklist
-func (w *SyncDialog) formatActionInline(action SyncAction) string {
+func (w *SyncDialog) formatActionInline(action syncplan.Action) string {
 	var parts []string
 
 	// Action type with icon (shorter)
@@ -591,7 +571,7 @@ func (w *SyncDialog) formatActionInline(action SyncAction) string {
 }
 
 // SetActions sets the list of sync actions to be performed
-func (w *SyncDialog) SetActions(actions []SyncAction) {
+func (w *SyncDialog) SetActions(actions []syncplan.Action) {
 	w.actions = actions
 	w.totalActions = len(actions)
 	w.currentAction = 0
@@ -616,7 +596,7 @@ func (w *SyncDialog) SetState(state SyncDialogState) {
 }
 
 // SetResult sets the sync result
-func (w *SyncDialog) SetResult(result *SyncResult) {
+func (w *SyncDialog) SetResult(result *syncplan.Result) {
 	w.result = result
 	if result.Success {
 		w.state = SyncStateComplete
@@ -649,8 +629,8 @@ func (w *SyncDialog) IsDone() bool {
 // Reset resets the sync dialog to its initial state
 func (w *SyncDialog) Reset() {
 	w.state = SyncStatePreview
-	w.actions = []SyncAction{}
-	w.allActions = []SyncAction{}
+	w.actions = []syncplan.Action{}
+	w.allActions = []syncplan.Action{}
 	w.result = nil
 	w.currentAction = 0
 	w.totalActions = 0
@@ -662,7 +642,7 @@ func (w *SyncDialog) Reset() {
 }
 
 // SetSyncExecutor sets the sync executor callback
-func (w *SyncDialog) SetSyncExecutor(executor func([]SyncAction) *SyncResult) {
+func (w *SyncDialog) SetSyncExecutor(executor func([]syncplan.Action) *syncplan.Result) {
 	w.syncExecutor = executor
 }
 
@@ -715,7 +695,7 @@ func (w *SyncDialog) executeSync() tea.Msg {
 	w.logToFile("Starting sync execution with %d enabled actions", enabledCount)
 
 	// Execute sync using the injected executor
-	var result *SyncResult
+	var result *syncplan.Result
 	if w.syncExecutor != nil {
 		w.logToFile("Calling sync executor...")
 		result = w.syncExecutor(w.actions)
@@ -729,7 +709,7 @@ func (w *SyncDialog) executeSync() tea.Msg {
 	} else {
 		// No executor provided - return error
 		w.logToFile("ERROR: Sync executor not configured")
-		result = &SyncResult{
+		result = &syncplan.Result{
 			Success: false,
 			Errors:  []string{"Sync executor not configured"},
 			Message: "Sync executor not configured",
@@ -743,102 +723,16 @@ func (w *SyncDialog) executeSync() tea.Msg {
 	}
 }
 
-// AddActionsFromEntries creates sync actions from a list of entries for ALL services
+// AddActionsFromEntries creates sync actions from a list of entries for one service or all services.
 func (w *SyncDialog) AddActionsFromEntries(entries []*models.Entry, service string, caddyServerIP string) {
 	w.caddyServerIP = caddyServerIP
 	// Reset the dialog state first to clear any previous actions
 	w.Reset()
 
-	// ... (rest of the code remains the same)
-	// If a specific service is passed, only generate actions for that service
-	// If service is empty or "all", generate actions for all services
-	services := []string{}
-	if service == "" || service == "all" {
-		services = []string{"unbound", "adguard", "dhcp"}
-	} else {
-		services = []string{service}
-	}
-
-	// Deduplicate entries by hostname to prevent processing the same entry twice
-	seenHostnames := make(map[string]bool)
-	uniqueEntries := make([]*models.Entry, 0, len(entries))
-	for _, entry := range entries {
-		if !seenHostnames[entry.Hostname] {
-			seenHostnames[entry.Hostname] = true
-			uniqueEntries = append(uniqueEntries, entry)
-		}
-	}
-
-	actions := []SyncAction{}
-
-	for _, entry := range uniqueEntries {
-		for _, svc := range services {
-			var status models.ServiceStatus
-			var needsSync bool
-			var needsRemoval bool
-			var dhcpAction bool
-
-			switch svc {
-			case "unbound":
-				status = entry.UnboundStatus
-				needsSync = entry.NeedsSyncToUnbound()
-				needsRemoval = entry.NeedsRemovalFromUnbound()
-			case "adguard":
-				status = entry.AdguardStatus
-				needsSync = entry.NeedsSyncToAdguard()
-				needsRemoval = entry.NeedsRemovalFromAdguard()
-			case "dhcp":
-				// DHCP static lease creation (dynamic → static conversion)
-				needsSync = entry.NeedsDHCPStaticEntry()
-				dhcpAction = true
-			default:
-				continue
-			}
-
-			// Skip if no action needed
-			if !needsSync && !needsRemoval {
-				continue
-			}
-
-			var actionType string
-			var oldIP string
-			var newIP string
-			var details string
-
-			if needsRemoval {
-				// Entry exists in service but NOT in Caddy - remove it
-				actionType = "delete"
-				oldIP = status.IP
-				details = "no longer in Caddy"
-			} else if dhcpAction {
-				// DHCP: Convert dynamic lease to static
-				actionType = "add"
-				newIP = entry.DHCPStatus.IP
-				details = fmt.Sprintf("static lease (MAC: %s)", entry.DHCPStatus.MAC)
-			} else if !status.Configured {
-				// DNS: Need to add - point to Caddy server, not backend
-				actionType = "add"
-				newIP = w.caddyServerIP
-			} else if !status.InSync {
-				// DNS: Need to update - point to Caddy server, not backend
-				actionType = "update"
-				oldIP = status.IP
-				newIP = w.caddyServerIP
-			}
-
-			if actionType != "" {
-				actions = append(actions, SyncAction{
-					Type:     actionType,
-					Hostname: entry.Hostname,
-					Service:  svc,
-					OldIP:    oldIP,
-					NewIP:    newIP,
-					Details:  details,
-					Enabled:  true, // Enable by default
-				})
-			}
-		}
-	}
+	actions := syncplan.PlanFromEntries(entries, syncplan.Options{
+		Service:       service,
+		CaddyServerIP: caddyServerIP,
+	})
 
 	// Store actions (all enabled by default)
 	w.actions = actions

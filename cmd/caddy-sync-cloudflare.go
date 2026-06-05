@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
@@ -38,109 +37,77 @@ and creates DNS entries with two modes:
 
 This enables flexible routing where services can be accessed either directly or through Caddy,
 supporting both LAN optimization and external Cloudflare tunnel access patterns.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Validate flag combinations
-		if cfDirectOnly && cfCaddyOnly {
-			fmt.Println("Error: Cannot specify both --direct-only and --caddy-only")
-			os.Exit(1)
+	RunE: runCaddySyncCloudflare,
+}
+
+func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
+	if cfDirectOnly && cfCaddyOnly {
+		return fmt.Errorf("cannot specify both --direct-only and --caddy-only")
+	}
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logging.Error("Error loading configuration", "error", err)
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
+	}
+
+	unboundClient := api.NewClient(cfg)
+	if cfPrompt {
+		unboundClient.Prompt = true
+	}
+
+	syncUI := sync2.NewSyncUI()
+	syncDirect := !cfCaddyOnly
+	syncCaddy := !cfDirectOnly
+
+	options := sync2.CaddyCloudflareSyncOptions{
+		DryRun:             cfDryRun,
+		CaddyServerIP:      cfCaddyServerIP,
+		CaddyServerPort:    cfCaddyServerPort,
+		EntryDescription:   cfEntryDescription,
+		LegacyDescriptions: cfLegacyDescriptions,
+		DirectSubdomain:    cfDirectSubdomain,
+		CaddySubdomain:     cfCaddySubdomain,
+		SyncDirect:         syncDirect,
+		SyncCaddy:          syncCaddy,
+		Verbose:            verbose,
+	}
+
+	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareHeader(syncDirect, syncCaddy))
+	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareSyncTargets(syncDirect, syncCaddy, cfDirectSubdomain, cfCaddySubdomain))
+	fmt.Fprintln(cmd.OutOrStdout(), syncUI.RenderFetchingMessage(cfCaddyServerIP, cfCaddyServerPort))
+
+	result, err := sync2.SyncCaddyWithCloudflare(unboundClient, options)
+	if err != nil {
+		logging.Error("Error during sync operation", "error", err)
+		return fmt.Errorf("error during sync operation: %w", err)
+	}
+
+	if len(result.HostnameMap) == 0 {
+		fmt.Fprintln(cmd.OutOrStdout(), syncUI.RenderWarning("No hostnames found in Caddy config"))
+		return nil
+	}
+
+	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderHostnameCount(len(result.HostnameMap)))
+	if verbose {
+		fmt.Fprintln(cmd.OutOrStdout())
+
+		hostnames := make([]string, 0, len(result.HostnameMap))
+		for hostname := range result.HostnameMap {
+			hostnames = append(hostnames, hostname)
 		}
 
-		// Load config
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			logging.Error("Error loading configuration", "error", err)
-			// Create sync UI for error message
-			syncUI := sync2.NewSyncUI()
-			fmt.Println(
-				syncUI.RenderError(
-					fmt.Errorf(
-						"error loading configuration: %v\nPlease run 'config' command to set up API access",
-						err,
-					),
-				),
-			)
-			os.Exit(1)
-		}
+		fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderHostnameList(hostnames))
+	}
 
-		// Create unbound client
-		unboundClient := api.NewClient(cfg)
-		unboundClient.Prompt = cfPrompt
+	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareSummary(result))
+	if cfDryRun {
+		fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareDryRunOutput(result, cfEntryDescription))
+		return nil
+	}
 
-		// Create sync UI
-		syncUI := sync2.NewSyncUI()
-
-		// Determine which modes to sync
-		syncDirect := !cfCaddyOnly
-		syncCaddy := !cfDirectOnly
-
-		// Setup sync options
-		options := sync2.CaddyCloudflareSyncOptions{
-			DryRun:             cfDryRun,
-			CaddyServerIP:      cfCaddyServerIP,
-			CaddyServerPort:    cfCaddyServerPort,
-			EntryDescription:   cfEntryDescription,
-			LegacyDescriptions: cfLegacyDescriptions,
-			DirectSubdomain:    cfDirectSubdomain,
-			CaddySubdomain:     cfCaddySubdomain,
-			SyncDirect:         syncDirect,
-			SyncCaddy:          syncCaddy,
-			Verbose:            verbose,
-		}
-
-		// Print header
-		fmt.Print(syncUI.RenderCloudflareHeader(syncDirect, syncCaddy))
-
-		// Print sync targets
-		fmt.Print(syncUI.RenderCloudflareSyncTargets(syncDirect, syncCaddy, cfDirectSubdomain, cfCaddySubdomain))
-
-		// Fetch and process data
-		fmt.Println(syncUI.RenderFetchingMessage(cfCaddyServerIP, cfCaddyServerPort))
-
-		// Perform the sync operation
-		result, err := sync2.SyncCaddyWithCloudflare(unboundClient, options)
-		if err != nil {
-			logging.Error("Error during sync operation", "error", err)
-			fmt.Println(
-				syncUI.RenderError(
-					fmt.Errorf("error during sync operation: %v", err),
-				),
-			)
-			os.Exit(1)
-		}
-
-		if len(result.HostnameMap) == 0 {
-			fmt.Println(syncUI.RenderWarning("No hostnames found in Caddy config"))
-			return
-		}
-
-		// Display hostname count
-		fmt.Print(syncUI.RenderHostnameCount(len(result.HostnameMap)))
-
-		// Display hostnames if verbose
-		if verbose {
-			fmt.Println()
-
-			// Convert map keys to slice for rendering
-			hostnames := make([]string, 0, len(result.HostnameMap))
-			for hostname := range result.HostnameMap {
-				hostnames = append(hostnames, hostname)
-			}
-
-			fmt.Print(syncUI.RenderHostnameList(hostnames))
-		}
-
-		// Print summary of changes
-		fmt.Print(syncUI.RenderCloudflareSummary(result))
-
-		// If dry run, just print what would happen and exit
-		if cfDryRun {
-			fmt.Print(syncUI.RenderCloudflareDryRunOutput(result, cfEntryDescription))
-			return
-		}
-
-		// Display changes as they are applied
-		fmt.Print(syncUI.RenderCloudflareChanges(result, cfEntryDescription))
-	},
+	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareChanges(result, cfEntryDescription))
+	return nil
 }
 
 func init() {

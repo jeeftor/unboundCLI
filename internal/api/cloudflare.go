@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -290,22 +291,23 @@ func extractServiceIP(service string) string {
 	return service
 }
 
-// SetTunnelIngress replaces the entire ingress rule list atomically.
+// SetTunnelIngress updates the desired hostname rules while preserving existing rule metadata.
 // rules maps hostname → internal service URL (e.g. "http://192.168.1.15:80").
-// The catch-all rule (http_status:404) is always appended as the last entry.
+// The catch-all rule is preserved when present, or http_status:404 is appended as the last entry.
 func (c *CloudflareClient) SetTunnelIngress(rules map[string]string) error {
 	ctx := context.Background()
 
-	ingress := make([]cloudflare.UnvalidatedIngressRule, 0, len(rules)+1)
-	for hostname, service := range rules {
-		ingress = append(ingress, cloudflare.UnvalidatedIngressRule{
-			Hostname: hostname,
-			Service:  service,
-		})
+	config, err := c.api.GetTunnelConfiguration(ctx,
+		cloudflare.ResourceIdentifier(c.accountID),
+		c.tunnelID,
+	)
+	if err != nil {
+		return fmt.Errorf("error getting tunnel configuration before update: %w", err)
 	}
-	ingress = append(ingress, cloudflare.UnvalidatedIngressRule{Service: "http_status:404"})
 
-	_, err := c.api.UpdateTunnelConfiguration(ctx,
+	ingress := mergeTunnelIngress(config.Config.Ingress, rules)
+
+	_, err = c.api.UpdateTunnelConfiguration(ctx,
 		cloudflare.ResourceIdentifier(c.accountID),
 		cloudflare.TunnelConfigurationParams{
 			TunnelID: c.tunnelID,
@@ -318,6 +320,60 @@ func (c *CloudflareClient) SetTunnelIngress(rules map[string]string) error {
 
 	logging.Info("Updated tunnel ingress", "tunnelID", c.tunnelID, "rules", len(rules))
 	return nil
+}
+
+func mergeTunnelIngress(existing []cloudflare.UnvalidatedIngressRule, rules map[string]string) []cloudflare.UnvalidatedIngressRule {
+	remaining := make(map[string]string, len(rules))
+	for hostname, service := range rules {
+		remaining[hostname] = service
+	}
+
+	ingress := make([]cloudflare.UnvalidatedIngressRule, 0, len(rules)+1)
+	var catchAll *cloudflare.UnvalidatedIngressRule
+
+	for _, rule := range existing {
+		if rule.Hostname == "" {
+			if catchAll == nil {
+				r := rule
+				catchAll = &r
+			}
+			continue
+		}
+
+		service, keep := remaining[rule.Hostname]
+		if !keep {
+			continue
+		}
+		if !servicesEquivalent(rule.Service, service) {
+			rule.Service = service
+		}
+		ingress = append(ingress, rule)
+		delete(remaining, rule.Hostname)
+	}
+
+	hostnames := make([]string, 0, len(remaining))
+	for hostname := range remaining {
+		hostnames = append(hostnames, hostname)
+	}
+	sort.Strings(hostnames)
+	for _, hostname := range hostnames {
+		ingress = append(ingress, cloudflare.UnvalidatedIngressRule{
+			Hostname: hostname,
+			Service:  remaining[hostname],
+		})
+	}
+
+	if catchAll != nil {
+		ingress = append(ingress, *catchAll)
+	} else {
+		ingress = append(ingress, cloudflare.UnvalidatedIngressRule{Service: "http_status:404"})
+	}
+
+	return ingress
+}
+
+func servicesEquivalent(existing, desired string) bool {
+	return existing == desired || extractServiceIP(existing) == desired || existing == extractServiceIP(desired)
 }
 
 // ListManagedDNSRecords returns all CNAME records in the zone that point to

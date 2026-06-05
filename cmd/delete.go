@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
@@ -23,122 +22,85 @@ var deleteCmd = &cobra.Command{
 
 This command deletes a DNS override from Unbound DNS. You must specify
 the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Create UI component
-		deleteUI := newDeleteUI()
+	RunE: runDelete,
+}
 
-		// Get UUID from args
-		uuid := args[0]
+func runDelete(cmd *cobra.Command, args []string) error {
+	deleteUI := newDeleteUI()
+
+	uuid := args[0]
+	if logging.GetLogLevel() == logging.LogLevelDebug {
+		logging.Debug("Delete command called", "uuid", uuid, "force", force)
+	}
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
 		if logging.GetLogLevel() == logging.LogLevelDebug {
-			logging.Debug("Delete command called", "uuid", uuid, "force", force)
+			logging.Error("Error loading configuration", "error", err)
 		}
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
+	}
 
-		// Load config
-		cfg, err := config.LoadConfig()
+	client := api.NewClient(cfg)
+
+	if !force {
+		overrides, err := client.GetOverrides()
 		if err != nil {
 			if logging.GetLogLevel() == logging.LogLevelDebug {
-				logging.Error("Error loading configuration", "error", err)
+				logging.Error("Error fetching overrides", "error", err)
 			}
-			fmt.Println(
-				deleteUI.RenderError(
-					fmt.Errorf(
-						"error loading configuration: %v\nPlease run 'config' command to set up API access",
-						err,
-					),
-				),
-			)
-			os.Exit(1)
+			return fmt.Errorf("error fetching overrides: %w", err)
 		}
 
-		// Create client
-		client := api.NewClient(cfg)
-
-		// Get override details to confirm
-		if !force {
-			overrides, err := client.GetOverrides()
-			if err != nil {
-				if logging.GetLogLevel() == logging.LogLevelDebug {
-					logging.Error("Error fetching overrides", "error", err)
-				}
-				fmt.Println(
-					deleteUI.RenderError(
-						fmt.Errorf("error fetching overrides: %v", err),
-					),
-				)
-				os.Exit(1)
-			}
-
-			// Find the override with the matching UUID
-			var targetOverride *api.DNSOverride
-			for _, o := range overrides {
-				if o.UUID == uuid {
-					targetOverride = &o
-					break
-				}
-			}
-
-			if targetOverride == nil {
-				if logging.GetLogLevel() == logging.LogLevelDebug {
-					logging.Error("No override found with UUID", "uuid", uuid)
-				}
-				fmt.Println(
-					deleteUI.RenderError(
-						fmt.Errorf("no override found with UUID %s", uuid),
-					),
-				)
-				os.Exit(1)
-			}
-
-			// Confirm deletion
-			fmt.Println(deleteUI.RenderConfirmation(*targetOverride))
-			fmt.Print("Confirm deletion (y/N): ")
-			var confirm string
-			fmt.Scanln(&confirm)
-			if confirm != "y" && confirm != "Y" {
-				if logging.GetLogLevel() == logging.LogLevelDebug {
-					logging.Info("Delete operation cancelled by user", "uuid", uuid)
-				}
-				fmt.Println(deleteUI.RenderWarning("Deletion cancelled"))
-				return
+		var targetOverride *api.DNSOverride
+		for _, o := range overrides {
+			if o.UUID == uuid {
+				targetOverride = &o
+				break
 			}
 		}
 
-		// Delete override
-		fmt.Println(deleteUI.RenderDeletingMessage(uuid))
-		if err := client.DeleteOverride(uuid); err != nil {
+		if targetOverride == nil {
 			if logging.GetLogLevel() == logging.LogLevelDebug {
-				logging.Error("Error deleting override", "error", err, "uuid", uuid)
+				logging.Error("No override found with UUID", "uuid", uuid)
 			}
-			fmt.Println(
-				deleteUI.RenderError(
-					fmt.Errorf("error deleting override: %v", err),
-				),
-			)
-			os.Exit(1)
+			return fmt.Errorf("no override found with UUID %s", uuid)
 		}
 
-		// Apply changes
-		fmt.Println(deleteUI.RenderApplyingMessage())
-		if err := client.ApplyChanges(); err != nil {
+		fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderConfirmation(*targetOverride))
+		fmt.Fprint(cmd.OutOrStdout(), "Confirm deletion (y/N): ")
+		var confirm string
+		_, _ = fmt.Fscanln(cmd.InOrStdin(), &confirm)
+		if confirm != "y" && confirm != "Y" {
 			if logging.GetLogLevel() == logging.LogLevelDebug {
-				logging.Error("Error applying changes", "error", err)
+				logging.Info("Delete operation cancelled by user", "uuid", uuid)
 			}
-			fmt.Println(
-				deleteUI.RenderError(
-					fmt.Errorf(
-						"error applying changes: %v\nThe override was deleted but changes were not applied",
-						err,
-					),
-				),
-			)
-			os.Exit(1)
+			fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderWarning("Deletion cancelled"))
+			return nil
 		}
+	}
 
-		fmt.Println(deleteUI.RenderSuccess(uuid))
+	fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderDeletingMessage(uuid))
+	if err := client.DeleteOverride(uuid); err != nil {
 		if logging.GetLogLevel() == logging.LogLevelDebug {
-			logging.Info("DNS override deleted successfully", "uuid", uuid)
+			logging.Error("Error deleting override", "error", err, "uuid", uuid)
 		}
-	},
+		return fmt.Errorf("error deleting override: %w", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderApplyingMessage())
+	if err := client.ApplyChanges(); err != nil {
+		if logging.GetLogLevel() == logging.LogLevelDebug {
+			logging.Error("Error applying changes", "error", err)
+		}
+		return fmt.Errorf("error applying changes: %w\nThe override was deleted but changes were not applied", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderSuccess(uuid))
+	if logging.GetLogLevel() == logging.LogLevelDebug {
+		logging.Info("DNS override deleted successfully", "uuid", uuid)
+	}
+	return nil
 }
 
 type deleteUI struct {

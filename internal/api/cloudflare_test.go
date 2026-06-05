@@ -5,9 +5,46 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestCloudflareTunnelFixtureIncludesIngressMetadata(t *testing.T) {
+	body, err := os.ReadFile("../status/testdata/cloudflare_tunnels.json")
+	if err != nil {
+		t.Fatalf("failed to read Cloudflare tunnel fixture: %v", err)
+	}
+
+	var fixture struct {
+		Tunnels []struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Ingress []struct {
+				Hostname      string `json:"hostname"`
+				Service       string `json:"service"`
+				OriginRequest struct {
+					HTTPHostHeader string `json:"httpHostHeader"`
+					NoTLSVerify    bool   `json:"noTLSVerify"`
+					Http2Origin    bool   `json:"http2Origin"`
+				} `json:"originRequest"`
+			} `json:"ingress"`
+		} `json:"tunnels"`
+	}
+	if err := json.Unmarshal(body, &fixture); err != nil {
+		t.Fatalf("failed to parse Cloudflare tunnel fixture: %v", err)
+	}
+	if len(fixture.Tunnels) != 1 || len(fixture.Tunnels[0].Ingress) != 1 {
+		t.Fatalf("unexpected fixture shape: %#v", fixture)
+	}
+	ingress := fixture.Tunnels[0].Ingress[0]
+	if ingress.Hostname != "app.example.test" || ingress.OriginRequest.HTTPHostHeader != "app.example.test" {
+		t.Fatalf("fixture should include host header ingress metadata: %#v", ingress)
+	}
+	if !ingress.OriginRequest.NoTLSVerify || !ingress.OriginRequest.Http2Origin {
+		t.Fatalf("fixture should include origin request booleans: %#v", ingress.OriginRequest)
+	}
+}
 
 func TestListTunnels(t *testing.T) {
 	accountID := "test-account-id"
@@ -208,12 +245,16 @@ func TestSetTunnelIngress_SendsRulesWithCatchAll(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel/test-tunnel-uuid/configurations",
 		func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPut {
-				t.Errorf("expected PUT, got %s", r.Method)
-			}
-			json.NewDecoder(r.Body).Decode(&capturedBody)
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, tunnelConfigResponse())
+			switch r.Method {
+			case http.MethodGet:
+				fmt.Fprint(w, tunnelConfigResponse())
+			case http.MethodPut:
+				json.NewDecoder(r.Body).Decode(&capturedBody)
+				fmt.Fprint(w, tunnelConfigResponse())
+			default:
+				t.Errorf("unexpected method %s", r.Method)
+			}
 		})
 
 	client, srv := newTestClient(t, mux)
@@ -312,6 +353,79 @@ func TestSetTunnelIngress_MultipleRules(t *testing.T) {
 	last := ingress[len(ingress)-1].(map[string]interface{})
 	if last["service"] != "http_status:404" {
 		t.Errorf("last rule must be catch-all, got %v", last["service"])
+	}
+}
+
+func TestSetTunnelIngress_PreservesExistingRuleMetadata(t *testing.T) {
+	var capturedBody map[string]interface{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel/test-tunnel-uuid/configurations",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.Method {
+			case http.MethodGet:
+				fmt.Fprint(w, `{
+					"success": true,
+					"errors": [],
+					"messages": [],
+					"result": {
+						"tunnel_id": "test-tunnel-uuid",
+						"version": 1,
+						"config": {
+							"ingress": [
+								{
+									"hostname": "app.example.com",
+									"path": "/api/*",
+									"service": "http://192.168.1.15:80",
+									"originRequest": {
+										"httpHostHeader": "app.internal"
+									}
+								},
+								{"service": "http_status:404"}
+							]
+						}
+					}
+				}`)
+			case http.MethodPut:
+				json.NewDecoder(r.Body).Decode(&capturedBody)
+				fmt.Fprint(w, tunnelConfigResponse())
+			default:
+				t.Errorf("unexpected method %s", r.Method)
+			}
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.SetTunnelIngress(map[string]string{
+		"app.example.com": "http://192.168.1.16:80",
+	}); err != nil {
+		t.Fatalf("SetTunnelIngress failed: %v", err)
+	}
+
+	config, _ := capturedBody["config"].(map[string]interface{})
+	ingress, _ := config["ingress"].([]interface{})
+	if len(ingress) != 2 {
+		t.Fatalf("expected preserved rule plus catch-all, got %d rules", len(ingress))
+	}
+
+	first := ingress[0].(map[string]interface{})
+	if first["hostname"] != "app.example.com" {
+		t.Fatalf("expected preserved hostname app.example.com, got %v", first["hostname"])
+	}
+	if first["service"] != "http://192.168.1.16:80" {
+		t.Fatalf("expected service to be updated, got %v", first["service"])
+	}
+	if first["path"] != "/api/*" {
+		t.Fatalf("expected path metadata to be preserved, got %v", first["path"])
+	}
+	originRequest, ok := first["originRequest"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected originRequest metadata to be preserved, got %#v", first["originRequest"])
+	}
+	if originRequest["httpHostHeader"] != "app.internal" {
+		t.Fatalf("expected httpHostHeader to be preserved, got %v", originRequest["httpHostHeader"])
 	}
 }
 

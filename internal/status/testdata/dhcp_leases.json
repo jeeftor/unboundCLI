@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "hostname": "app",
+      "address": "10.0.0.5",
+      "hwaddr": "00:11:22:33:44:55",
+      "expire": 0,
+      "is_reserved": "0",
+      "mac_info": "fixture"
+    },
+    {
+      "hostname": "stale",
+      "address": "10.0.0.6",
+      "hwaddr": "66:55:44:33:22:11",
+      "expire": 0,
+      "is_reserved": "1",
+      "mac_info": "fixture"
+    }
+  ],
+  "rowCount": 2,
+  "total": 2,
+  "current": 1
+}

@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/jeeftor/caddy-dns-sync/internal/api"
-	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	runtimeapp "github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
@@ -53,9 +51,9 @@ Keyboard shortcuts:
 func init() {
 	rootCmd.AddCommand(tuiCmd)
 
-	tuiCmd.Flags().StringVar(&tuiCaddyServerIP, "caddy-server-ip", "192.168.1.15",
+	tuiCmd.Flags().StringVar(&tuiCaddyServerIP, "caddy-server-ip", runtimeapp.DefaultCaddyServerIP,
 		"IP address of the Caddy server (source of truth)")
-	tuiCmd.Flags().IntVar(&tuiCaddyServerPort, "caddy-server-port", 2019,
+	tuiCmd.Flags().IntVar(&tuiCaddyServerPort, "caddy-server-port", runtimeapp.DefaultCaddyServerPort,
 		"Port number for Caddy admin API")
 }
 
@@ -65,8 +63,14 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		// Discard logs during initialization
 	})
 
-	// Load main config (required for Unbound)
-	cfg, err := config.LoadConfig()
+	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
+		CaddyServerIP:     tuiCaddyServerIP,
+		CaddyServerPort:   tuiCaddyServerPort,
+		IncludeUnbound:    true,
+		IncludeDNSMasq:    true,
+		IncludeAdguard:    true,
+		IncludeCloudflare: true,
+	})
 	if err != nil {
 		logging.ResetToStderr()
 		fmt.Printf("Error loading configuration: %v\n", err)
@@ -74,75 +78,30 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Load AdguardHome config (optional)
-	adguardConfig, err := config.LoadAdguardConfig()
-	if err != nil {
-		// Continue without AdGuard - not critical
-		adguardConfig = config.AdguardConfig{Enabled: false}
-	}
-
-	// Create API clients
-	unboundClient := api.NewClient(cfg)
-
-	var adguardClient *api.AdguardClient
-	if adguardConfig.Enabled && adguardConfig.BaseURL != "" &&
-		adguardConfig.Username != "" && adguardConfig.Password != "" {
-		adguardClient = api.NewAdguardClient(adguardConfig.GetAdguardAPIConfig())
-	}
-
-	// Create Caddy client
-	caddyClient := api.NewCaddyClient(tuiCaddyServerIP, tuiCaddyServerPort)
-
-	// Create DNSMasq client
-	dnsmasqClient := api.NewDNSMasqClient(cfg)
-
-	// Load Cloudflare config (optional — TUI works without it).
-	// The "enabled" flag gates write operations (sync commands); the TUI only reads
-	// CF data, so we create a client whenever credentials are present.
-	var cfClient *api.CloudflareClient
-	cfConfig, cfErr := config.LoadCloudflareConfig()
-	if cfErr == nil && cfConfig.APIToken != "" && cfConfig.AccountID != "" {
-		if c, err := api.NewCloudflareClient(cfConfig.GetCloudflareAPIConfig()); err == nil {
-			cfClient = c
-		} else {
-			fmt.Fprintf(os.Stderr, "Warning: could not create Cloudflare client: %v\n", err)
-		}
-	}
-
-	// Determine Caddy service URL for CF edit quick-fill.
-	// Prefer configured CF_CADDY_SERVICE_URL; fall back to http://<caddyIP>:80.
-	caddyServiceURL := ""
-	if cfErr == nil {
-		caddyServiceURL = cfConfig.CaddyServiceURL
-	}
-	if caddyServiceURL == "" {
-		caddyServiceURL = fmt.Sprintf("http://%s:80", tuiCaddyServerIP)
-	}
-
 	// Create TUI application
-	app := tui.NewAppModel(
-		caddyClient,
-		unboundClient,
-		adguardClient,
-		dnsmasqClient,
-		tuiCaddyServerIP,
-		cfClient,
-		caddyServiceURL,
+	tuiApp := tui.NewAppModel(
+		runtime.Clients.Caddy,
+		runtime.Clients.Unbound,
+		runtime.Clients.Adguard,
+		runtime.Clients.DNSMasq,
+		runtime.CaddyEndpoint.ServerIP,
+		runtime.Clients.Cloudflare,
+		runtime.CaddyServiceURL,
 	)
 
 	// NOW redirect logging to TUI log widget
 	logging.SetCustomHandler(func(level, message string) {
-		app.AddLog(level, message)
+		tuiApp.AddLog(level, message)
 	})
 
 	// Add initialization logs retroactively
-	if adguardClient != nil {
-		app.AddLog("INFO", "AdGuard client initialized")
+	if runtime.Clients.Adguard != nil {
+		tuiApp.AddLog("INFO", "AdGuard client initialized")
 	} else {
-		app.AddLog("INFO", "AdGuard client not available (disabled or not configured)")
+		tuiApp.AddLog("INFO", "AdGuard client not available (disabled or not configured)")
 	}
-	if cfClient != nil {
-		app.AddLog("INFO", "Cloudflare client initialized")
+	if runtime.Clients.Cloudflare != nil {
+		tuiApp.AddLog("INFO", "Cloudflare client initialized")
 	}
 
 	// Reset logging to stderr when TUI exits
@@ -150,7 +109,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 
 	// Run the Bubble Tea program
 	p := tea.NewProgram(
-		app,
+		tuiApp,
 		tea.WithAltScreen(),       // Use alternate screen buffer
 		tea.WithMouseCellMotion(), // Enable mouse support
 	)
@@ -159,7 +118,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		logging.Error("Error running TUI", "error", err)
 		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	// Check if there were any errors in the final model

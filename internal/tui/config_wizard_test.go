@@ -4,11 +4,28 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 )
+
+func TestCloudflareDebugCurlRedactsToken(t *testing.T) {
+	token := "cf-secret-token"
+
+	for name, curl := range map[string]string{
+		"zones":   cfZonesCurl(token),
+		"tunnels": cfTunnelsCurl("account-id", token),
+	} {
+		if strings.Contains(curl, token) {
+			t.Fatalf("%s curl leaked Cloudflare token: %s", name, curl)
+		}
+		if !strings.Contains(curl, "Bearer <redacted>") {
+			t.Fatalf("%s curl should contain redacted bearer token, got: %s", name, curl)
+		}
+	}
+}
 
 // unboundSuccessHandler returns a minimal valid UnboundDNS response
 func unboundSuccessHandler(w http.ResponseWriter, r *http.Request) {

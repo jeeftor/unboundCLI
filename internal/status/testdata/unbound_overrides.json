@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "uuid": "uuid-app",
+      "enabled": "1",
+      "hostname": "app",
+      "domain": "example.test",
+      "server": "10.0.0.1",
+      "description": "existing managed override"
+    },
+    {
+      "uuid": "uuid-stale",
+      "enabled": "1",
+      "hostname": "old",
+      "domain": "example.test",
+      "server": "10.0.0.1",
+      "description": "stale managed override"
+    }
+  ],
+  "rowCount": 2,
+  "total": 2,
+  "current": 1
+}

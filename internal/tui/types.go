@@ -1,12 +1,15 @@
 package tui
 
-// This file contains stub types to maintain compatibility
-// while the TUI is being rebuilt from scratch.
-// These types should be moved to a proper package (e.g., internal/status) later.
-
 import (
+	"context"
+	"fmt"
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/models"
+	statussvc "github.com/jeeftor/caddy-dns-sync/internal/status"
 )
 
 // OverallSyncStatus represents the overall sync state
@@ -17,6 +20,7 @@ const (
 	PartiallyInSync
 	OutOfSync
 	CaddyOnly
+	Stale
 )
 
 // ServiceStatus represents the status of a service
@@ -60,14 +64,14 @@ type SyncStatusSummary struct {
 	CaddyOnly       int
 }
 
-// SyncStatusDashboard is a stub for the dashboard
+// SyncStatusDashboard holds status data for dashboard-style CLI views.
 type SyncStatusDashboard struct {
 	statuses      []SyncStatus
 	caddyServerIP string
 	filters       StatusFilters
 }
 
-// NewSyncStatusDashboard creates a new dashboard (stub)
+// NewSyncStatusDashboard creates a new dashboard.
 func NewSyncStatusDashboard(caddyServerIP string) *SyncStatusDashboard {
 	return &SyncStatusDashboard{
 		caddyServerIP: caddyServerIP,
@@ -76,18 +80,27 @@ func NewSyncStatusDashboard(caddyServerIP string) *SyncStatusDashboard {
 	}
 }
 
-// LoadSyncData loads data (stub)
+// LoadSyncData loads data from service clients.
 func (d *SyncStatusDashboard) LoadSyncData(
 	caddyClient *api.CaddyClient,
 	unboundClient *api.Client,
 	adguardClient *api.AdguardClient,
 	dnsmasqClient *api.DNSMasqClient,
 ) error {
-	// TODO: Implement this properly when TUI is rebuilt
+	entries, _, err := statussvc.LoadEntries(context.Background(), app.ClientSet{
+		Caddy:   caddyClient,
+		Unbound: unboundClient,
+		Adguard: adguardClient,
+		DNSMasq: dnsmasqClient,
+	}, statussvc.Options{CaddyServerIP: d.caddyServerIP})
+	if err != nil {
+		return err
+	}
+	d.statuses = syncStatusesFromEntries(entries)
 	return nil
 }
 
-// LoadSyncDataWithProgress loads data (stub)
+// LoadSyncDataWithProgress loads data from service clients and reports coarse progress.
 func (d *SyncStatusDashboard) LoadSyncDataWithProgress(
 	caddyClient *api.CaddyClient,
 	unboundClient *api.Client,
@@ -95,33 +108,128 @@ func (d *SyncStatusDashboard) LoadSyncDataWithProgress(
 	dnsmasqClient *api.DNSMasqClient,
 	progressCallback func(phase string, current, total int),
 ) error {
-	// TODO: Implement this properly when TUI is rebuilt
-	return nil
+	if progressCallback != nil {
+		progressCallback("loading", 0, 1)
+	}
+	err := d.LoadSyncData(caddyClient, unboundClient, adguardClient, dnsmasqClient)
+	if progressCallback != nil {
+		progressCallback("loaded", 1, 1)
+	}
+	return err
 }
 
-// GetFilteredStatuses returns filtered statuses (stub)
+// GetFilteredStatuses returns filtered statuses.
 func (d *SyncStatusDashboard) GetFilteredStatuses() []SyncStatus {
-	return d.statuses
+	filtered := make([]SyncStatus, 0, len(d.statuses))
+	for _, status := range d.statuses {
+		if d.matchesFilters(status) {
+			filtered = append(filtered, status)
+		}
+	}
+	return filtered
 }
 
-// GetCurrentFilters returns current filters (stub)
+// GetCurrentFilters returns current filters.
 func (d *SyncStatusDashboard) GetCurrentFilters() StatusFilters {
 	return d.filters
 }
 
-// SetFilters sets filters (stub)
+// SetFilters sets filters.
 func (d *SyncStatusDashboard) SetFilters(filters StatusFilters) {
 	d.filters = filters
 }
 
-// GetSummary returns a summary (stub)
+// GetSummary returns a summary.
 func (d *SyncStatusDashboard) GetSummary() SyncStatusSummary {
-	return SyncStatusSummary{
-		Total: len(d.statuses),
+	summary := SyncStatusSummary{Total: len(d.GetFilteredStatuses())}
+	for _, status := range d.GetFilteredStatuses() {
+		switch status.Overall {
+		case FullyInSync:
+			summary.FullyInSync++
+		case PartiallyInSync:
+			summary.PartiallyInSync++
+		case OutOfSync, Stale:
+			summary.OutOfSync++
+		case CaddyOnly:
+			summary.CaddyOnly++
+		}
+	}
+	return summary
+}
+
+func (d *SyncStatusDashboard) matchesFilters(status SyncStatus) bool {
+	if d.filters.HostnameFilter != "" &&
+		!strings.Contains(strings.ToLower(status.Hostname), strings.ToLower(d.filters.HostnameFilter)) {
+		return false
+	}
+	if d.filters.ShowOnlyOutOfSync && status.Overall != OutOfSync && status.Overall != Stale {
+		return false
+	}
+	if d.filters.ShowOutOfSync && status.Overall != OutOfSync {
+		return false
+	}
+	if d.filters.ShowCaddyOnly && status.Overall != CaddyOnly {
+		return false
+	}
+	if d.filters.ShowStale && status.Overall != Stale {
+		return false
+	}
+	if d.filters.ShowMismatches && !status.DHCPMismatch {
+		return false
+	}
+	return true
+}
+
+func syncStatusesFromEntries(entries []*models.Entry) []SyncStatus {
+	statuses := make([]SyncStatus, 0, len(entries))
+	for _, entry := range entries {
+		statuses = append(statuses, syncStatusFromEntry(entry))
+	}
+	return statuses
+}
+
+func syncStatusFromEntry(entry *models.Entry) SyncStatus {
+	return SyncStatus{
+		Hostname:      entry.Hostname,
+		DataSource:    entry.DataSource,
+		CaddyIP:       entry.CaddyIP,
+		DNSResolvedIP: entry.DNSResolved,
+		UpstreamIP:    entry.CaddyUpstream,
+		DHCPLeaseIP:   entry.DHCPStatus.IP,
+		DHCPLeaseType: entry.DHCPStatus.Type,
+		DHCPMismatch:  entry.OverallStatus == models.DHCPMismatch,
+		UnboundStatus: serviceStatusFromModel(entry.UnboundStatus),
+		AdguardStatus: serviceStatusFromModel(entry.AdguardStatus),
+		Overall:       overallStatusFromModel(entry.OverallStatus),
 	}
 }
 
-// GetStatusIcon returns a status icon (stub)
+func serviceStatusFromModel(status models.ServiceStatus) ServiceStatus {
+	return ServiceStatus{
+		Present: status.Configured,
+		InSync:  status.InSync,
+		IP:      status.IP,
+	}
+}
+
+func overallStatusFromModel(status models.SyncStatus) OverallSyncStatus {
+	switch status {
+	case models.FullyInSync:
+		return FullyInSync
+	case models.PartiallyInSync:
+		return PartiallyInSync
+	case models.OutOfSync, models.DHCPMismatch:
+		return OutOfSync
+	case models.CaddyOnly:
+		return CaddyOnly
+	case models.Stale:
+		return Stale
+	default:
+		return CaddyOnly
+	}
+}
+
+// GetStatusIcon returns a status icon.
 func GetStatusIcon(status ServiceStatus, hasInCaddy bool) string {
 	if !hasInCaddy {
 		if !status.Present {
@@ -138,7 +246,7 @@ func GetStatusIcon(status ServiceStatus, hasInCaddy bool) string {
 	return "⚠️"
 }
 
-// GetOverallStatusIcon returns an overall status icon (stub)
+// GetOverallStatusIcon returns an overall status icon.
 func GetOverallStatusIcon(status OverallSyncStatus) string {
 	switch status {
 	case FullyInSync:
@@ -149,6 +257,8 @@ func GetOverallStatusIcon(status OverallSyncStatus) string {
 		return "❌"
 	case CaddyOnly:
 		return "📋"
+	case Stale:
+		return "🗑️"
 	default:
 		return "?"
 	}
@@ -215,37 +325,37 @@ func DefaultStyles() StyleConfig {
 	}
 }
 
-// UI represents a UI helper (stub)
+// UI represents a UI helper.
 type UI struct{}
 
-// NewUI creates a new UI (stub)
+// NewUI creates a new UI.
 func NewUI() *UI {
 	return &UI{}
 }
 
-// RenderError renders an error (stub)
+// RenderError renders an error.
 func (u *UI) RenderError(err error) string {
 	return "Error: " + err.Error()
 }
 
-// RenderSuccess renders a success message (stub)
+// RenderSuccess renders a success message.
 func (u *UI) RenderSuccess(message string) string {
 	return "Success: " + message
 }
 
-// RenderInfo renders an info message (stub)
+// RenderInfo renders an info message.
 func (u *UI) RenderInfo(message string) string {
 	return "Info: " + message
 }
 
-// SyncStatusRenderer is a stub renderer
+// SyncStatusRenderer renders dashboard data for CLI views.
 type SyncStatusRenderer struct {
 	dashboard *SyncStatusDashboard
 	width     int
 	showIPs   bool
 }
 
-// NewSyncStatusRenderer creates a new renderer (stub)
+// NewSyncStatusRenderer creates a new renderer.
 func NewSyncStatusRenderer(dashboard *SyncStatusDashboard) *SyncStatusRenderer {
 	return &SyncStatusRenderer{
 		dashboard: dashboard,
@@ -254,47 +364,59 @@ func NewSyncStatusRenderer(dashboard *SyncStatusDashboard) *SyncStatusRenderer {
 	}
 }
 
-// SetWidth sets the width (stub)
+// SetWidth sets the width.
 func (r *SyncStatusRenderer) SetWidth(width int) {
 	r.width = width
 }
 
-// ShowIPs returns whether to show IPs (stub)
+// ShowIPs returns whether to show IPs.
 func (r *SyncStatusRenderer) ShowIPs() bool {
 	return r.showIPs
 }
 
-// SetShowIPs sets whether to show IPs (stub)
+// SetShowIPs sets whether to show IPs.
 func (r *SyncStatusRenderer) SetShowIPs(show bool) {
 	r.showIPs = show
 }
 
-// RenderCompactSummary renders a compact summary (stub)
+// RenderCompactSummary renders a compact summary.
 func (r *SyncStatusRenderer) RenderCompactSummary() string {
 	if r.dashboard == nil {
 		return "No data"
 	}
 	summary := r.dashboard.GetSummary()
-	return lipgloss.NewStyle().Render(
-		lipgloss.JoinVertical(lipgloss.Left,
-			"Sync Status Summary:",
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#9ece6a")).Render(
-				"  ✓ "+string(rune(summary.FullyInSync))+" synced",
-			),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68")).Render(
-				"  ⚠ "+string(rune(summary.PartiallyInSync))+" partial",
-			),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Render(
-				"  ✗ "+string(rune(summary.OutOfSync))+" out of sync",
-			),
+	return lipgloss.JoinVertical(lipgloss.Left,
+		"Sync Status Summary:",
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#9ece6a")).Render(
+			fmt.Sprintf("  ✓ %d synced", summary.FullyInSync),
 		),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68")).Render(
+			fmt.Sprintf("  ⚠ %d partial", summary.PartiallyInSync),
+		),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e")).Render(
+			fmt.Sprintf("  ✗ %d out of sync", summary.OutOfSync),
+		),
+		fmt.Sprintf("  + %d caddy only", summary.CaddyOnly),
 	)
 }
 
-// RenderDashboard renders the full dashboard (stub)
+// RenderDashboard renders the full dashboard.
 func (r *SyncStatusRenderer) RenderDashboard() string {
 	if r.dashboard == nil {
 		return "No data loaded"
 	}
-	return "Dashboard view (TUI removed - to be rebuilt)"
+	statuses := r.dashboard.GetFilteredStatuses()
+	lines := []string{"Sync Status Dashboard"}
+	if len(statuses) == 0 {
+		lines = append(lines, "No matching services")
+		return strings.Join(lines, "\n")
+	}
+	for _, status := range statuses {
+		line := fmt.Sprintf("%s %s [%s]", GetOverallStatusIcon(status.Overall), status.Hostname, status.DataSource)
+		if r.showIPs {
+			line += fmt.Sprintf(" caddy=%s dns=%s", status.CaddyIP, status.DNSResolvedIP)
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }

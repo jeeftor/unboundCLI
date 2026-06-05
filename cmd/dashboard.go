@@ -3,15 +3,13 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/jeeftor/caddy-dns-sync/internal/api"
-	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	runtimeapp "github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
@@ -86,36 +84,23 @@ func (m listModel) Init() tea.Cmd {
 }
 
 func loadSyncData() tea.Msg {
-	// Load main config first
-	cfg, err := config.LoadConfig()
+	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
+		IncludeUnbound: true,
+		IncludeDNSMasq: true,
+		IncludeAdguard: true,
+	})
 	if err != nil {
-		return dataLoadedMsg{err: fmt.Errorf("error loading configuration: %w", err)}
+		return dataLoadedMsg{err: err}
 	}
-
-	// Load AdguardHome config
-	adguardConfig, err := config.LoadAdguardConfig()
-	if err != nil {
-		return dataLoadedMsg{err: fmt.Errorf("error loading AdguardHome configuration: %w", err)}
-	}
-
-	// Create clients
-	unboundClient := api.NewClient(cfg)
-
-	var adguardClient *api.AdguardClient
-	if adguardConfig.Enabled && adguardConfig.BaseURL != "" && adguardConfig.Username != "" && adguardConfig.Password != "" {
-		adguardClient = api.NewAdguardClient(adguardConfig.GetAdguardAPIConfig())
-	}
-
-	// Create Caddy client - use default config from Caddy sync commands
-	caddyServerIP := "192.168.1.15"
-	caddyClient := api.NewCaddyClient(caddyServerIP, 2019)
-
-	// Create DNSMasq client
-	dnsmasqClient := api.NewDNSMasqClient(cfg)
 
 	// Create dashboard and load data
-	dashboard := tui.NewSyncStatusDashboard(caddyServerIP)
-	err = dashboard.LoadSyncData(caddyClient, unboundClient, adguardClient, dnsmasqClient)
+	dashboard := tui.NewSyncStatusDashboard(runtime.CaddyEndpoint.ServerIP)
+	err = dashboard.LoadSyncData(
+		runtime.Clients.Caddy,
+		runtime.Clients.Unbound,
+		runtime.Clients.Adguard,
+		runtime.Clients.DNSMasq,
+	)
 	if err != nil {
 		return dataLoadedMsg{err: fmt.Errorf("error loading sync data: %w", err)}
 	}
@@ -498,60 +483,45 @@ Controls:
   e             - Toggle emoji/text mode
   i             - Toggle IP address display
   o             - Toggle out-of-sync filter`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if dashboardJsonOutput {
-			// For JSON output, use the status command logic but output JSON
-			runStatusJSON()
-			return
-		}
-
-		// Run the interactive TUI
-		model := initialListModel(dashboardCompact)
-		p := tea.NewProgram(model, tea.WithAltScreen())
-
-		if _, err := p.Run(); err != nil {
-			logging.Error("Error running interactive list", "error", err)
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-	},
+	RunE: runDashboard,
 }
 
-func runStatusJSON() {
-	// Load config and data (similar to status command)
-	cfg, err := config.LoadConfig()
+func runDashboard(cmd *cobra.Command, args []string) error {
+	if dashboardJsonOutput {
+		return runStatusJSON(cmd)
+	}
+
+	model := initialListModel(dashboardCompact)
+	p := tea.NewProgram(model, tea.WithAltScreen())
+
+	if _, err := p.Run(); err != nil {
+		logging.Error("Error running interactive list", "error", err)
+		return fmt.Errorf("error running interactive list: %w", err)
+	}
+	return nil
+}
+
+func runStatusJSON(cmd *cobra.Command) error {
+	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
+		IncludeUnbound: true,
+		IncludeDNSMasq: true,
+		IncludeAdguard: true,
+	})
 	if err != nil {
 		logging.Error("Error loading configuration", "error", err)
-		fmt.Printf("Error loading configuration: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading configuration: %w", err)
 	}
 
-	adguardConfig, err := config.LoadAdguardConfig()
-	if err != nil {
-		logging.Error("Error loading AdguardHome configuration", "error", err)
-		fmt.Printf("Error loading AdguardHome configuration: %v\n", err)
-		os.Exit(1)
-	}
-
-	unboundClient := api.NewClient(cfg)
-
-	var adguardClient *api.AdguardClient
-	if adguardConfig.Enabled && adguardConfig.BaseURL != "" && adguardConfig.Username != "" && adguardConfig.Password != "" {
-		adguardClient = api.NewAdguardClient(adguardConfig.GetAdguardAPIConfig())
-	}
-
-	caddyServerIP := "192.168.1.15"
-	caddyClient := api.NewCaddyClient(caddyServerIP, 2019)
-
-	// Create DNSMasq client
-	dnsmasqClient := api.NewDNSMasqClient(cfg)
-
-	dashboard := tui.NewSyncStatusDashboard(caddyServerIP)
-	err = dashboard.LoadSyncData(caddyClient, unboundClient, adguardClient, dnsmasqClient)
+	dashboard := tui.NewSyncStatusDashboard(runtime.CaddyEndpoint.ServerIP)
+	err = dashboard.LoadSyncData(
+		runtime.Clients.Caddy,
+		runtime.Clients.Unbound,
+		runtime.Clients.Adguard,
+		runtime.Clients.DNSMasq,
+	)
 	if err != nil {
 		logging.Error("Error loading sync data", "error", err)
-		fmt.Printf("Error loading sync data: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading sync data: %w", err)
 	}
 
 	// Output JSON format
@@ -565,10 +535,10 @@ func runStatusJSON() {
 	jsonBytes, err := json.MarshalIndent(jsonData, "", "  ")
 	if err != nil {
 		logging.Error("Error formatting JSON", "error", err)
-		fmt.Printf("Error formatting JSON: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error formatting JSON: %w", err)
 	}
-	fmt.Println(string(jsonBytes))
+	fmt.Fprintln(cmd.OutOrStdout(), string(jsonBytes))
+	return nil
 }
 
 func init() {

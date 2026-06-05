@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/jeeftor/caddy-dns-sync/internal/api"
-	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	runtimeapp "github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 	"github.com/spf13/cobra"
@@ -35,101 +33,67 @@ This command fetches data from all three systems and compares them to show:
 - Whether AdguardHome has matching DNS rewrites
 - Overall sync status for each service
 
-Use this command to quickly identify services that need synchronization.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		// Load main config
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			logging.Error("Error loading configuration", "error", err)
-			fmt.Printf("❌ Error loading configuration: %v\n", err)
-			fmt.Println("Please run 'config' command to set up API access")
-			os.Exit(1)
-		}
+	Use this command to quickly identify services that need synchronization.`,
+	RunE: runStatus,
+}
 
-		// Create clients
-		var unboundClient *api.Client
-		var adguardClient *api.AdguardClient
-		var dnsmasqClient *api.DNSMasqClient
+func runStatus(cmd *cobra.Command, args []string) error {
+	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
+		CaddyServerIP:   statusCaddyServerIP,
+		CaddyServerPort: statusCaddyServerPort,
+		IncludeUnbound:  !statusSkipUnbound,
+		IncludeDNSMasq:  true,
+		IncludeAdguard:  !statusSkipAdguard,
+	})
+	if err != nil {
+		logging.Error("Error loading configuration", "error", err)
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
+	}
 
-		// Create UnboundDNS client (unless skipped)
-		if !statusSkipUnbound {
-			unboundClient = api.NewClient(cfg)
-		}
+	dashboard := tui.NewSyncStatusDashboard(runtime.CaddyEndpoint.ServerIP)
+	dashboard.SetFilters(tui.StatusFilters{
+		ShowOnlyOutOfSync: statusOutOfSyncOnly,
+		HostnameFilter:    statusHostnameFilter,
+	})
 
-		// Create DNSMasq client (uses same config as Unbound)
-		dnsmasqClient = api.NewDNSMasqClient(cfg)
+	if !statusCompact {
+		fmt.Fprint(cmd.OutOrStdout(), "🔍 Fetching sync status from all systems...")
+	}
 
-		// Create AdguardHome client (unless skipped)
-		if !statusSkipAdguard {
-			adguardConfig, err := config.LoadAdguardConfig()
-			if err != nil {
-				if !statusCompact {
-					fmt.Printf("⚠️  Warning: Could not load AdguardHome config: %v\n", err)
-					fmt.Println("AdguardHome status will be skipped. Use --skip-adguard to suppress this warning.")
-				}
-			} else if adguardConfig.Enabled {
-				// Validate AdguardHome config
-				if adguardConfig.BaseURL != "" && adguardConfig.Username != "" && adguardConfig.Password != "" {
-					adguardClient = api.NewAdguardClient(adguardConfig.GetAdguardAPIConfig())
-				} else {
-					if !statusCompact {
-						fmt.Println("⚠️  Warning: AdguardHome configuration incomplete")
-						fmt.Println("Set ADGUARD_BASE_URL, ADGUARD_USERNAME, and ADGUARD_PASSWORD")
-					}
-				}
-			}
-		}
+	err = dashboard.LoadSyncData(
+		runtime.Clients.Caddy,
+		runtime.Clients.Unbound,
+		runtime.Clients.Adguard,
+		runtime.Clients.DNSMasq,
+	)
+	if err != nil {
+		return fmt.Errorf("error loading sync data: %w", err)
+	}
 
-		// Create Caddy client
-		caddyClient := api.NewCaddyClient(statusCaddyServerIP, statusCaddyServerPort)
+	if !statusCompact {
+		fmt.Fprintln(cmd.OutOrStdout(), " Done!")
+	}
 
-		// Create dashboard
-		dashboard := tui.NewSyncStatusDashboard(statusCaddyServerIP)
+	renderer := tui.NewSyncStatusRenderer(dashboard)
+	renderer.SetShowIPs(statusShowIPs)
 
-		// Set up filters
-		filters := tui.StatusFilters{
-			ShowOnlyOutOfSync: statusOutOfSyncOnly,
-			HostnameFilter:    statusHostnameFilter,
-		}
-		dashboard.SetFilters(filters)
+	if statusCompact {
+		fmt.Fprintln(cmd.OutOrStdout(), renderer.RenderCompactSummary())
+	} else {
+		fmt.Fprint(cmd.OutOrStdout(), renderer.RenderDashboard())
+	}
 
-		// Load data from all systems
+	summary := dashboard.GetSummary()
+	if summary.OutOfSync > 0 || summary.PartiallyInSync > 0 {
 		if !statusCompact {
-			fmt.Print("🔍 Fetching sync status from all systems...")
+			fmt.Fprintln(cmd.OutOrStdout(), "\n💡 TIP: Run sync commands to fix out-of-sync services:")
+			fmt.Fprintln(cmd.OutOrStdout(), "   caddy-dns-sync caddy-sync-all --dry-run  # Preview changes")
+			fmt.Fprintln(cmd.OutOrStdout(), "   caddy-dns-sync caddy-sync-all            # Apply changes")
 		}
+		return exitCode(1)
+	}
 
-		err = dashboard.LoadSyncData(caddyClient, unboundClient, adguardClient, dnsmasqClient)
-		if err != nil {
-			fmt.Printf("\n❌ Error loading sync data: %v\n", err)
-			os.Exit(1)
-		}
-
-		if !statusCompact {
-			fmt.Println(" Done!")
-		}
-
-		// Create renderer
-		renderer := tui.NewSyncStatusRenderer(dashboard)
-		renderer.SetShowIPs(statusShowIPs)
-
-		// Render output
-		if statusCompact {
-			fmt.Println(renderer.RenderCompactSummary())
-		} else {
-			fmt.Print(renderer.RenderDashboard())
-		}
-
-		// Check if there are any issues and exit with appropriate code
-		summary := dashboard.GetSummary()
-		if summary.OutOfSync > 0 || summary.PartiallyInSync > 0 {
-			if !statusCompact {
-				fmt.Printf("\n💡 TIP: Run sync commands to fix out-of-sync services:\n")
-				fmt.Printf("   caddy-dns-sync caddy-sync-all --dry-run  # Preview changes\n")
-				fmt.Printf("   caddy-dns-sync caddy-sync-all            # Apply changes\n")
-			}
-			os.Exit(1) // Exit with error code for scripting
-		}
-	},
+	return nil
 }
 
 func init() {
@@ -137,9 +101,9 @@ func init() {
 
 	// Add flags
 	statusCmd.Flags().
-		StringVar(&statusCaddyServerIP, "caddy-ip", "192.168.1.15", "IP address of the Caddy server")
+		StringVar(&statusCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "IP address of the Caddy server")
 	statusCmd.Flags().
-		IntVar(&statusCaddyServerPort, "caddy-port", 2019, "Admin port of the Caddy server")
+		IntVar(&statusCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Admin port of the Caddy server")
 	statusCmd.Flags().
 		BoolVar(&statusShowIPs, "show-ips", false, "Show IP addresses in the table")
 	statusCmd.Flags().

@@ -3,20 +3,20 @@ package tui
 import (
 	"testing"
 
-	"github.com/jeeftor/caddy-dns-sync/internal/widgets"
+	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
 // TestExecuteSyncAction tests individual sync action execution
 func TestExecuteSyncAction(t *testing.T) {
 	tests := []struct {
 		name        string
-		action      widgets.SyncAction
+		action      syncplan.Action
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "add unbound entry",
-			action: widgets.SyncAction{
+			action: syncplan.Action{
 				Type:     "add",
 				Hostname: "test.example.com",
 				Service:  "unbound",
@@ -26,7 +26,7 @@ func TestExecuteSyncAction(t *testing.T) {
 		},
 		{
 			name: "update adguard entry",
-			action: widgets.SyncAction{
+			action: syncplan.Action{
 				Type:     "update",
 				Hostname: "test.example.com",
 				Service:  "adguard",
@@ -37,7 +37,7 @@ func TestExecuteSyncAction(t *testing.T) {
 		},
 		{
 			name: "delete unbound entry",
-			action: widgets.SyncAction{
+			action: syncplan.Action{
 				Type:     "delete",
 				Hostname: "test.example.com",
 				Service:  "unbound",
@@ -47,7 +47,7 @@ func TestExecuteSyncAction(t *testing.T) {
 		},
 		{
 			name: "unknown service",
-			action: widgets.SyncAction{
+			action: syncplan.Action{
 				Type:     "add",
 				Hostname: "test.example.com",
 				Service:  "unknown",
@@ -60,12 +60,7 @@ func TestExecuteSyncAction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create executor with nil clients for now (will use mocks later)
-			executor := &TUISyncExecutor{
-				unboundClient: nil,
-				adguardClient: nil,
-				dhcpClient:    nil,
-			}
+			executor := NewTUISyncExecutor(nil, nil, nil)
 
 			err := executor.ExecuteSyncAction(tt.action)
 
@@ -88,7 +83,7 @@ func TestExecuteSyncAction(t *testing.T) {
 
 // TestExecuteSyncActions tests batch sync execution
 func TestExecuteSyncActions(t *testing.T) {
-	actions := []widgets.SyncAction{
+	actions := []syncplan.Action{
 		{
 			Type:     "add",
 			Hostname: "test1.example.com",
@@ -112,11 +107,7 @@ func TestExecuteSyncActions(t *testing.T) {
 		},
 	}
 
-	executor := &TUISyncExecutor{
-		unboundClient: nil,
-		adguardClient: nil,
-		dhcpClient:    nil,
-	}
+	executor := NewTUISyncExecutor(nil, nil, nil)
 
 	result := executor.ExecuteSyncActions(actions)
 
@@ -139,7 +130,28 @@ func TestExecuteSyncActions(t *testing.T) {
 
 // TestDryRunMode tests that dry run doesn't execute actual API calls
 func TestDryRunMode(t *testing.T) {
-	t.Skip("TODO: Implement dry run mode test")
+	executor := NewTUISyncExecutor(nil, nil, nil)
+	executor.SetDryRun(true)
+
+	result := executor.ExecuteSyncActions([]syncplan.Action{
+		{
+			Type:     "add",
+			Hostname: "dry.example.com",
+			Service:  "unbound",
+			NewIP:    "192.168.1.15",
+			Enabled:  true,
+		},
+	})
+
+	if !result.Success {
+		t.Fatalf("expected dry-run success with nil clients, got errors: %#v", result.Errors)
+	}
+	if result.ItemsAdded != 1 {
+		t.Fatalf("expected dry-run add count 1, got %d", result.ItemsAdded)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("expected no dry-run errors, got %#v", result.Errors)
+	}
 }
 
 // Helper function

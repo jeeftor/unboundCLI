@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -34,169 +33,154 @@ This command edits an existing DNS override in Unbound DNS. You must provide the
 of the override to edit. Use the 'list' command to find the UUID of the override
 you want to edit.`,
 	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		// Get UUID from args
-		uuid := args[0]
-		logging.Debug("Edit command called", "uuid", uuid)
+	RunE: runEdit,
+}
 
-		// Create UI component
-		editUI := newEditUI()
+func runEdit(cmd *cobra.Command, args []string) error {
+	uuid := args[0]
+	logging.Debug("Edit command called", "uuid", uuid)
 
-		// Load config
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			logging.Error("Error loading configuration", "error", err)
-			fmt.Println(editUI.RenderError(err))
-			fmt.Println("Please run 'config' command to set up API access")
-			os.Exit(1)
+	editUI := newEditUI()
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logging.Error("Error loading configuration", "error", err)
+		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
+	}
+
+	client := api.NewClient(cfg)
+
+	logging.Debug("Fetching overrides to find target")
+	overrides, err := client.GetOverrides()
+	if err != nil {
+		logging.Error("Error fetching overrides", "error", err)
+		return fmt.Errorf("error fetching overrides: %w", err)
+	}
+
+	var targetOverride *api.DNSOverride
+	for _, o := range overrides {
+		if o.UUID == uuid {
+			targetOverride = &o
+			break
 		}
+	}
 
-		// Create client
-		client := api.NewClient(cfg)
+	if targetOverride == nil {
+		logging.Error("No override found with UUID", "uuid", uuid)
+		return fmt.Errorf("no override found with UUID %s", uuid)
+	}
 
-		// Get override details
-		logging.Debug("Fetching overrides to find target")
-		overrides, err := client.GetOverrides()
-		if err != nil {
-			logging.Error("Error fetching overrides", "error", err)
-			fmt.Println(editUI.RenderError(err))
-			os.Exit(1)
-		}
+	logging.Debug("Found override to edit",
+		"uuid", uuid,
+		"host", targetOverride.Host,
+		"domain", targetOverride.Domain,
+		"server", targetOverride.Server)
 
-		// Find the override with the given UUID
-		var targetOverride *api.DNSOverride
-		for _, o := range overrides {
-			if o.UUID == uuid {
-				targetOverride = &o
-				break
-			}
-		}
-
-		if targetOverride == nil {
-			logging.Error("No override found with UUID", "uuid", uuid)
-			fmt.Println(editUI.RenderError(fmt.Errorf("No override found with UUID %s", uuid)))
-			os.Exit(1)
-		}
-
-		logging.Debug("Found override to edit",
-			"uuid", uuid,
-			"host", targetOverride.Host,
-			"domain", targetOverride.Domain,
-			"server", targetOverride.Server)
-
-		// Create a copy of the override to edit
-		editedOverride := *targetOverride
-
-		// Update with flags if provided
-		if cmd.Flags().Changed("host") {
-			editedOverride.Host = editHost
-		}
-		if cmd.Flags().Changed("domain") {
-			editedOverride.Domain = editDomain
-		}
-		if cmd.Flags().Changed("server") {
-			editedOverride.Server = editServer
-		}
-		if cmd.Flags().Changed("description") {
-			editedOverride.Description = editDescription
-		}
-		if cmd.Flags().Changed("enabled") {
-			if editEnabled {
-				editedOverride.Enabled = "1"
-			} else {
-				editedOverride.Enabled = "0"
-			}
-		}
-
-		// Prompt for updates if not in no-prompt mode
-		if !editNoPrompt {
-			scanner := bufio.NewScanner(os.Stdin)
-
-			// Host
-			fmt.Printf("Host [%s]: ", editedOverride.Host)
-			scanner.Scan()
-			if scanner.Text() != "" {
-				editedOverride.Host = scanner.Text()
-			}
-
-			// Domain
-			fmt.Printf("Domain [%s]: ", editedOverride.Domain)
-			scanner.Scan()
-			if scanner.Text() != "" {
-				editedOverride.Domain = scanner.Text()
-			}
-
-			// Server
-			fmt.Printf("IP Address [%s]: ", editedOverride.Server)
-			scanner.Scan()
-			if scanner.Text() != "" {
-				editedOverride.Server = scanner.Text()
-			}
-
-			// Description
-			fmt.Printf("Description [%s]: ", editedOverride.Description)
-			scanner.Scan()
-			if scanner.Text() != "" {
-				editedOverride.Description = scanner.Text()
-			}
-
-			// Enabled
-			enabled := "Yes"
-			if editedOverride.Enabled == "0" {
-				enabled = "No"
-			}
-			fmt.Printf("Enable (y/n) [%s]: ", enabled)
-			scanner.Scan()
-			if scanner.Text() != "" {
-				if strings.ToLower(scanner.Text()) == "y" {
-					editedOverride.Enabled = "1"
-				} else if strings.ToLower(scanner.Text()) == "n" {
-					editedOverride.Enabled = "0"
-				}
-			}
-		}
-
-		// Validate input
-		if editedOverride.Host == "" || editedOverride.Domain == "" || editedOverride.Server == "" {
-			logging.Error("Missing required fields",
-				"host", editedOverride.Host,
-				"domain", editedOverride.Domain,
-				"server", editedOverride.Server)
-			fmt.Println(editUI.RenderError(fmt.Errorf("Host, Domain, and Server are required")))
-			os.Exit(1)
-		}
-
-		// Update override
-		fmt.Println(
-			editUI.RenderUpdatingMessage(
-				editedOverride.Host,
-				editedOverride.Domain,
-				editedOverride.Server,
-			),
-		)
-		if err := client.UpdateOverride(editedOverride); err != nil {
-			logging.Error("Error updating override", "error", err)
-			fmt.Println(editUI.RenderError(err))
-			os.Exit(1)
-		}
-
-		fmt.Println(editUI.RenderSuccess("DNS override updated successfully"))
-
-		// Apply changes if requested
-		if editApplyAfter {
-			fmt.Println(editUI.RenderApplyingMessage())
-			if err := client.ApplyChanges(); err != nil {
-				logging.Error("Error applying changes", "error", err)
-				fmt.Println(editUI.RenderError(err))
-				os.Exit(1)
-			}
-			fmt.Println(editUI.RenderApplySuccess())
+	editedOverride := *targetOverride
+	if cmd.Flags().Changed("host") {
+		editedOverride.Host = editHost
+	}
+	if cmd.Flags().Changed("domain") {
+		editedOverride.Domain = editDomain
+	}
+	if cmd.Flags().Changed("server") {
+		editedOverride.Server = editServer
+	}
+	if cmd.Flags().Changed("description") {
+		editedOverride.Description = editDescription
+	}
+	if cmd.Flags().Changed("enabled") {
+		if editEnabled {
+			editedOverride.Enabled = "1"
 		} else {
-			fmt.Println(editUI.RenderChangesNotApplied())
+			editedOverride.Enabled = "0"
 		}
+	}
 
-		logging.Info("DNS override updated successfully", "uuid", uuid)
-	},
+	if !editNoPrompt {
+		if err := promptForOverrideEdits(cmd, &editedOverride); err != nil {
+			return err
+		}
+	}
+
+	if editedOverride.Host == "" || editedOverride.Domain == "" || editedOverride.Server == "" {
+		logging.Error("Missing required fields",
+			"host", editedOverride.Host,
+			"domain", editedOverride.Domain,
+			"server", editedOverride.Server)
+		return fmt.Errorf("host, domain, and server are required")
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(),
+		editUI.RenderUpdatingMessage(
+			editedOverride.Host,
+			editedOverride.Domain,
+			editedOverride.Server,
+		),
+	)
+	if err := client.UpdateOverride(editedOverride); err != nil {
+		logging.Error("Error updating override", "error", err)
+		return fmt.Errorf("error updating override: %w", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), editUI.RenderSuccess("DNS override updated successfully"))
+
+	if editApplyAfter {
+		fmt.Fprintln(cmd.OutOrStdout(), editUI.RenderApplyingMessage())
+		if err := client.ApplyChanges(); err != nil {
+			logging.Error("Error applying changes", "error", err)
+			return fmt.Errorf("error applying changes: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), editUI.RenderApplySuccess())
+	} else {
+		fmt.Fprintln(cmd.OutOrStdout(), editUI.RenderChangesNotApplied())
+	}
+
+	logging.Info("DNS override updated successfully", "uuid", uuid)
+	return nil
+}
+
+func promptForOverrideEdits(cmd *cobra.Command, override *api.DNSOverride) error {
+	scanner := bufio.NewScanner(cmd.InOrStdin())
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Host [%s]: ", override.Host)
+	if scanner.Scan() && scanner.Text() != "" {
+		override.Host = scanner.Text()
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Domain [%s]: ", override.Domain)
+	if scanner.Scan() && scanner.Text() != "" {
+		override.Domain = scanner.Text()
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "IP Address [%s]: ", override.Server)
+	if scanner.Scan() && scanner.Text() != "" {
+		override.Server = scanner.Text()
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Description [%s]: ", override.Description)
+	if scanner.Scan() && scanner.Text() != "" {
+		override.Description = scanner.Text()
+	}
+
+	enabled := "Yes"
+	if override.Enabled == "0" {
+		enabled = "No"
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Enable (y/n) [%s]: ", enabled)
+	if scanner.Scan() && scanner.Text() != "" {
+		switch strings.ToLower(scanner.Text()) {
+		case "y":
+			override.Enabled = "1"
+		case "n":
+			override.Enabled = "0"
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading edit prompts: %w", err)
+	}
+	return nil
 }
 
 func init() {
