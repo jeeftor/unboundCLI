@@ -17,6 +17,7 @@ type ConfigField struct {
 	Placeholder string
 	IsPassword  bool
 	IsRequired  bool
+	IsToggle    bool // if true, field only accepts "true"/"false" and is toggled with space/enter
 	Validator   func(string) error
 	HelpText    string
 }
@@ -85,7 +86,7 @@ func (w *ConfigEditorWidget) Update(msg tea.Msg) (Widget, tea.Cmd) {
 				w.editing = false
 				return w, nil
 			case "esc":
-				// Cancel editing
+				// Cancel editing (discard unsaved input)
 				w.editing = false
 				return w, nil
 			default:
@@ -93,13 +94,17 @@ func (w *ConfigEditorWidget) Update(msg tea.Msg) (Widget, tea.Cmd) {
 				return w, cmd
 			}
 		}
-		w.inputs[w.cursorPos], cmd = w.inputs[w.cursorPos].Update(msg)
-		return w, cmd
 	}
 
 	// Handle navigation when not editing
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Paste while not in editing mode: auto-enter edit mode and feed the content in.
+		if msg.Paste && w.cursorPos < len(w.inputs) && !w.currentFieldIsToggle() {
+			w.startEditing()
+			w.inputs[w.cursorPos], cmd = w.inputs[w.cursorPos].Update(msg)
+			return w, cmd
+		}
 		switch msg.String() {
 		case "up", "k":
 			w.moveCursorUp()
@@ -110,8 +115,17 @@ func (w *ConfigEditorWidget) Update(msg tea.Msg) (Widget, tea.Cmd) {
 		case "right", "l":
 			w.nextSection()
 		case "enter", "e":
+			if w.currentFieldIsToggle() {
+				w.toggleCurrentField()
+				return w, nil
+			}
 			w.startEditing()
 			return w, textinput.Blink
+		case " ":
+			if w.currentFieldIsToggle() {
+				w.toggleCurrentField()
+				return w, nil
+			}
 		case "?":
 			w.showHelp = !w.showHelp
 		}
@@ -217,11 +231,48 @@ func (w *ConfigEditorWidget) renderField(field ConfigField, globalIndex int) str
 	}
 	parts = append(parts, w.theme.Info.Render(label+":"))
 
-	// Input field
+	// Toggle fields get a special pill renderer instead of a text input.
+	if field.IsToggle {
+		isTrue := field.Value == "true"
+		focused := w.cursorPos == globalIndex
+
+		onStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(w.theme.ColorSuccess).
+			Padding(0, 1).
+			Bold(true)
+		offStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#ffffff")).
+			Background(w.theme.ColorDim).
+			Padding(0, 1)
+		hintStyle := w.theme.Dimmed
+
+		var pill string
+		if isTrue {
+			pill = onStyle.Render("  true  ")
+		} else {
+			pill = offStyle.Render("  false  ")
+		}
+
+		hint := ""
+		if focused {
+			hint = "  " + hintStyle.Render("space / enter to toggle")
+		}
+
+		wrapStyle := lipgloss.NewStyle()
+		if focused {
+			wrapStyle = wrapStyle.Border(lipgloss.RoundedBorder()).
+				BorderForeground(w.theme.ColorInfo).
+				Padding(0, 1)
+		}
+		parts = append(parts, wrapStyle.Render(pill+hint))
+		return strings.Join(parts, "\n")
+	}
+
+	// Regular text input field.
 	if globalIndex < len(w.inputs) {
 		input := w.inputs[globalIndex]
 
-		// Style based on focus and validation
 		var inputStyle lipgloss.Style
 		if w.editing && w.cursorPos == globalIndex {
 			inputStyle = w.theme.InputFocused
@@ -231,7 +282,6 @@ func (w *ConfigEditorWidget) renderField(field ConfigField, globalIndex int) str
 			inputStyle = w.theme.InputBlurred
 		}
 
-		// Check for validation error
 		if errMsg, hasError := w.validationErrors[field.Key]; hasError {
 			inputStyle = inputStyle.Copy().BorderForeground(w.theme.ColorError)
 			parts = append(parts, inputStyle.Render(input.View()))
@@ -240,7 +290,6 @@ func (w *ConfigEditorWidget) renderField(field ConfigField, globalIndex int) str
 			parts = append(parts, inputStyle.Render(input.View()))
 		}
 
-		// Help text
 		if field.HelpText != "" && w.cursorPos == globalIndex {
 			parts = append(parts, w.theme.Description.Render(fmt.Sprintf("  ℹ %s", field.HelpText)))
 		}
@@ -341,11 +390,13 @@ func (w *ConfigEditorWidget) nextSection() {
 	}
 }
 
-// startEditing starts editing the current field
+// startEditing starts editing the current field, placing the cursor at the end
+// of any existing text so backspace works immediately.
 func (w *ConfigEditorWidget) startEditing() {
 	w.editing = true
 	if w.cursorPos < len(w.inputs) {
 		w.inputs[w.cursorPos].Focus()
+		w.inputs[w.cursorPos].CursorEnd()
 	}
 }
 
@@ -448,12 +499,19 @@ func (w *ConfigEditorWidget) SetValue(key, value string) {
 	}
 }
 
-// GetAllValues returns all configuration values as a map
+// GetAllValues returns all configuration values as a map.
+// It reads directly from the live text inputs so unsaved edits (typed but
+// not yet confirmed with Enter) are included.
 func (w *ConfigEditorWidget) GetAllValues() map[string]string {
 	values := make(map[string]string)
-	for _, section := range w.sections {
-		for _, field := range section.Fields {
-			values[field.Key] = field.Value
+	for i, section := range w.sections {
+		for j, field := range section.Fields {
+			idx := w.getFieldOffset(i) + j
+			if idx < len(w.inputs) {
+				values[field.Key] = w.inputs[idx].Value()
+			} else {
+				values[field.Key] = field.Value
+			}
 		}
 	}
 	return values
@@ -520,4 +578,52 @@ func (w *ConfigEditorWidget) TogglePasswordVisibility() {
 // ShowingPasswords returns whether password fields are currently visible
 func (w *ConfigEditorWidget) ShowingPasswords() bool {
 	return w.showPasswords
+}
+
+// currentFieldIsToggle returns true if the field under the cursor is a toggle.
+func (w *ConfigEditorWidget) currentFieldIsToggle() bool {
+	sIdx, fIdx := w.getFieldIndices(w.cursorPos)
+	if sIdx < 0 || fIdx < 0 {
+		return false
+	}
+	return w.sections[sIdx].Fields[fIdx].IsToggle
+}
+
+// toggleCurrentField flips the value of the current toggle field between "true" and "false".
+func (w *ConfigEditorWidget) toggleCurrentField() {
+	sIdx, fIdx := w.getFieldIndices(w.cursorPos)
+	if sIdx < 0 || fIdx < 0 {
+		return
+	}
+	newVal := "true"
+	if w.sections[sIdx].Fields[fIdx].Value == "true" {
+		newVal = "false"
+	}
+	w.sections[sIdx].Fields[fIdx].Value = newVal
+	if w.cursorPos < len(w.inputs) {
+		w.inputs[w.cursorPos].SetValue(newVal)
+	}
+}
+
+// GetCurrentSection returns the index of the currently active section tab.
+func (w *ConfigEditorWidget) GetCurrentSection() int {
+	return w.currentSection
+}
+
+// GetInputValue returns the live value of the input for the field with the given key.
+// Unlike GetValue, this reads directly from the text input so it captures text that
+// the user has typed but not yet confirmed with Enter.
+func (w *ConfigEditorWidget) GetInputValue(key string) string {
+	for i, section := range w.sections {
+		for j, field := range section.Fields {
+			if field.Key == key {
+				idx := w.getFieldOffset(i) + j
+				if idx < len(w.inputs) {
+					return w.inputs[idx].Value()
+				}
+				return field.Value
+			}
+		}
+	}
+	return ""
 }

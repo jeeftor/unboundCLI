@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
@@ -42,18 +42,24 @@ func (s SortMode) String() string {
 	}
 }
 
+// cursorHighlightStyle is applied to the row under the cursor
+var cursorHighlightStyle = lipgloss.NewStyle().
+	Background(lipgloss.Color("#283457")).
+	Foreground(lipgloss.Color("#ffffff"))
+
 // TableWidget displays DNS sync status table with responsive column sizing
 type TableWidget struct {
 	BaseWidget
 
 	// Data
 	entries         []*models.Entry
-	filteredRows    []table.Row
+	filteredRows    [][]string
 	filteredEntries []*models.Entry // Entries corresponding to filteredRows
-	allRows         []table.Row
+	allRows         [][]string
 
-	// Table component
-	table table.Model
+	// Scroll / cursor
+	viewport viewport.Model
+	cursor   int
 
 	// Filter/search state
 	filterMode    models.FilterMode
@@ -80,17 +86,17 @@ type TableWidget struct {
 
 // NewTableWidget creates a new table widget
 func NewTableWidget() *TableWidget {
-	// Define column configurations - let BubbleTea handle the sizing
+	// Define column configurations
 	configs := []ColumnConfig{
-		{Title: "Hostname", MinWidth: 25, Priority: 1, FlexGrow: 3.0},
-		{Title: "Source", MinWidth: 8, Priority: 2, FlexGrow: 0.5},
-		{Title: "DNS", MinWidth: 15, Priority: 1, FlexGrow: 1.0},
-		{Title: "Upstream", MinWidth: 22, Priority: 2, FlexGrow: 1.5},
-		{Title: "DHCP", MinWidth: 15, Priority: 2, FlexGrow: 1.0},
-		{Title: "Unbound", MinWidth: 8, Priority: 1, FlexGrow: 0.5},
-		{Title: "AdGuard", MinWidth: 8, Priority: 1, FlexGrow: 0.5},
-		{Title: "CF", MinWidth: 5, Priority: 3, FlexGrow: 0.3},
-		{Title: "Status", MinWidth: 15, Priority: 1, FlexGrow: 1.0},
+		{Title: "Hostname", MinWidth: 26, Priority: 1, FlexGrow: 3.0},
+		{Title: "Source", MinWidth: 6, Priority: 2, FlexGrow: 0.3},
+		{Title: "DNS", MinWidth: 13, Priority: 1, FlexGrow: 0.8},
+		{Title: "Upstream", MinWidth: 20, Priority: 2, FlexGrow: 1.5},
+		{Title: "DHCP", MinWidth: 9, Priority: 2, FlexGrow: 0.3},
+		{Title: "Unbound", MinWidth: 7, Priority: 1, FlexGrow: 0.1},
+		{Title: "AdGuard", MinWidth: 7, Priority: 1, FlexGrow: 0.1},
+		{Title: "CF", MinWidth: 14, Priority: 3, FlexGrow: 0.8},
+		{Title: "Status", MinWidth: 14, Priority: 1, FlexGrow: 1.0},
 	}
 
 	// Create text input for search
@@ -99,24 +105,7 @@ func NewTableWidget() *TableWidget {
 	ti.CharLimit = 50
 	ti.Width = 30
 
-	// Create initial table with styles
-	t := table.New(
-		table.WithFocused(true),
-		table.WithHeight(10),
-	)
-
-	// Set table styles
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(CurrentTheme.ColorInfo).
-		BorderBottom(true).
-		Bold(true)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(CurrentTheme.ColorInfo).
-		Bold(false)
-	t.SetStyles(s)
+	vp := viewport.New(0, 10)
 
 	w := &TableWidget{
 		BaseWidget:      NewBaseWidget(),
@@ -129,7 +118,8 @@ func NewTableWidget() *TableWidget {
 		selectedIndices: make(map[int]bool),
 		serviceStatus:   ServiceLoadStatus{},
 		columnConfigs:   configs,
-		table:           t,
+		viewport:        vp,
+		cursor:          0,
 		theme:           CurrentTheme,
 	}
 
@@ -166,21 +156,180 @@ func (w *TableWidget) Update(msg tea.Msg) (Widget, tea.Cmd) {
 		}
 	}
 
-	// Handle selection keys when not in search mode
+	// Handle navigation and selection keys
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "up", "k":
+			if w.cursor > 0 {
+				w.cursor--
+				w.syncViewport()
+			}
+			return w, nil
+		case "down", "j":
+			if w.cursor < len(w.filteredEntries)-1 {
+				w.cursor++
+				w.syncViewport()
+			}
+			return w, nil
+		case "pgup":
+			step := w.viewport.Height - 1
+			if step < 1 {
+				step = 1
+			}
+			w.cursor -= step
+			if w.cursor < 0 {
+				w.cursor = 0
+			}
+			w.syncViewport()
+			return w, nil
+		case "pgdown":
+			step := w.viewport.Height - 1
+			if step < 1 {
+				step = 1
+			}
+			w.cursor += step
+			if w.cursor >= len(w.filteredEntries) {
+				w.cursor = len(w.filteredEntries) - 1
+			}
+			if w.cursor < 0 {
+				w.cursor = 0
+			}
+			w.syncViewport()
+			return w, nil
+		case "home":
+			w.cursor = 0
+			w.syncViewport()
+			return w, nil
+		case "end":
+			if len(w.filteredEntries) > 0 {
+				w.cursor = len(w.filteredEntries) - 1
+			}
+			w.syncViewport()
+			return w, nil
 		case "enter", " ":
-			// Toggle selection of current row
 			w.toggleSelection()
-			w.rebuildTable() // Rebuild to update selection indicators
+			w.rebuildTable()
 			return w, nil
 		}
 	}
 
-	// Otherwise update table
-	w.table, cmd = w.table.Update(msg)
+	// Pass remaining messages to viewport (handles mouse wheel etc.)
+	w.viewport, cmd = w.viewport.Update(msg)
 	return w, cmd
+}
+
+// syncViewport ensures the viewport is scrolled so the cursor row is visible.
+// Each data row is 1 line tall.
+func (w *TableWidget) syncViewport() {
+	if len(w.filteredEntries) == 0 {
+		return
+	}
+	// cursor line offset within the viewport content (0-based)
+	cursorLine := w.cursor
+	top := w.viewport.YOffset
+	bottom := top + w.viewport.Height - 1
+
+	if cursorLine < top {
+		w.viewport.YOffset = cursorLine
+	} else if cursorLine > bottom {
+		w.viewport.YOffset = cursorLine - w.viewport.Height + 1
+	}
+	if w.viewport.YOffset < 0 {
+		w.viewport.YOffset = 0
+	}
+
+	// Refresh rendered content so the highlight moves
+	w.viewport.SetContent(w.renderTableContent())
+}
+
+// renderTableContent builds the full table content string (header + rows)
+// using lipgloss-aware cell sizing so ANSI-colored cells are handled correctly.
+func (w *TableWidget) renderTableContent() string {
+	if len(w.columnWidths) == 0 {
+		return ""
+	}
+
+	dimColor := w.theme.ColorDim
+
+	// Collect visible column widths and titles
+	type visibleCol struct {
+		title string
+		width int
+	}
+	var cols []visibleCol
+	for i, cfg := range w.columnConfigs {
+		if i < len(w.columnWidths) && w.columnWidths[i] > 0 {
+			cols = append(cols, visibleCol{title: cfg.Title, width: w.columnWidths[i]})
+		}
+	}
+	if len(cols) == 0 {
+		return ""
+	}
+
+	cellStyle := func(w int) lipgloss.Style {
+		return lipgloss.NewStyle().Width(w).MaxWidth(w).Inline(true)
+	}
+
+	// Header row
+	headerParts := make([]string, len(cols))
+	for i, col := range cols {
+		headerParts[i] = cellStyle(col.width).Bold(true).Foreground(lipgloss.Color("#7aa2f7")).Render(col.title)
+	}
+	header := strings.Join(headerParts, " ")
+
+	// Separator line
+	sepWidth := 0
+	for _, col := range cols {
+		sepWidth += col.width + 1 // +1 for the space separator
+	}
+	if sepWidth > 0 {
+		sepWidth-- // no trailing separator
+	}
+	separator := lipgloss.NewStyle().Foreground(dimColor).Render(strings.Repeat("─", sepWidth))
+
+	var lines []string
+	lines = append(lines, header)
+	lines = append(lines, separator)
+
+	// Subtle row background colors by status (for non-cursor rows)
+	rowBg := map[models.SyncStatus]lipgloss.Color{
+		models.OutOfSync:       "#2a1a1a",
+		models.Stale:           "#2a1a1a",
+		models.CaddyOnly:       "#2a221a",
+		models.PartiallyInSync: "#2a251a",
+		models.DHCPMismatch:    "#2a251a",
+	}
+
+	// Data rows
+	for rowIdx, row := range w.filteredRows {
+		colIdx := 0
+		parts := make([]string, 0, len(cols))
+		for _, col := range cols {
+			var cellVal string
+			if colIdx < len(row) {
+				cellVal = row[colIdx]
+			}
+			rendered := cellStyle(col.width).Render(cellVal)
+			parts = append(parts, rendered)
+			colIdx++
+		}
+		line := strings.Join(parts, " ")
+
+		if rowIdx == w.cursor {
+			// Cursor row: strong blue highlight
+			line = cursorHighlightStyle.Width(sepWidth + 1).Render(line)
+		} else if rowIdx < len(w.filteredEntries) {
+			// Non-cursor rows: subtle status-based tint
+			status := w.filteredEntries[rowIdx].OverallStatus
+			if bg, ok := rowBg[status]; ok {
+				line = lipgloss.NewStyle().Background(bg).Width(sepWidth + 1).Render(line)
+			}
+		}
+		lines = append(lines, line)
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // View renders the table widget
@@ -193,7 +342,7 @@ func (w *TableWidget) View() string {
 
 	// Show loading message if no entries yet
 	if len(w.entries) == 0 {
-		loadingMsg := w.theme.Info.Render("⏳ Loading DNS entries...")
+		loadingMsg := w.theme.Info.Render("Loading DNS entries...")
 		sections = append(sections, loadingMsg)
 	}
 
@@ -221,15 +370,9 @@ func (w *TableWidget) View() string {
 		sections = append(sections, w.theme.Info.Render(searchLabel))
 	}
 
-	// Table (only if we have entries)
+	// Table viewport (only if we have entries)
 	if len(w.entries) > 0 {
-		// Update table style based on selected row's status (like Cairo example)
-		cursor := w.table.Cursor()
-		if cursor >= 0 && cursor < len(w.filteredEntries) {
-			selectedEntry := w.filteredEntries[cursor]
-			w.applyStyleForStatus(selectedEntry.OverallStatus)
-		}
-		sections = append(sections, w.table.View())
+		sections = append(sections, w.viewport.View())
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -254,7 +397,7 @@ func (w *TableWidget) View() string {
 		}).
 		BorderForeground(w.theme.ColorCyan).
 		Padding(0, 1).
-		Width(w.width - 4)
+		Width(w.width - 2)
 
 	bordered := style.Render(content)
 
@@ -270,58 +413,6 @@ func (w *TableWidget) View() string {
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-// applyStyleForStatus updates table styles based on entry status
-func (w *TableWidget) applyStyleForStatus(status models.SyncStatus) {
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(w.theme.ColorInfo).
-		BorderBottom(true).
-		Bold(true)
-
-	// Change selected row color based on status
-	switch status {
-	case models.FullyInSync:
-		// Green background for synced entries
-		s.Selected = s.Selected.
-			Foreground(lipgloss.Color("229")).
-			Background(lipgloss.Color("22")). // Dark green
-			Bold(false)
-	case models.OutOfSync:
-		// Red background for out of sync
-		s.Selected = s.Selected.
-			Foreground(lipgloss.Color("229")).
-			Background(lipgloss.Color("88")). // Dark red
-			Bold(false)
-	case models.PartiallyInSync, models.DHCPMismatch:
-		// Yellow background for warnings
-		s.Selected = s.Selected.
-			Foreground(lipgloss.Color("229")).
-			Background(lipgloss.Color("130")). // Dark yellow/orange
-			Bold(false)
-	case models.CaddyOnly:
-		// Orange background for Caddy only
-		s.Selected = s.Selected.
-			Foreground(lipgloss.Color("229")).
-			Background(lipgloss.Color("130")). // Dark orange
-			Bold(false)
-	case models.Stale:
-		// Red background for stale entries
-		s.Selected = s.Selected.
-			Foreground(lipgloss.Color("229")).
-			Background(lipgloss.Color("88")). // Dark red
-			Bold(false)
-	default:
-		// Default blue background
-		s.Selected = s.Selected.
-			Foreground(lipgloss.Color("229")).
-			Background(w.theme.ColorInfo).
-			Bold(false)
-	}
-
-	w.table.SetStyles(s)
 }
 
 // SetSize updates the widget dimensions and recalculates column widths
@@ -374,55 +465,64 @@ func (w *TableWidget) IsSearching() bool {
 	return w.showSearchBar
 }
 
-// SetServiceStatus updates which services have been loaded
+// SetServiceStatus updates which services have been loaded.
+// The CF column is only included in the layout when Cloudflare data is available.
 func (w *TableWidget) SetServiceStatus(status ServiceLoadStatus) {
 	w.serviceStatus = status
+	w.rebuildColumnConfigs()
 	w.rebuildTable()
 }
 
-// recalculateColumns computes column widths based on terminal width
+// rebuildColumnConfigs rebuilds the column configuration based on which services are active.
+func (w *TableWidget) rebuildColumnConfigs() {
+	configs := []ColumnConfig{
+		{Title: "Hostname", MinWidth: 26, Priority: 1, FlexGrow: 3.0},
+		{Title: "Source", MinWidth: 6, Priority: 2, FlexGrow: 0.3},
+		{Title: "DNS", MinWidth: 13, Priority: 1, FlexGrow: 0.8},
+		{Title: "Upstream", MinWidth: 20, Priority: 2, FlexGrow: 1.5},
+		{Title: "DHCP", MinWidth: 9, Priority: 2, FlexGrow: 0.3},
+		{Title: "Unbound", MinWidth: 7, Priority: 1, FlexGrow: 0.1},
+		{Title: "AdGuard", MinWidth: 7, Priority: 1, FlexGrow: 0.1},
+	}
+	if w.serviceStatus.Cloudflare {
+		configs = append(configs, ColumnConfig{Title: "CF", MinWidth: 14, Priority: 3, FlexGrow: 0.8})
+	}
+	configs = append(configs, ColumnConfig{Title: "Status", MinWidth: 14, Priority: 1, FlexGrow: 1.0})
+	w.columnConfigs = configs
+}
+
+// recalculateColumns computes column widths and updates viewport dimensions
 func (w *TableWidget) recalculateColumns() {
 	if w.width == 0 {
 		return
 	}
 
-	w.columnWidths = calculateColumnWidths(w.width, w.columnConfigs)
+	w.columnWidths = calculateColumnWidths(w.width-4, w.columnConfigs)
 
-	// Build table columns
-	columns := make([]table.Column, 0)
-	for i, config := range w.columnConfigs {
-		if w.columnWidths[i] > 0 {
-			columns = append(columns, table.Column{
-				Title: config.Title,
-				Width: w.columnWidths[i],
-			})
-		}
-	}
-
-	w.table.SetColumns(columns)
-
-	// Set table dimensions
-	tableHeight := w.height
+	// Calculate viewport height — reserve lines for status/search indicators
+	vpHeight := w.height
 	if w.filterMode != models.FilterNone {
-		tableHeight-- // Reserve line for filter indicator
+		vpHeight-- // Reserve line for filter indicator
 	}
 	if w.showSearchBar || w.searchQuery != "" {
-		tableHeight-- // Reserve line for search bar
+		vpHeight-- // Reserve line for search bar
 	}
-	if tableHeight < 5 {
-		tableHeight = 5 // Minimum height
+	// Reserve 2 lines for the header row + separator inside viewport content
+	// (viewport height = visible data rows, header/sep are part of content)
+	if vpHeight < 5 {
+		vpHeight = 5 // Minimum height
 	}
 
-	w.table.SetHeight(tableHeight)
-	w.table.SetWidth(w.width)
+	w.viewport.Width = w.width - 4
+	w.viewport.Height = vpHeight
 
-	// Rebuild rows with new widths
+	// Rebuild rows with new widths then refresh viewport
 	w.rebuildTable()
 }
 
 // rebuildTable rebuilds all table rows
 func (w *TableWidget) rebuildTable() {
-	w.allRows = make([]table.Row, 0, len(w.entries))
+	w.allRows = make([][]string, 0, len(w.entries))
 
 	for _, entry := range w.entries {
 		row := w.buildRow(entry)
@@ -432,38 +532,11 @@ func (w *TableWidget) rebuildTable() {
 	w.applyFilters()
 }
 
-// getRowStyle returns the style for a row based on entry status
-func (w *TableWidget) getRowStyle(status models.SyncStatus) lipgloss.Style {
-	baseStyle := lipgloss.NewStyle()
-
-	switch status {
-	case models.FullyInSync:
-		// Subtle green background
-		return baseStyle.Background(lipgloss.Color("#1a2e1a"))
-	case models.PartiallyInSync:
-		// Subtle yellow background
-		return baseStyle.Background(lipgloss.Color("#2e2a1a"))
-	case models.OutOfSync:
-		// Subtle red background
-		return baseStyle.Background(lipgloss.Color("#2e1a1a"))
-	case models.CaddyOnly:
-		// Subtle orange background
-		return baseStyle.Background(lipgloss.Color("#2e231a"))
-	case models.Stale:
-		// Subtle red background
-		return baseStyle.Background(lipgloss.Color("#2e1a1a"))
-	case models.DHCPMismatch:
-		// Subtle yellow background
-		return baseStyle.Background(lipgloss.Color("#2e2a1a"))
-	default:
-		// No background
-		return baseStyle
-	}
-}
-
-// buildRow creates a table row from an entry
-func (w *TableWidget) buildRow(entry *models.Entry) table.Row {
-	row := make(table.Row, 0, len(w.columnConfigs))
+// buildRow creates a table row ([]string) from an entry.
+// Cell values may contain lipgloss ANSI color sequences; the custom renderer
+// handles them correctly via lipgloss width-aware cell sizing.
+func (w *TableWidget) buildRow(entry *models.Entry) []string {
+	row := make([]string, 0, len(w.columnConfigs))
 
 	// Find if this entry is selected
 	entryIdx := -1
@@ -477,7 +550,7 @@ func (w *TableWidget) buildRow(entry *models.Entry) table.Row {
 
 	for i, config := range w.columnConfigs {
 		// Skip hidden columns
-		if w.columnWidths[i] == 0 {
+		if i >= len(w.columnWidths) || w.columnWidths[i] == 0 {
 			continue
 		}
 
@@ -485,7 +558,6 @@ func (w *TableWidget) buildRow(entry *models.Entry) table.Row {
 
 		switch config.Title {
 		case "Hostname":
-			// Add selection indicator
 			selectionMark := " "
 			if isSelected {
 				selectionMark = "✓"
@@ -494,7 +566,11 @@ func (w *TableWidget) buildRow(entry *models.Entry) table.Row {
 			cell = w.truncate(hostname, w.columnWidths[i])
 
 		case "Source":
-			cell = w.truncate(entry.DataSource, w.columnWidths[i])
+			src := entry.DataSource
+			if src == "CloudFlare" {
+				src = "CF"
+			}
+			cell = w.truncate(src, w.columnWidths[i])
 
 		case "DNS":
 			if entry.DNSResolved == "" || entry.DNSResolved == "NONE" {
@@ -514,34 +590,34 @@ func (w *TableWidget) buildRow(entry *models.Entry) table.Row {
 
 		case "DHCP":
 			if !w.serviceStatus.DHCP {
-				cell = "Loading..."
+				cell = w.theme.Dimmed.Render("Loading...")
 			} else if !entry.DHCPStatus.Configured {
-				cell = "No lease"
+				cell = w.theme.Dimmed.Render("No lease")
 			} else {
 				leaseType := entry.DHCPStatus.Type
 				if entry.DHCPStatus.InSync {
-					cell = fmt.Sprintf("OK %s", leaseType)
+					cell = w.theme.Success.Render("OK " + leaseType)
 				} else {
-					cell = fmt.Sprintf("!! %s", leaseType)
+					cell = w.theme.Warning.Render("!! " + leaseType)
 				}
 			}
 
 		case "Unbound":
 			if !w.serviceStatus.Unbound {
-				cell = " .."
+				cell = w.theme.Dimmed.Render("..")
 			} else {
 				cell = w.formatServiceStatus(entry.UnboundStatus, entry.IsConfiguredInCaddy())
 			}
 
 		case "AdGuard":
 			if !w.serviceStatus.AdGuard {
-				cell = " .."
+				cell = w.theme.Dimmed.Render("..")
 			} else {
 				cell = w.formatServiceStatus(entry.AdguardStatus, entry.IsConfiguredInCaddy())
 			}
 
 		case "CF":
-			cell = "-"
+			cell = w.formatCFStatus(entry)
 
 		case "Status":
 			cell = w.formatOverallStatus(entry.OverallStatus)
@@ -553,53 +629,59 @@ func (w *TableWidget) buildRow(entry *models.Entry) table.Row {
 	return row
 }
 
-// formatStatusIndicator returns a colored status indicator
-func (w *TableWidget) formatStatusIndicator(status models.SyncStatus) string {
-	indicator := "●"
-
-	switch status {
-	case models.FullyInSync:
-		return w.theme.Success.Render(indicator)
-	case models.PartiallyInSync:
-		return w.theme.Warning.Render(indicator)
-	case models.OutOfSync:
-		return w.theme.Error.Render(indicator)
-	case models.CaddyOnly:
-		return w.theme.Warning.Render(indicator)
-	case models.Stale:
-		return w.theme.Error.Render(indicator)
-	case models.DHCPMismatch:
-		return w.theme.Warning.Render(indicator)
-	default:
-		return w.theme.Dimmed.Render(indicator)
-	}
-}
-
-// formatServiceStatus formats a service status cell (text-based, no emojis)
+// formatServiceStatus formats a service status cell with color
 func (w *TableWidget) formatServiceStatus(status models.ServiceStatus, inCaddy bool) string {
 	if !inCaddy {
-		// Entry not in Caddy
 		if !status.Configured {
-			return " OK" // Good - not configured
+			return w.theme.Success.Render("OK")
 		}
-		return " RM" // Bad - should be removed
+		return w.theme.Error.Render("RM") // stale — should be removed
 	}
-
-	// Entry is in Caddy
 	if !status.Configured {
-		return " NO" // Missing
+		return w.theme.Warning.Render("NO")
 	}
 	if status.InSync {
-		return " OK" // Synced
+		return w.theme.Success.Render("OK")
 	}
-	return " !!" // Out of sync
+	return w.theme.Error.Render("!!")
 }
 
-// formatOverallStatus formats the overall status cell
+// formatCFStatus renders the CF column cell for an entry with color.
+// * = default (managed) tunnel, ~ = non-default tunnel, ! = missing HTTPHostHeader.
+func (w *TableWidget) formatCFStatus(entry *models.Entry) string {
+	cf := entry.CloudflareStatus
+	if !cf.Configured {
+		return w.theme.Dimmed.Render("-")
+	}
+
+	colWidth := 14 // max tunnel name within column budget
+	name := cf.TunnelName
+	if len(name) > colWidth-2 {
+		name = name[:colWidth-4] + ".."
+	}
+
+	if entry.NeedsHTTPHostHeader() {
+		return w.theme.Warning.Render("! " + name)
+	}
+	if cf.IsDefaultTunnel {
+		return w.theme.Success.Render("* " + name)
+	}
+	return w.theme.Dimmed.Render("~ " + name)
+}
+
+// formatOverallStatus formats the overall status cell with color
 func (w *TableWidget) formatOverallStatus(status models.SyncStatus) string {
-	icon := status.Icon()
-	label := status.Label()
-	return icon + " " + label
+	text := status.Icon() + " " + status.Label()
+	switch status {
+	case models.FullyInSync:
+		return w.theme.Success.Render(text)
+	case models.OutOfSync, models.Stale:
+		return w.theme.Error.Render(text)
+	case models.CaddyOnly, models.PartiallyInSync, models.DHCPMismatch:
+		return w.theme.Warning.Render(text)
+	default:
+		return w.theme.Dimmed.Render(text)
+	}
 }
 
 // truncate truncates a string to fit within width, adding "..." if needed
@@ -613,9 +695,10 @@ func (w *TableWidget) truncate(s string, width int) string {
 	return s[:width-3] + "..."
 }
 
-// applyFilters applies the current filter, search query, and sorting
+// applyFilters applies the current filter, search query, and sorting,
+// then refreshes the viewport content and clamps the cursor.
 func (w *TableWidget) applyFilters() {
-	w.filteredRows = make([]table.Row, 0, len(w.allRows))
+	w.filteredRows = make([][]string, 0, len(w.allRows))
 	w.filteredEntries = make([]*models.Entry, 0, len(w.entries))
 
 	for i, entry := range w.entries {
@@ -638,30 +721,39 @@ func (w *TableWidget) applyFilters() {
 	// Apply sorting
 	w.sortEntries()
 
-	w.table.SetRows(w.filteredRows)
+	// Clamp cursor to valid range
+	if len(w.filteredEntries) == 0 {
+		w.cursor = 0
+	} else if w.cursor >= len(w.filteredEntries) {
+		w.cursor = len(w.filteredEntries) - 1
+	}
+	if w.cursor < 0 {
+		w.cursor = 0
+	}
+
+	// Refresh viewport content
+	w.viewport.SetContent(w.renderTableContent())
+	w.syncViewport()
 }
 
 // GetSelectedEntry returns the currently selected entry (cursor position)
 func (w *TableWidget) GetSelectedEntry() *models.Entry {
-	cursor := w.table.Cursor()
-	if cursor < 0 || cursor >= len(w.filteredEntries) {
+	if w.cursor < 0 || w.cursor >= len(w.filteredEntries) {
 		return nil
 	}
-
-	return w.filteredEntries[cursor]
+	return w.filteredEntries[w.cursor]
 }
 
 // toggleSelection toggles the selection state of the current row
 func (w *TableWidget) toggleSelection() {
-	cursor := w.table.Cursor()
-	if cursor < 0 || cursor >= len(w.filteredEntries) {
+	if w.cursor < 0 || w.cursor >= len(w.filteredEntries) {
 		return
 	}
 
-	if w.selectedIndices[cursor] {
-		delete(w.selectedIndices, cursor)
+	if w.selectedIndices[w.cursor] {
+		delete(w.selectedIndices, w.cursor)
 	} else {
-		w.selectedIndices[cursor] = true
+		w.selectedIndices[w.cursor] = true
 	}
 }
 
@@ -743,7 +835,6 @@ func (w *TableWidget) sortEntries() {
 	// Sort based on mode
 	switch w.sortMode {
 	case SortByHostname:
-		// Sort by hostname (case-insensitive)
 		for i := 0; i < len(indices)-1; i++ {
 			for j := i + 1; j < len(indices); j++ {
 				if strings.ToLower(w.filteredEntries[indices[i]].Hostname) > strings.ToLower(w.filteredEntries[indices[j]].Hostname) {
@@ -753,7 +844,6 @@ func (w *TableWidget) sortEntries() {
 		}
 
 	case SortByIP:
-		// Sort by IP address (CaddyUpstream)
 		for i := 0; i < len(indices)-1; i++ {
 			for j := i + 1; j < len(indices); j++ {
 				ip1 := w.filteredEntries[indices[i]].CaddyUpstream
@@ -765,7 +855,6 @@ func (w *TableWidget) sortEntries() {
 		}
 
 	case SortByStatus:
-		// Sort by status (priority: OutOfSync, Stale, CaddyOnly, PartiallyInSync, DHCPMismatch, FullyInSync)
 		statusOrder := map[models.SyncStatus]int{
 			models.OutOfSync:       0,
 			models.Stale:           1,
@@ -787,7 +876,7 @@ func (w *TableWidget) sortEntries() {
 
 	// Reorder filteredEntries and filteredRows based on sorted indices
 	sortedEntries := make([]*models.Entry, len(w.filteredEntries))
-	sortedRows := make([]table.Row, len(w.filteredRows))
+	sortedRows := make([][]string, len(w.filteredRows))
 	for i, idx := range indices {
 		sortedEntries[i] = w.filteredEntries[idx]
 		sortedRows[i] = w.filteredRows[idx]
@@ -804,8 +893,8 @@ func calculateColumnWidths(termWidth int, configs []ColumnConfig) []int {
 		return []int{}
 	}
 
-	// Calculate space needed for borders/padding (3 chars per column: " | ")
-	overhead := numCols * 3
+	// Calculate space needed for separators (1 space between each column)
+	overhead := numCols - 1
 
 	// Start with minimum widths
 	available := termWidth - overhead
@@ -836,11 +925,10 @@ func calculateColumnWidths(termWidth int, configs []ColumnConfig) []int {
 
 	// If we're short on space, hide low-priority columns
 	if available < 0 {
-		// Hide Priority 3 columns first, then 2, but never 1
 		for priority := 3; priority >= 2 && available < 0; priority-- {
 			for i, cfg := range configs {
 				if cfg.Priority == priority && widths[i] > 0 {
-					available += widths[i] + 3 // Reclaim space
+					available += widths[i] + 1 // Reclaim space
 					widths[i] = 0              // Hide this column
 				}
 			}

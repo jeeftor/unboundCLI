@@ -20,6 +20,15 @@ const (
 	configPhaseDone
 )
 
+type cfPickerMode int
+
+const (
+	cfPickerZone   cfPickerMode = iota
+	cfPickerTunnel cfPickerMode = iota
+)
+
+// --- message types ---
+
 type connTestResult struct {
 	name     string
 	ok       bool
@@ -33,6 +42,18 @@ type connTestResultsMsg struct {
 
 type configSavedMsg struct{ err error }
 
+type cfZonesFetchedMsg struct {
+	zones []api.CloudflareZone
+	err   error
+}
+
+type cfTunnelsFetchedMsg struct {
+	tunnels []api.CloudflareTunnel
+	err     error
+}
+
+// --- wizard model ---
+
 type ConfigWizard struct {
 	editor      *widgets.ConfigEditorWidget
 	phase       configWizardPhase
@@ -41,6 +62,14 @@ type ConfigWizard struct {
 	statusMsg   string
 	width       int
 	height      int
+
+	// Cloudflare picker state
+	cfPicker     *widgets.CFPickerWidget
+	showCFPicker bool
+	cfPickerMode cfPickerMode
+	cfZoneName   string // display name after zone is resolved
+	cfTunnelName string // display name after tunnel is resolved
+	cfDebugCurl  string // curl equivalent of the last CF API call, shown for debugging
 }
 
 func NewConfigWizard() *ConfigWizard {
@@ -67,8 +96,14 @@ func (w *ConfigWizard) Init() tea.Cmd {
 	}
 
 	cfEnabledStr := "false"
-	if existing.Cloudflare.Enabled {
+	// Auto-enable when credentials are present, even if the flag was not explicitly set.
+	if existing.Cloudflare.Enabled || existing.Cloudflare.APIToken != "" {
 		cfEnabledStr = "true"
+	}
+
+	cfInsecureStr := "false"
+	if existing.Cloudflare.Insecure {
+		cfInsecureStr = "true"
 	}
 
 	sections := []widgets.ConfigSection{
@@ -78,28 +113,34 @@ func (w *ConfigWizard) Init() tea.Cmd {
 				{Key: "base_url", Label: "Base URL", Value: existing.Config.BaseURL, Placeholder: "https://192.168.1.1", IsRequired: true},
 				{Key: "api_key", Label: "API Key", Value: existing.Config.APIKey, Placeholder: "API key", IsPassword: true},
 				{Key: "api_secret", Label: "API Secret", Value: existing.Config.APISecret, Placeholder: "API secret", IsPassword: true},
-				{Key: "insecure", Label: "Skip SSL Verify", Value: insecureStr, Placeholder: "true/false", HelpText: "Set to true to skip TLS certificate verification"},
+				{Key: "insecure", Label: "Skip SSL Verify", Value: insecureStr, IsToggle: true},
 			},
 		},
 		{
 			Title: "AdguardHome",
 			Fields: []widgets.ConfigField{
-				{Key: "adguard_enabled", Label: "Enabled", Value: adguardEnabledStr, Placeholder: "true/false"},
+				{Key: "adguard_enabled", Label: "Enabled", Value: adguardEnabledStr, IsToggle: true},
 				{Key: "adguard_base_url", Label: "Base URL", Value: existing.Adguard.BaseURL, Placeholder: "http://192.168.1.10:3000"},
 				{Key: "adguard_username", Label: "Username", Value: existing.Adguard.Username, Placeholder: "admin"},
 				{Key: "adguard_password", Label: "Password", Value: existing.Adguard.Password, Placeholder: "password", IsPassword: true},
-				{Key: "adguard_insecure", Label: "Skip SSL Verify", Value: adguardInsecureStr, Placeholder: "true/false"},
+				{Key: "adguard_insecure", Label: "Skip SSL Verify", Value: adguardInsecureStr, IsToggle: true},
 			},
 		},
 		{
 			Title: "Cloudflare",
 			Fields: []widgets.ConfigField{
-				{Key: "cf_enabled", Label: "Enabled", Value: cfEnabledStr, Placeholder: "true/false"},
+				{Key: "cf_enabled", Label: "Enabled", Value: cfEnabledStr, IsToggle: true},
 				{Key: "cf_api_token", Label: "API Token", Value: existing.Cloudflare.APIToken, Placeholder: "CF API token", IsPassword: true},
 				{Key: "cf_account_id", Label: "Account ID", Value: existing.Cloudflare.AccountID, Placeholder: "CF account ID"},
-				{Key: "cf_zone_id", Label: "Zone ID", Value: existing.Cloudflare.ZoneID, Placeholder: "CF zone ID"},
-				{Key: "cf_tunnel_id", Label: "Tunnel ID", Value: existing.Cloudflare.TunnelID, Placeholder: "CF tunnel ID"},
-				{Key: "cf_caddy_service_url", Label: "Caddy Service URL", Value: existing.Cloudflare.CaddyServiceURL, Placeholder: "http://caddy:2019"},
+				{Key: "cf_zone_id", Label: "Zone ID", Value: existing.Cloudflare.ZoneID, Placeholder: "press z to browse", HelpText: "Press z (outside edit mode) to fetch and pick from your zones"},
+				{Key: "cf_tunnel_id", Label: "Default Tunnel", Value: existing.Cloudflare.TunnelID, Placeholder: "press t to browse", HelpText: "Tunnel to add/remove entries in. Other tunnels are scanned read-only."},
+				{Key: "cf_insecure", Label: "Skip SSL Verify", Value: cfInsecureStr, IsToggle: true},
+			},
+		},
+		{
+			Title: "Caddy",
+			Fields: []widgets.ConfigField{
+				{Key: "cf_caddy_service_url", Label: "Admin API URL", Value: existing.Cloudflare.CaddyServiceURL, Placeholder: "http://caddy:2019", HelpText: "Caddy admin API used to read reverse-proxy hostnames"},
 			},
 		},
 	}
@@ -109,16 +150,25 @@ func (w *ConfigWizard) Init() tea.Cmd {
 	editor.Focus()
 
 	w.editor = editor
+
+	// Pre-populate resolved names if IDs already exist in config
+	w.cfZoneName = existing.Cloudflare.ZoneID
+	w.cfTunnelName = existing.Cloudflare.TunnelID
+
 	return editor.Init()
 }
 
 func (w *ConfigWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
 	case tea.WindowSizeMsg:
 		w.width = msg.Width
 		w.height = msg.Height
 		if w.editor != nil {
 			w.editor.SetSize(msg.Width-4, msg.Height-8)
+		}
+		if w.cfPicker != nil {
+			w.cfPicker.SetSize(msg.Width, msg.Height)
 		}
 		return w, nil
 
@@ -138,10 +188,106 @@ func (w *ConfigWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		w.testResults = msg.results
 		return w, nil
 
+	case cfZonesFetchedMsg:
+		if msg.err != nil {
+			w.statusMsg = "Failed to fetch zones: " + msg.err.Error()
+			return w, nil
+		}
+		if len(msg.zones) == 0 {
+			w.statusMsg = "No zones found for this API token"
+			return w, nil
+		}
+		if len(msg.zones) == 1 {
+			z := msg.zones[0]
+			if w.editor != nil {
+				w.editor.SetValue("cf_zone_id", z.ID)
+			}
+			w.cfZoneName = z.Name
+			w.statusMsg = fmt.Sprintf("Zone auto-selected: %s", z.Name)
+			return w, nil
+		}
+		// Multiple zones — show picker
+		items := make([]widgets.CFPickerItem, len(msg.zones))
+		for i, z := range msg.zones {
+			items[i] = widgets.CFPickerItem{ID: z.ID, Name: z.Name}
+		}
+		picker := widgets.NewCFPicker("Select Cloudflare Zone", items)
+		picker.SetSize(w.width, w.height)
+		w.cfPicker = picker
+		w.cfPickerMode = cfPickerZone
+		w.showCFPicker = true
+		return w, nil
+
+	case cfTunnelsFetchedMsg:
+		if msg.err != nil {
+			w.statusMsg = "Failed to fetch tunnels: " + msg.err.Error()
+			return w, nil
+		}
+		if len(msg.tunnels) == 0 {
+			w.statusMsg = "No tunnels found for this account"
+			return w, nil
+		}
+		if len(msg.tunnels) == 1 {
+			t := msg.tunnels[0]
+			if w.editor != nil {
+				w.editor.SetValue("cf_tunnel_id", t.ID)
+			}
+			w.cfTunnelName = t.Name
+			w.statusMsg = fmt.Sprintf("Tunnel auto-selected: %s", t.Name)
+			return w, nil
+		}
+		// Multiple tunnels — show picker
+		items := make([]widgets.CFPickerItem, len(msg.tunnels))
+		for i, t := range msg.tunnels {
+			items[i] = widgets.CFPickerItem{ID: t.ID, Name: t.Name}
+		}
+		picker := widgets.NewCFPicker("Select Cloudflare Tunnel", items)
+		picker.SetSize(w.width, w.height)
+		w.cfPicker = picker
+		w.cfPickerMode = cfPickerTunnel
+		w.showCFPicker = true
+		return w, nil
+
+	case widgets.CFPickerSelectedMsg:
+		w.showCFPicker = false
+		w.cfPicker = nil
+		if w.cfPickerMode == cfPickerZone {
+			if w.editor != nil {
+				w.editor.SetValue("cf_zone_id", msg.Item.ID)
+			}
+			w.cfZoneName = msg.Item.Name
+			w.statusMsg = fmt.Sprintf("Zone selected: %s", msg.Item.Name)
+		} else {
+			if w.editor != nil {
+				w.editor.SetValue("cf_tunnel_id", msg.Item.ID)
+			}
+			w.cfTunnelName = msg.Item.Name
+			w.statusMsg = fmt.Sprintf("Tunnel selected: %s", msg.Item.Name)
+		}
+		return w, nil
+
+	case widgets.CFPickerCancelledMsg:
+		w.showCFPicker = false
+		w.cfPicker = nil
+		w.statusMsg = ""
+		return w, nil
+
 	case tea.KeyMsg:
+		// While the CF picker is open, route all input to it.
+		if w.showCFPicker && w.cfPicker != nil {
+			updated, cmd := w.cfPicker.Update(msg)
+			w.cfPicker = updated
+			return w, cmd
+		}
+
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return w, tea.Quit
+		case "q":
+			// Only quit when not actively typing in a field.
+			if w.editor == nil || !w.editor.Focused() {
+				return w, tea.Quit
+			}
 
 		case "ctrl+s":
 			if w.editor != nil {
@@ -167,6 +313,33 @@ func (w *ConfigWizard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				w.editor.TogglePasswordVisibility()
 			}
 			return w, nil
+
+		case "z":
+			// Only intercept when not in text-editing mode.
+			if w.editor != nil && !w.editor.Focused() {
+				token := w.editor.GetInputValue("cf_api_token")
+				if token == "" {
+					w.statusMsg = "Enter CF API Token first, then press z to browse zones"
+					return w, nil
+				}
+				w.cfDebugCurl = cfZonesCurl(token)
+				w.statusMsg = "Fetching Cloudflare zones..."
+				return w, fetchCFZonesCmd(token)
+			}
+
+		case "t":
+			// Only intercept when not in text-editing mode.
+			if w.editor != nil && !w.editor.Focused() {
+				token := w.editor.GetInputValue("cf_api_token")
+				accountID := w.editor.GetInputValue("cf_account_id")
+				if token == "" || accountID == "" {
+					w.statusMsg = "Enter CF API Token and Account ID first, then press t to browse tunnels"
+					return w, nil
+				}
+				w.cfDebugCurl = cfTunnelsCurl(accountID, token)
+				w.statusMsg = "Fetching Cloudflare tunnels..."
+				return w, fetchCFTunnelsCmd(token, accountID)
+			}
 		}
 	}
 
@@ -189,6 +362,15 @@ func (w *ConfigWizard) getAllCurrentValues() map[string]string {
 }
 
 func (w *ConfigWizard) View() string {
+	// When the CF picker is active, show it fullscreen (centered).
+	if w.showCFPicker && w.cfPicker != nil {
+		pickerView := w.cfPicker.View()
+		if w.width > 0 && w.height > 0 {
+			return lipgloss.Place(w.width, w.height, lipgloss.Center, lipgloss.Center, pickerView)
+		}
+		return pickerView
+	}
+
 	var parts []string
 
 	if w.editor != nil {
@@ -197,6 +379,21 @@ func (w *ConfigWizard) View() string {
 
 	parts = append(parts, "")
 
+	// CF resolution status (zone/tunnel names) — shown when on Cloudflare (2) or Caddy (3) tabs
+	onCFSection := w.editor != nil && (w.editor.GetCurrentSection() == 2 || w.editor.GetCurrentSection() == 3)
+	if onCFSection && (w.cfZoneName != "" || w.cfTunnelName != "") {
+		infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7dcfff"))
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
+		var cfParts []string
+		if w.cfZoneName != "" {
+			cfParts = append(cfParts, infoStyle.Render("Zone: ")+w.cfZoneName)
+		}
+		if w.cfTunnelName != "" {
+			cfParts = append(cfParts, infoStyle.Render("Tunnel: ")+w.cfTunnelName)
+		}
+		parts = append(parts, dimStyle.Render("CF: ")+strings.Join(cfParts, dimStyle.Render("  |  ")))
+	}
+
 	// Status message
 	if w.statusMsg != "" {
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color("#9ece6a"))
@@ -204,6 +401,13 @@ func (w *ConfigWizard) View() string {
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("#f7768e"))
 		}
 		parts = append(parts, style.Render(w.statusMsg))
+	}
+
+	// CF debug curl — shown on the CF/Caddy tabs whenever a fetch has been attempted
+	if onCFSection && w.cfDebugCurl != "" {
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
+		curlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7dcfff"))
+		parts = append(parts, dimStyle.Render("curl equiv: ")+curlStyle.Render(w.cfDebugCurl))
 	}
 
 	// Connection test results
@@ -246,8 +450,12 @@ func (w *ConfigWizard) View() string {
 		"ctrl+s save",
 		"ctrl+t test connections",
 		fmt.Sprintf("ctrl+p %s passwords", showHide),
-		"ctrl+c/q quit",
 	}
+	if onCFSection {
+		keyHints = append(keyHints, "z browse zones", "t browse tunnels")
+	}
+	keyHints = append(keyHints, "ctrl+c/q quit")
+
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
 	parts = append(parts, dimStyle.Render(strings.Join(keyHints, "  |  ")))
 
@@ -294,6 +502,7 @@ func buildExtendedConfig(vals map[string]string, existing config.ExtendedConfig)
 		AccountID:       vals["cf_account_id"],
 		ZoneID:          vals["cf_zone_id"],
 		TunnelID:        vals["cf_tunnel_id"],
+		Insecure:        vals["cf_insecure"] == "true",
 		CaddyServiceURL: vals["cf_caddy_service_url"],
 	}
 	return cfg
@@ -357,4 +566,45 @@ func testConnectionsCmd(vals map[string]string) tea.Cmd {
 
 		return connTestResultsMsg{results: results}
 	}
+}
+
+func fetchCFZonesCmd(token string) tea.Cmd {
+	return func() tea.Msg {
+		client, err := api.NewCloudflareClient(api.CloudflareConfig{APIToken: token})
+		if err != nil {
+			return cfZonesFetchedMsg{err: err}
+		}
+		zones, err := client.ListZones()
+		return cfZonesFetchedMsg{zones: zones, err: err}
+	}
+}
+
+func fetchCFTunnelsCmd(token, accountID string) tea.Cmd {
+	return func() tea.Msg {
+		client, err := api.NewCloudflareClient(api.CloudflareConfig{
+			APIToken:  token,
+			AccountID: accountID,
+		})
+		if err != nil {
+			return cfTunnelsFetchedMsg{err: err}
+		}
+		tunnels, err := client.ListTunnels()
+		return cfTunnelsFetchedMsg{tunnels: tunnels, err: err}
+	}
+}
+
+// cfZonesCurl returns the curl equivalent for a ListZones call.
+func cfZonesCurl(token string) string {
+	return fmt.Sprintf(
+		`curl -s "https://api.cloudflare.com/client/v4/zones" -H "Authorization: Bearer %s"`,
+		token,
+	)
+}
+
+// cfTunnelsCurl returns the curl equivalent for a ListTunnels call.
+func cfTunnelsCurl(accountID, token string) string {
+	return fmt.Sprintf(
+		`curl -s "https://api.cloudflare.com/client/v4/accounts/%s/cfdtunnel" -H "Authorization: Bearer %s"`,
+		accountID, token,
+	)
 }

@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -34,6 +36,20 @@ type AppModel struct {
 	unboundClient *api.Client
 	adguardClient *api.AdguardClient
 	dnsmasqClient *api.DNSMasqClient
+	cfClient      *api.CloudflareClient
+
+	// CF detail overlay
+	showCFDetail  bool
+	cfDetailEntry *models.Entry
+
+	// CF edit overlay (e key)
+	showCFEdit      bool
+	cfEditWidget    *widgets.CFEditWidget
+	caddyServiceURL string
+
+	// Full entry detail overlay (v key)
+	showEntryDetail  bool
+	entryDetailEntry *models.Entry
 
 	// Data
 	entries       []*models.Entry
@@ -57,22 +73,26 @@ func NewAppModel(
 	adguardClient *api.AdguardClient,
 	dnsmasqClient *api.DNSMasqClient,
 	caddyServerIP string,
+	cfClient *api.CloudflareClient,
+	caddyServiceURL string,
 ) *AppModel {
 	return &AppModel{
-		statusWidget:  widgets.NewStatusWidget(),
-		tableWidget:   widgets.NewTableWidget(),
-		helpWidget:    widgets.NewHelpWidget(),
-		logWidget:     widgets.NewLogWidget(),
-		syncDialog:    widgets.NewSyncDialog("DNS Services"),
-		configEditor:  widgets.NewConfigEditor(),
-		caddyClient:   caddyClient,
-		unboundClient: unboundClient,
-		adguardClient: adguardClient,
-		dnsmasqClient: dnsmasqClient,
-		caddyServerIP: caddyServerIP,
-		currentView:   ViewModeTable,
-		loading:       false,
-		entries:       []*models.Entry{},
+		statusWidget:    widgets.NewStatusWidget(),
+		tableWidget:     widgets.NewTableWidget(),
+		helpWidget:      widgets.NewHelpWidget(),
+		logWidget:       widgets.NewLogWidget(),
+		syncDialog:      widgets.NewSyncDialog("DNS Services"),
+		configEditor:    widgets.NewConfigEditor(),
+		caddyClient:     caddyClient,
+		unboundClient:   unboundClient,
+		adguardClient:   adguardClient,
+		dnsmasqClient:   dnsmasqClient,
+		cfClient:        cfClient,
+		caddyServerIP:   caddyServerIP,
+		caddyServiceURL: caddyServiceURL,
+		currentView:     ViewModeTable,
+		loading:         false,
+		entries:         []*models.Entry{},
 	}
 }
 
@@ -116,6 +136,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleConfigViewKeys(msg)
 		}
 
+	case configWizardDoneMsg:
+		// Config wizard exited — reload data in case settings changed
+		return m, m.loadData()
+
 	case dataLoadedMsg:
 		m.loading = false
 		m.entries = msg.entries
@@ -135,6 +159,28 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dnsProgressMsg:
 		m.statusWidget.SetProgress(msg.completed, msg.total)
+
+	case cfEditSavedMsg:
+		m.showCFEdit = false
+		m.cfEditWidget = nil
+		if msg.err != nil {
+			m.err = msg.err
+			m.logWidget.AddLog("ERROR", "CF save failed: "+msg.err.Error())
+		} else {
+			m.logWidget.AddLog("INFO", "CF tunnel rule updated — reloading data...")
+			return m, m.loadData()
+		}
+
+	case cfDeletedMsg:
+		m.showCFEdit = false
+		m.cfEditWidget = nil
+		if msg.err != nil {
+			m.err = msg.err
+			m.logWidget.AddLog("ERROR", "CF delete failed: "+msg.err.Error())
+		} else {
+			m.logWidget.AddLog("INFO", "CF tunnel rule deleted — reloading data...")
+			return m, m.loadData()
+		}
 	}
 
 	// Update widgets based on current view
@@ -250,7 +296,30 @@ func (m *AppModel) renderTableView() string {
 		sections = append(sections, errorStyle.Render(fmt.Sprintf("Error: %v", m.err)))
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+	base := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
+	// Overlay CF detail panel if active
+	if m.showCFDetail && m.cfDetailEntry != nil {
+		panel := widgets.RenderCFDetail(m.cfDetailEntry, widgets.CurrentTheme)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel,
+			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Dark: "#1a1b26"}))
+	}
+
+	// Overlay full entry detail panel if active
+	if m.showEntryDetail && m.entryDetailEntry != nil {
+		panel := widgets.RenderEntryDetail(m.entryDetailEntry, widgets.CurrentTheme)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel,
+			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Dark: "#1a1b26"}))
+	}
+
+	// Overlay CF edit form if active
+	if m.showCFEdit && m.cfEditWidget != nil {
+		panel := m.cfEditWidget.View()
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel,
+			lipgloss.WithWhitespaceBackground(lipgloss.AdaptiveColor{Dark: "#1a1b26"}))
+	}
+
+	return base
 }
 
 // renderSyncView renders the sync dialog view
@@ -283,6 +352,42 @@ func (m *AppModel) renderConfigView() string {
 
 // handleTableViewKeys handles keyboard input in table view
 func (m *AppModel) handleTableViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If CF edit overlay is open, route all keys to it
+	if m.showCFEdit && m.cfEditWidget != nil {
+		widget, cmd := m.cfEditWidget.Update(msg)
+		m.cfEditWidget = widget.(*widgets.CFEditWidget)
+		if m.cfEditWidget.IsDone() {
+			if m.cfEditWidget.WasCancelled() {
+				m.showCFEdit = false
+				m.cfEditWidget = nil
+				return m, nil
+			}
+			if m.cfEditWidget.WasDeleted() {
+				hostname := m.cfEditWidget.Spec().Hostname
+				cfClient := m.cfClient
+				return m, func() tea.Msg {
+					err := cfClient.DeleteTunnelRule(hostname)
+					return cfDeletedMsg{err: err}
+				}
+			}
+			// Save: call UpdateTunnelRule async
+			spec := m.cfEditWidget.Spec()
+			cfClient := m.cfClient
+			return m, func() tea.Msg {
+				apiSpec := api.IngressRuleSpec{
+					Hostname:       spec.Hostname,
+					Service:        spec.Service,
+					HTTPHostHeader: spec.HTTPHostHeader,
+					NoTLSVerify:    spec.NoTLSVerify,
+					Http2Origin:    spec.Http2Origin,
+				}
+				err := cfClient.UpdateTunnelRule(apiSpec)
+				return cfEditSavedMsg{err: err}
+			}
+		}
+		return m, cmd
+	}
+
 	// If table widget is in search mode, let it handle ALL keys
 	if m.tableWidget.IsSearching() {
 		var cmd tea.Cmd
@@ -310,10 +415,11 @@ func (m *AppModel) handleTableViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.loadData()
 
 	case msg.String() == "C":
-		// Show config editor
-		m.initializeConfigEditor()
-		m.currentView = ViewModeConfig
-		return m, nil
+		// Launch the config-tui wizard in-place (same terminal), reload on return
+		configCmd := exec.Command(os.Args[0], "config-tui")
+		return m, tea.ExecProcess(configCmd, func(err error) tea.Msg {
+			return configWizardDoneMsg{err: err}
+		})
 
 	case msg.String() == "f":
 		// Cycle through filters
@@ -336,7 +442,75 @@ func (m *AppModel) handleTableViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.String() == "i":
-		// Toggle IP display (if implemented)
+		// Show CF detail overlay for the highlighted entry
+		if m.showCFDetail {
+			m.showCFDetail = false
+			m.cfDetailEntry = nil
+		} else {
+			entry := m.tableWidget.GetSelectedEntry()
+			if entry != nil {
+				m.cfDetailEntry = entry
+				m.showCFDetail = true
+				m.showEntryDetail = false // close entry detail if open
+				m.entryDetailEntry = nil
+			}
+		}
+		return m, nil
+
+	case msg.String() == "v":
+		// Toggle full entry detail overlay
+		if m.showEntryDetail {
+			m.showEntryDetail = false
+			m.entryDetailEntry = nil
+		} else {
+			entry := m.tableWidget.GetSelectedEntry()
+			if entry != nil {
+				m.entryDetailEntry = entry
+				m.showEntryDetail = true
+				m.showCFDetail = false // close CF detail if open
+				m.cfDetailEntry = nil
+			}
+		}
+		return m, nil
+
+	case msg.String() == "e":
+		// Open CF edit for the selected entry
+		if m.cfClient == nil {
+			return m, nil // CF not configured
+		}
+		if m.showCFEdit {
+			m.showCFEdit = false
+			m.cfEditWidget = nil
+		} else {
+			entry := m.tableWidget.GetSelectedEntry()
+			if entry != nil {
+				m.cfEditWidget = widgets.NewCFEditWidget(entry, m.caddyServiceURL, widgets.CurrentTheme)
+				m.showCFEdit = true
+				m.showCFDetail = false
+				m.cfDetailEntry = nil
+				m.showEntryDetail = false
+				m.entryDetailEntry = nil
+			}
+		}
+		return m, nil
+
+	case msg.String() == "esc":
+		// Close overlays if open
+		if m.showCFEdit {
+			m.showCFEdit = false
+			m.cfEditWidget = nil
+			return m, nil
+		}
+		if m.showEntryDetail {
+			m.showEntryDetail = false
+			m.entryDetailEntry = nil
+			return m, nil
+		}
+		if m.showCFDetail {
+			m.showCFDetail = false
+			m.cfDetailEntry = nil
+			return m, nil
+		}
 		return m, nil
 
 	case msg.String() == "?":
@@ -461,15 +635,13 @@ func (m *AppModel) showSingleEntrySync() {
 	m.syncDialog.AddActionsFromEntries([]*models.Entry{entry}, "all", m.caddyServerIP)
 }
 
-// cycleFilter cycles through the available filters
+// cycleFilter cycles through the available filters based on what data is present.
 func (m *AppModel) cycleFilter() {
-	// Build filter list based on what's actually in the data
-	filters := []models.FilterMode{
-		models.FilterNone,
-	}
+	filters := []models.FilterMode{models.FilterNone}
 
-	// Count entries by status to determine which filters to show
-	var hasOutOfSync, hasCaddyOnly, hasStale, hasSynced bool
+	var hasOutOfSync, hasCaddyOnly, hasStale bool
+	var hasCFData, hasCFMissingHeader, hasNotInCF bool
+
 	for _, entry := range m.entries {
 		switch entry.OverallStatus {
 		case models.OutOfSync:
@@ -478,16 +650,19 @@ func (m *AppModel) cycleFilter() {
 			hasCaddyOnly = true
 		case models.Stale:
 			hasStale = true
-		case models.FullyInSync:
-			hasSynced = true
+		}
+		if entry.CloudflareStatus.Configured {
+			hasCFData = true
+		}
+		if entry.NeedsHTTPHostHeader() {
+			hasCFMissingHeader = true
+		}
+		if entry.IsConfiguredInCaddy() && !entry.CloudflareStatus.Configured {
+			hasNotInCF = true
 		}
 	}
 
-	// Add filters only if there are matching entries
-	if hasSynced {
-		// Add a "synced" filter by using FilterMismatches inverted logic
-		// We'll need to add this to the filter modes
-	}
+	// DNS sync filters
 	if hasOutOfSync {
 		filters = append(filters, models.FilterOutOfSync)
 	}
@@ -497,11 +672,22 @@ func (m *AppModel) cycleFilter() {
 	if hasStale {
 		filters = append(filters, models.FilterStale)
 	}
-
-	// Always add these utility filters
 	filters = append(filters, models.FilterMismatches)
 
-	// Find current filter and cycle to next
+	// Cloudflare filters (only when CF data is loaded)
+	if m.cfClient != nil {
+		if hasCFData {
+			filters = append(filters, models.FilterInCF)
+		}
+		if hasNotInCF {
+			filters = append(filters, models.FilterNotInCF)
+		}
+		if hasCFMissingHeader {
+			filters = append(filters, models.FilterCFMissingHeader)
+		}
+	}
+
+	// Cycle to next filter
 	currentFilter := m.tableWidget.GetFilterMode()
 	currentIdx := 0
 	for i, f := range filters {
@@ -510,9 +696,7 @@ func (m *AppModel) cycleFilter() {
 			break
 		}
 	}
-
-	nextIdx := (currentIdx + 1) % len(filters)
-	m.tableWidget.SetFilter(filters[nextIdx])
+	m.tableWidget.SetFilter(filters[(currentIdx+1)%len(filters)])
 }
 
 // initializeConfigEditor populates the config editor with configuration sections
@@ -559,11 +743,12 @@ func (m *AppModel) initializeConfigEditor() {
 // updateServiceStatus updates which services have been loaded
 func (m *AppModel) updateServiceStatus() {
 	status := widgets.ServiceLoadStatus{
-		Caddy:    m.caddyClient != nil,
-		Unbound:  m.unboundClient != nil,
-		AdGuard:  m.adguardClient != nil,
-		DHCP:     m.dnsmasqClient != nil,
-		Complete: !m.loading,
+		Caddy:      m.caddyClient != nil,
+		Unbound:    m.unboundClient != nil,
+		AdGuard:    m.adguardClient != nil,
+		DHCP:       m.dnsmasqClient != nil,
+		Cloudflare: m.cfClient != nil,
+		Complete:   !m.loading,
 	}
 
 	m.statusWidget.SetServiceStatus(status)
@@ -585,17 +770,28 @@ type serviceLoadedMsg struct {
 	phase   widgets.LoadingPhase
 }
 
+type configWizardDoneMsg struct {
+	err error
+}
+
 type dnsProgressMsg struct {
 	completed int
 	total     int
 }
 
+type cfEditSavedMsg struct{ err error }
+type cfDeletedMsg struct{ err error }
+
 // loadData loads data from all API clients with progress updates
 func (m *AppModel) loadData() tea.Cmd {
-	// Mark as loading (this happens in Update() before calling loadData())
+	// Mark as loading
 	m.loading = true
 	m.statusWidget.SetLoading(true)
-	m.statusWidget.SetLoadingPhase(widgets.PhaseCaddy)
+	if m.cfClient != nil {
+		m.statusWidget.SetLoadingPhase(widgets.PhaseCloudflare)
+	} else {
+		m.statusWidget.SetLoadingPhase(widgets.PhaseCaddy)
+	}
 
 	return func() tea.Msg {
 		// Create data loader
@@ -606,6 +802,7 @@ func (m *AppModel) loadData() tea.Cmd {
 			m.dnsmasqClient,
 			m.caddyServerIP,
 		)
+		loader.WithCloudflareClient(m.cfClient)
 
 		// Load data
 		entries, err := loader.LoadData()

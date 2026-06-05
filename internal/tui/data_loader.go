@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
@@ -16,7 +17,14 @@ type DataLoader struct {
 	unboundClient *api.Client
 	adguardClient *api.AdguardClient
 	dnsmasqClient *api.DNSMasqClient
+	cfClient      *api.CloudflareClient
 	caddyServerIP string
+}
+
+// WithCloudflareClient sets an optional Cloudflare client for loading CF tunnel data.
+// If nil, CF data is skipped and the TUI works without it.
+func (d *DataLoader) WithCloudflareClient(c *api.CloudflareClient) {
+	d.cfClient = c
 }
 
 // NewDataLoader creates a new data loader
@@ -36,72 +44,175 @@ func NewDataLoader(
 	}
 }
 
-// LoadData loads all data from API clients and builds Entry models
+// LoadData loads all data from API clients concurrently and builds Entry models.
+// Caddy, Unbound, AdGuard, DHCP, and Cloudflare are fetched in parallel.
+// DNS resolution for all entries is also parallelized with a worker pool.
 func (d *DataLoader) LoadData() ([]*models.Entry, error) {
-	// 1. Load Caddy hostnames (source of truth)
-	logging.Info("Loading Caddy configuration...")
-	caddyHostnames, err := d.loadCaddyHostnames()
-	if err != nil {
-		logging.Error("Failed to load Caddy hostnames", "error", err)
-		return nil, fmt.Errorf("failed to load Caddy hostnames: %w", err)
-	}
-	logging.Info("Loaded Caddy hostnames", "count", len(caddyHostnames))
+	// --- Phase 1: parallel API fetches ---
+	var (
+		caddyHostnames   map[string]models.CaddyRouteInfo
+		unboundOverrides map[string]*api.DNSOverride
+		adguardRewrites  map[string]*api.Rewrite
+		dhcpLeases       map[string]*api.DNSMasqLease
+		cfDetails        map[string]api.CloudflareIngressEntry
 
-	// 2. Load Unbound DNS overrides
-	logging.Info("Loading Unbound DNS overrides...")
-	unboundOverrides, err := d.loadUnboundOverrides()
-	if err != nil {
-		logging.Error("Failed to load Unbound overrides", "error", err)
-		// Don't fail completely - continue without Unbound data
-		unboundOverrides = make(map[string]*api.DNSOverride)
-	}
-	logging.Info("Loaded Unbound overrides", "count", len(unboundOverrides))
+		caddyErr   error
+		unboundErr error
+		adguardErr error
+		dhcpErr    error
+		cfErr      error
 
-	// 3. Load AdGuard DNS rewrites
-	var adguardRewrites map[string]*api.Rewrite
-	if d.adguardClient != nil {
-		logging.Info("Loading AdGuard DNS rewrites...")
-		adguardRewrites, err = d.loadAdguardRewrites()
-		if err != nil {
-			logging.Error("Failed to load AdGuard rewrites", "error", err)
-			// Don't fail completely - continue without AdGuard data
-			adguardRewrites = make(map[string]*api.Rewrite)
+		wg sync.WaitGroup
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logging.Info("Loading Caddy configuration...")
+		caddyHostnames, caddyErr = d.loadCaddyHostnames()
+		if caddyErr != nil {
+			logging.Error("Failed to load Caddy hostnames", "error", caddyErr)
+		} else {
+			logging.Info("Loaded Caddy hostnames", "count", len(caddyHostnames))
 		}
-		logging.Info("Loaded AdGuard rewrites", "count", len(adguardRewrites))
-	} else {
-		adguardRewrites = make(map[string]*api.Rewrite)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logging.Info("Loading Unbound DNS overrides...")
+		unboundOverrides, unboundErr = d.loadUnboundOverrides()
+		if unboundErr != nil {
+			logging.Warn("Failed to load Unbound overrides", "error", unboundErr)
+			unboundOverrides = make(map[string]*api.DNSOverride)
+		} else {
+			logging.Info("Loaded Unbound overrides", "count", len(unboundOverrides))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if d.adguardClient == nil {
+			adguardRewrites = make(map[string]*api.Rewrite)
+			return
+		}
+		logging.Info("Loading AdGuard DNS rewrites...")
+		adguardRewrites, adguardErr = d.loadAdguardRewrites()
+		if adguardErr != nil {
+			logging.Warn("Failed to load AdGuard rewrites", "error", adguardErr)
+			adguardRewrites = make(map[string]*api.Rewrite)
+		} else {
+			logging.Info("Loaded AdGuard rewrites", "count", len(adguardRewrites))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logging.Info("Loading DHCP leases...")
+		dhcpLeases, dhcpErr = d.loadDHCPLeases()
+		if dhcpErr != nil {
+			logging.Warn("Failed to load DHCP leases", "error", dhcpErr)
+			dhcpLeases = make(map[string]*api.DNSMasqLease)
+		} else {
+			logging.Info("Loaded DHCP leases", "count", len(dhcpLeases))
+		}
+	}()
+
+	if d.cfClient != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			logging.Info("Loading Cloudflare tunnel details...")
+			cfDetails, cfErr = d.cfClient.GetAllTunnelsDetails()
+			if cfErr != nil {
+				logging.Warn("Failed to load Cloudflare tunnel details", "error", cfErr)
+			} else {
+				logging.Info("Loaded Cloudflare tunnel details", "count", len(cfDetails))
+			}
+		}()
 	}
 
-	// 4. Load DHCP leases
-	logging.Info("Loading DHCP leases...")
-	dhcpLeases, err := d.loadDHCPLeases()
-	if err != nil {
-		logging.Error("Failed to load DHCP leases", "error", err)
-		// Don't fail completely - continue without DHCP data
-		dhcpLeases = make(map[string]*api.DNSMasqLease)
-	}
-	logging.Info("Loaded DHCP leases", "count", len(dhcpLeases))
+	wg.Wait()
 
-	// 5. Build unified Entry models
+	if caddyErr != nil {
+		return nil, fmt.Errorf("failed to load Caddy hostnames: %w", caddyErr)
+	}
+
+	// --- Phase 2: build entry models ---
 	logging.Info("Building unified entry models...")
 	entries := d.buildEntries(caddyHostnames, unboundOverrides, adguardRewrites, dhcpLeases)
 	logging.Info("Built entry models", "count", len(entries))
 
+	// --- Phase 3: parallel DNS resolution ---
+	logging.Info("Resolving DNS hostnames in parallel...")
+	d.resolveAllDNS(entries)
+
+	// --- Phase 4: enrich with Cloudflare data ---
+	if cfDetails != nil {
+		hostIndex := make(map[string]int, len(entries))
+		for i, e := range entries {
+			hostIndex[e.Hostname] = i
+		}
+		for hostname, cfEntry := range cfDetails {
+			cfStatus := models.CloudflareStatus{
+				Configured:      true,
+				TunnelName:      cfEntry.TunnelName,
+				TunnelID:        cfEntry.TunnelID,
+				Service:         cfEntry.Service,
+				Path:            cfEntry.Path,
+				IsDefaultTunnel: cfEntry.IsDefaultTunnel,
+				HTTPHostHeader:  cfEntry.HTTPHostHeader,
+				NoTLSVerify:     cfEntry.NoTLSVerify,
+				Http2Origin:     cfEntry.Http2Origin,
+				HasAccessPolicy: cfEntry.HasAccessPolicy,
+			}
+			if idx, ok := hostIndex[hostname]; ok {
+				entries[idx].CloudflareStatus = cfStatus
+			} else {
+				entries = append(entries, &models.Entry{
+					Hostname:         hostname,
+					DataSource:       "CloudFlare",
+					CloudflareStatus: cfStatus,
+				})
+			}
+		}
+	}
+
+	// Recompute overall status now that CF data is merged
+	for _, e := range entries {
+		e.OverallStatus = models.ComputeSyncStatus(e, d.caddyServerIP)
+	}
+
 	return entries, nil
 }
 
-// loadCaddyHostnames loads hostname -> upstream mappings from Caddy
-func (d *DataLoader) loadCaddyHostnames() (map[string]string, error) {
+// resolveAllDNS resolves DNS for all entries in parallel using a worker pool.
+func (d *DataLoader) resolveAllDNS(entries []*models.Entry) {
+	const workers = 20
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+
+	for _, e := range entries {
+		e := e
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			e.DNSResolved = d.resolveDNS(e.Hostname)
+		}()
+	}
+	wg.Wait()
+}
+
+// loadCaddyHostnames loads full route details (hostname -> CaddyRouteInfo) from Caddy.
+func (d *DataLoader) loadCaddyHostnames() (map[string]models.CaddyRouteInfo, error) {
 	if d.caddyClient == nil {
 		return nil, fmt.Errorf("Caddy client not initialized")
 	}
-
-	hostnameMap, err := d.caddyClient.GetHostnameMap()
-	if err != nil {
-		return nil, err
-	}
-
-	return hostnameMap, nil
+	return d.caddyClient.GetHostnameDetails()
 }
 
 // loadUnboundOverrides loads DNS overrides from Unbound
@@ -145,7 +256,9 @@ func (d *DataLoader) loadAdguardRewrites() (map[string]*api.Rewrite, error) {
 	return rewriteMap, nil
 }
 
-// loadDHCPLeases loads DHCP leases from DNSMasq
+// loadDHCPLeases loads DHCP leases from DNSMasq.
+// Returns a map keyed by BOTH short hostname (when present) AND IP address so
+// that static reservations without a hostname can still be matched by IP.
 func (d *DataLoader) loadDHCPLeases() (map[string]*api.DNSMasqLease, error) {
 	if d.dnsmasqClient == nil {
 		return nil, fmt.Errorf("DNSMasq client not initialized")
@@ -156,11 +269,16 @@ func (d *DataLoader) loadDHCPLeases() (map[string]*api.DNSMasqLease, error) {
 		return nil, err
 	}
 
-	// Index by hostname
 	leaseMap := make(map[string]*api.DNSMasqLease)
 	for i := range leases {
+		// Index by short hostname (primary lookup path)
 		if leases[i].Hostname != "" {
 			leaseMap[leases[i].Hostname] = &leases[i]
+		}
+		// Also index by IP address so we can fall back when hostname is empty
+		// (common for static DHCP reservations in OPNSense)
+		if leases[i].IPAddress != "" {
+			leaseMap[leases[i].IPAddress] = &leases[i]
 		}
 	}
 
@@ -169,7 +287,7 @@ func (d *DataLoader) loadDHCPLeases() (map[string]*api.DNSMasqLease, error) {
 
 // buildEntries builds unified Entry models from all data sources
 func (d *DataLoader) buildEntries(
-	caddyHostnames map[string]string,
+	caddyHostnames map[string]models.CaddyRouteInfo,
 	unboundOverrides map[string]*api.DNSOverride,
 	adguardRewrites map[string]*api.Rewrite,
 	dhcpLeases map[string]*api.DNSMasqLease,
@@ -206,7 +324,7 @@ func (d *DataLoader) buildEntries(
 // buildEntry builds a single Entry model for a hostname
 func (d *DataLoader) buildEntry(
 	hostname string,
-	caddyHostnames map[string]string,
+	caddyHostnames map[string]models.CaddyRouteInfo,
 	unboundOverrides map[string]*api.DNSOverride,
 	adguardRewrites map[string]*api.Rewrite,
 	dhcpLeases map[string]*api.DNSMasqLease,
@@ -216,13 +334,14 @@ func (d *DataLoader) buildEntry(
 	}
 
 	// Caddy data (source of truth)
-	if upstream, exists := caddyHostnames[hostname]; exists {
-		entry.CaddyUpstream = upstream
+	if routeInfo, exists := caddyHostnames[hostname]; exists {
+		entry.CaddyUpstream = routeInfo.Upstream
+		entry.CaddyRoute = routeInfo
 		entry.DataSource = "Caddy"
 
 		// Extract IP and port from upstream
 		// Upstream format: "192.168.1.112:8096" or "192.168.1.112"
-		if parts := strings.Split(upstream, ":"); len(parts) >= 1 {
+		if parts := strings.Split(routeInfo.Upstream, ":"); len(parts) >= 1 {
 			entry.CaddyIP = parts[0]
 			if len(parts) == 2 {
 				entry.CaddyPort = parts[1]
@@ -257,13 +376,20 @@ func (d *DataLoader) buildEntry(
 	}
 
 	// DHCP data
-	// Try to find DHCP lease by extracting base hostname (without domain)
+	// Try to find DHCP lease by: (1) short hostname, (2) IP from Caddy upstream.
+	// Static reservations in OPNSense often have no hostname, only an IP.
 	baseHostname := hostname
 	if dotIdx := strings.Index(hostname, "."); dotIdx > 0 {
 		baseHostname = hostname[:dotIdx]
 	}
+	var dhcpLease *api.DNSMasqLease
+	if l, ok := dhcpLeases[baseHostname]; ok {
+		dhcpLease = l
+	} else if entry.CaddyIP != "" {
+		dhcpLease = dhcpLeases[entry.CaddyIP] // may be nil — that's fine
+	}
 
-	if lease, exists := dhcpLeases[baseHostname]; exists {
+	if lease := dhcpLease; lease != nil {
 		leaseType := "dynamic"
 		if lease.Type == "static" {
 			leaseType = "static"
@@ -286,10 +412,7 @@ func (d *DataLoader) buildEntry(
 		entry.DHCPStatus = models.NoDHCP()
 	}
 
-	// Resolve DNS to see what the hostname actually resolves to
-	entry.DNSResolved = d.resolveDNS(hostname)
-
-	// Compute overall sync status
+	// Compute overall sync status (DNS resolution happens separately in parallel)
 	entry.OverallStatus = models.ComputeSyncStatus(entry, d.caddyServerIP)
 
 	return entry

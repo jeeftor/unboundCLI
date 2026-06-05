@@ -6,9 +6,10 @@ type Entry struct {
 	Hostname string // e.g., "jellyfin.vookie.net"
 
 	// Caddy (Source of Truth)
-	CaddyUpstream string // e.g., "192.168.1.112:8096"
-	CaddyIP       string // Extracted IP: "192.168.1.112"
-	CaddyPort     string // Extracted port: "8096"
+	CaddyUpstream string         // e.g., "192.168.1.112:8096"
+	CaddyIP       string         // Extracted IP: "192.168.1.112"
+	CaddyPort     string         // Extracted port: "8096"
+	CaddyRoute    CaddyRouteInfo // full handler chain from Caddy config
 
 	// DNS Services
 	UnboundStatus ServiceStatus
@@ -20,6 +21,9 @@ type Entry struct {
 	// DNS Resolution (what DNS actually resolves to)
 	DNSResolved string // Current DNS resolution result
 
+	// Cloudflare
+	CloudflareStatus CloudflareStatus
+
 	// Computed Status
 	OverallStatus SyncStatus // Overall sync state
 	DataSource    string     // Where this entry came from
@@ -28,6 +32,17 @@ type Entry struct {
 // IsConfiguredInCaddy returns true if this entry exists in Caddy
 func (e *Entry) IsConfiguredInCaddy() bool {
 	return e.CaddyUpstream != ""
+}
+
+// IsConfiguredInCloudflare returns true if this hostname has an ingress rule in any CF tunnel.
+func (e *Entry) IsConfiguredInCloudflare() bool {
+	return e.CloudflareStatus.Configured
+}
+
+// NeedsHTTPHostHeader returns true if the entry is in CF but HTTPHostHeader is not set.
+// Without HTTPHostHeader, CF→Caddy routing typically breaks.
+func (e *Entry) NeedsHTTPHostHeader() bool {
+	return e.CloudflareStatus.Configured && e.CloudflareStatus.HTTPHostHeader == ""
 }
 
 // HasDNSMismatch returns true if DNS resolves to something other than Caddy

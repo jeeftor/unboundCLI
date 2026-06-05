@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/jeeftor/caddy-dns-sync/internal/models"
 )
 
 // CaddyClient handles communication with the Caddy server
@@ -361,4 +363,173 @@ func (c *CaddyClient) extractUpstreamFromRoutes(routes []interface{}) string {
 		}
 	}
 	return ""
+}
+
+// GetHostnameDetails returns a per-hostname CaddyRouteInfo with the full handler chain,
+// request/response headers, and TLS-transport flag. Purely read-only.
+func (c *CaddyClient) GetHostnameDetails() (map[string]models.CaddyRouteInfo, error) {
+	config, err := c.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]models.CaddyRouteInfo)
+
+	apps, _ := config["apps"].(map[string]interface{})
+	httpApp, _ := apps["http"].(map[string]interface{})
+	servers, _ := httpApp["servers"].(map[string]interface{})
+
+	for _, server := range servers {
+		serverObj, ok := server.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		routes, ok := serverObj["routes"].([]interface{})
+		if !ok {
+			continue
+		}
+		c.collectRouteDetails(routes, result)
+	}
+	return result, nil
+}
+
+// collectRouteDetails walks a routes array and populates result for every route that
+// has a host-match condition.
+func (c *CaddyClient) collectRouteDetails(routes []interface{}, result map[string]models.CaddyRouteInfo) {
+	for _, r := range routes {
+		rObj, ok := r.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		var hostnames []string
+		c.extractHostsFromMatch(rObj["match"], &hostnames)
+
+		if len(hostnames) > 0 {
+			chain, upstream, reqSet, reqAdd, respSet, tlsUpstream := c.extractHandlerChain(rObj)
+			for _, h := range hostnames {
+				if _, exists := result[h]; !exists {
+					result[h] = models.CaddyRouteInfo{
+						Upstream:           upstream,
+						HandlerChain:       chain,
+						RequestHeadersSet:  reqSet,
+						RequestHeadersAdd:  reqAdd,
+						ResponseHeadersSet: respSet,
+						TLSToUpstream:      tlsUpstream,
+					}
+				}
+			}
+		}
+
+		// Recurse into subroutes that carry their own host matches
+		if handle, ok := rObj["handle"].([]interface{}); ok {
+			for _, h := range handle {
+				hObj, ok := h.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if hType, _ := hObj["handler"].(string); hType == "subroute" {
+					if subRoutes, ok := hObj["routes"].([]interface{}); ok {
+						c.collectRouteDetails(subRoutes, result)
+					}
+				}
+			}
+		}
+	}
+}
+
+// extractHandlerChain recursively walks the handle list of a single route object and
+// collects handler type names, reverse_proxy details (headers, transport), and upstream.
+func (c *CaddyClient) extractHandlerChain(routeObj map[string]interface{}) (
+	chain []string,
+	upstream string,
+	reqSet, reqAdd, respSet map[string]string,
+	tlsUpstream bool,
+) {
+	reqSet = make(map[string]string)
+	reqAdd = make(map[string]string)
+	respSet = make(map[string]string)
+
+	handle, ok := routeObj["handle"].([]interface{})
+	if !ok {
+		return
+	}
+
+	for _, h := range handle {
+		hObj, ok := h.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		handlerType, _ := hObj["handler"].(string)
+		if handlerType != "" && handlerType != "subroute" {
+			chain = append(chain, handlerType)
+		}
+
+		switch handlerType {
+		case "reverse_proxy":
+			if upstreams, ok := hObj["upstreams"].([]interface{}); ok && len(upstreams) > 0 {
+				if u, ok := upstreams[0].(map[string]interface{}); ok {
+					if dial, ok := u["dial"].(string); ok {
+						upstream = dial
+					}
+				}
+			}
+			caddyExtractHeaderMap(hObj, "request", "set", reqSet)
+			caddyExtractHeaderMap(hObj, "request", "add", reqAdd)
+			caddyExtractHeaderMap(hObj, "response", "set", respSet)
+			if transport, ok := hObj["transport"].(map[string]interface{}); ok {
+				if _, hasTLS := transport["tls"]; hasTLS {
+					tlsUpstream = true
+				}
+			}
+
+		case "subroute":
+			if subRoutes, ok := hObj["routes"].([]interface{}); ok {
+				for _, sr := range subRoutes {
+					srObj, ok := sr.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					subChain, subUpstream, subReqSet, subReqAdd, subRespSet, subTLS := c.extractHandlerChain(srObj)
+					chain = append(chain, subChain...)
+					if subUpstream != "" {
+						upstream = subUpstream
+					}
+					for k, v := range subReqSet {
+						reqSet[k] = v
+					}
+					for k, v := range subReqAdd {
+						reqAdd[k] = v
+					}
+					for k, v := range subRespSet {
+						respSet[k] = v
+					}
+					if subTLS {
+						tlsUpstream = true
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
+// caddyExtractHeaderMap extracts a header set/add map from a reverse_proxy handler object.
+func caddyExtractHeaderMap(hObj map[string]interface{}, direction, op string, out map[string]string) {
+	headers, ok := hObj["headers"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	dir, ok := headers[direction].(map[string]interface{})
+	if !ok {
+		return
+	}
+	opMap, ok := dir[op].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for k, v := range opMap {
+		if vals, ok := v.([]interface{}); ok && len(vals) > 0 {
+			out[k] = fmt.Sprint(vals[0])
+		}
+	}
 }

@@ -587,5 +587,372 @@ func TestDeleteDNSRecord_IgnoresNonTunnelCNAMEs(t *testing.T) {
 	}
 }
 
+// --- GetAllTunnelsHostnames ---
+
+func TestGetAllTunnelsHostnames(t *testing.T) {
+	accountID := "test-account"
+
+	// tunnel-alpha: active, has two hostnames
+	tunnelAlphaConfig := `{
+		"success": true,
+		"errors": [],
+		"messages": [],
+		"result": {
+			"tunnel_id": "tunnel-alpha-id",
+			"version": 1,
+			"config": {
+				"ingress": [
+					{"hostname": "app.example.com", "service": "http://192.168.1.10:80"},
+					{"hostname": "api.example.com", "service": "http://192.168.1.11:8080"},
+					{"service": "http_status:404"}
+				]
+			}
+		}
+	}`
+
+	// tunnel-beta: active, has one hostname
+	tunnelBetaConfig := `{
+		"success": true,
+		"errors": [],
+		"messages": [],
+		"result": {
+			"tunnel_id": "tunnel-beta-id",
+			"version": 1,
+			"config": {
+				"ingress": [
+					{"hostname": "blog.example.com", "service": "http://192.168.1.20:80"},
+					{"service": "http_status:404"}
+				]
+			}
+		}
+	}`
+
+	tunnelListResp := fmt.Sprintf(`{
+		"success": true,
+		"errors": [],
+		"messages": [],
+		"result": [
+			{
+				"id": "tunnel-alpha-id",
+				"name": "alpha",
+				"created_at": "2021-01-01T00:00:00Z",
+				"deleted_at": null,
+				"connections": []
+			},
+			{
+				"id": "tunnel-beta-id",
+				"name": "beta",
+				"created_at": "2022-01-01T00:00:00Z",
+				"deleted_at": null,
+				"connections": []
+			},
+			{
+				"id": "tunnel-deleted-id",
+				"name": "old-tunnel",
+				"created_at": "2020-01-01T00:00:00Z",
+				"deleted_at": "2023-06-01T00:00:00Z",
+				"connections": []
+			}
+		],
+		"result_info": {
+			"page": 1,
+			"per_page": 20,
+			"total_pages": 1,
+			"count": 3,
+			"total_count": 3
+		}
+	}`)
+
+	mux := http.NewServeMux()
+
+	// List tunnels endpoint
+	mux.HandleFunc(fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel", accountID),
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				t.Errorf("Expected GET, got %s", r.Method)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelListResp)
+		})
+
+	// tunnel-alpha configuration endpoint
+	mux.HandleFunc(fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel/tunnel-alpha-id/configurations", accountID),
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelAlphaConfig)
+		})
+
+	// tunnel-beta configuration endpoint
+	mux.HandleFunc(fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel/tunnel-beta-id/configurations", accountID),
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelBetaConfig)
+		})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := CloudflareConfig{
+		APIToken:  "test-token",
+		AccountID: accountID,
+	}
+	client, err := NewCloudflareClientWithBaseURL(cfg, srv.URL+"/client/v4")
+	if err != nil {
+		t.Fatalf("Failed to create CloudflareClient: %v", err)
+	}
+
+	result, err := client.GetAllTunnelsHostnames()
+	if err != nil {
+		t.Fatalf("GetAllTunnelsHostnames failed: %v", err)
+	}
+
+	// Expect 3 hostnames from the 2 active tunnels (deleted tunnel skipped)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 hostnames, got %d: %v", len(result), result)
+	}
+
+	// Verify app.example.com (from alpha)
+	app, ok := result["app.example.com"]
+	if !ok {
+		t.Fatal("expected app.example.com in result")
+	}
+	if app.TunnelID != "tunnel-alpha-id" {
+		t.Errorf("app.example.com: expected TunnelID 'tunnel-alpha-id', got %q", app.TunnelID)
+	}
+	if app.TunnelName != "alpha" {
+		t.Errorf("app.example.com: expected TunnelName 'alpha', got %q", app.TunnelName)
+	}
+	if app.Service != "192.168.1.10:80" {
+		t.Errorf("app.example.com: expected Service '192.168.1.10:80', got %q", app.Service)
+	}
+
+	// Verify api.example.com (from alpha)
+	apiEntry, ok := result["api.example.com"]
+	if !ok {
+		t.Fatal("expected api.example.com in result")
+	}
+	if apiEntry.TunnelID != "tunnel-alpha-id" {
+		t.Errorf("api.example.com: expected TunnelID 'tunnel-alpha-id', got %q", apiEntry.TunnelID)
+	}
+
+	// Verify blog.example.com (from beta)
+	blog, ok := result["blog.example.com"]
+	if !ok {
+		t.Fatal("expected blog.example.com in result")
+	}
+	if blog.TunnelID != "tunnel-beta-id" {
+		t.Errorf("blog.example.com: expected TunnelID 'tunnel-beta-id', got %q", blog.TunnelID)
+	}
+	if blog.TunnelName != "beta" {
+		t.Errorf("blog.example.com: expected TunnelName 'beta', got %q", blog.TunnelName)
+	}
+
+	// Verify the deleted tunnel's ID did not appear in results
+	for hostname, entry := range result {
+		if entry.TunnelID == "tunnel-deleted-id" {
+			t.Errorf("hostname %q belongs to deleted tunnel — should have been skipped", hostname)
+		}
+	}
+}
+
+// --- GetAllTunnelsDetails ---
+
+func TestGetAllTunnelsDetails(t *testing.T) {
+	accountID := "test-account"
+	defaultTunnelID := "tunnel-alpha-id" // This is the "default" tunnel for this client
+
+	// tunnel-alpha: active, 2 hostnames.
+	// app.example.com has a per-rule HTTPHostHeader (overrides tunnel default).
+	// api.example.com uses tunnel-level default (no per-rule OriginRequest).
+	// Tunnel-level default has NoTLSVerify = true.
+	tunnelAlphaConfig := `{
+		"success": true,
+		"errors": [],
+		"messages": [],
+		"result": {
+			"tunnel_id": "tunnel-alpha-id",
+			"version": 1,
+			"config": {
+				"originRequest": {
+					"noTLSVerify": true
+				},
+				"ingress": [
+					{
+						"hostname": "app.example.com",
+						"service": "http://192.168.1.10:80",
+						"originRequest": {
+							"httpHostHeader": "app.example.com"
+						}
+					},
+					{
+						"hostname": "api.example.com",
+						"service": "http://192.168.1.11:8080"
+					},
+					{"service": "http_status:404"}
+				]
+			}
+		}
+	}`
+
+	// tunnel-beta: active, 1 hostname, no OriginRequest settings.
+	tunnelBetaConfig := `{
+		"success": true,
+		"errors": [],
+		"messages": [],
+		"result": {
+			"tunnel_id": "tunnel-beta-id",
+			"version": 1,
+			"config": {
+				"ingress": [
+					{"hostname": "blog.example.com", "service": "http://192.168.1.20:80"},
+					{"service": "http_status:404"}
+				]
+			}
+		}
+	}`
+
+	tunnelListResp := fmt.Sprintf(`{
+		"success": true,
+		"errors": [],
+		"messages": [],
+		"result": [
+			{
+				"id": "tunnel-alpha-id",
+				"name": "alpha",
+				"created_at": "2021-01-01T00:00:00Z",
+				"deleted_at": null,
+				"connections": []
+			},
+			{
+				"id": "tunnel-beta-id",
+				"name": "beta",
+				"created_at": "2022-01-01T00:00:00Z",
+				"deleted_at": null,
+				"connections": []
+			},
+			{
+				"id": "tunnel-deleted-id",
+				"name": "old-tunnel",
+				"created_at": "2020-01-01T00:00:00Z",
+				"deleted_at": "2023-06-01T00:00:00Z",
+				"connections": []
+			}
+		],
+		"result_info": {
+			"page": 1,
+			"per_page": 20,
+			"total_pages": 1,
+			"count": 3,
+			"total_count": 3
+		}
+	}`)
+
+	deletedCalled := false
+	mux := http.NewServeMux()
+
+	mux.HandleFunc(fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel", accountID),
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelListResp)
+		})
+
+	mux.HandleFunc(fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel/tunnel-alpha-id/configurations", accountID),
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelAlphaConfig)
+		})
+
+	mux.HandleFunc(fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel/tunnel-beta-id/configurations", accountID),
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, tunnelBetaConfig)
+		})
+
+	mux.HandleFunc(fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel/tunnel-deleted-id/configurations", accountID),
+		func(w http.ResponseWriter, r *http.Request) {
+			deletedCalled = true
+			t.Error("should not fetch configuration for deleted tunnel")
+		})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := CloudflareConfig{
+		APIToken:  "test-token",
+		AccountID: accountID,
+		TunnelID:  defaultTunnelID,
+	}
+	client, err := NewCloudflareClientWithBaseURL(cfg, srv.URL+"/client/v4")
+	if err != nil {
+		t.Fatalf("Failed to create CloudflareClient: %v", err)
+	}
+
+	result, err := client.GetAllTunnelsDetails()
+	if err != nil {
+		t.Fatalf("GetAllTunnelsDetails failed: %v", err)
+	}
+
+	if deletedCalled {
+		t.Error("Configuration was fetched for the deleted tunnel")
+	}
+
+	// Expect 3 hostnames from 2 active tunnels
+	if len(result) != 3 {
+		t.Fatalf("expected 3 hostnames, got %d: %v", len(result), result)
+	}
+
+	// app.example.com: per-rule HTTPHostHeader should win; tunnel default NoTLSVerify=true should merge
+	app, ok := result["app.example.com"]
+	if !ok {
+		t.Fatal("expected app.example.com in result")
+	}
+	if app.TunnelID != "tunnel-alpha-id" {
+		t.Errorf("app.example.com: wrong TunnelID: %q", app.TunnelID)
+	}
+	if app.HTTPHostHeader != "app.example.com" {
+		t.Errorf("app.example.com: expected HTTPHostHeader 'app.example.com', got %q", app.HTTPHostHeader)
+	}
+	if !app.NoTLSVerify {
+		t.Error("app.example.com: expected NoTLSVerify=true (from tunnel default)")
+	}
+	if !app.IsDefaultTunnel {
+		t.Error("app.example.com: expected IsDefaultTunnel=true")
+	}
+
+	// api.example.com: no per-rule OriginRequest, tunnel default NoTLSVerify=true applies; HTTPHostHeader empty
+	api, ok := result["api.example.com"]
+	if !ok {
+		t.Fatal("expected api.example.com in result")
+	}
+	if api.HTTPHostHeader != "" {
+		t.Errorf("api.example.com: expected empty HTTPHostHeader, got %q", api.HTTPHostHeader)
+	}
+	if !api.NoTLSVerify {
+		t.Error("api.example.com: expected NoTLSVerify=true (from tunnel default)")
+	}
+	if !api.IsDefaultTunnel {
+		t.Error("api.example.com: expected IsDefaultTunnel=true")
+	}
+
+	// blog.example.com: from beta tunnel, not the default
+	blog, ok := result["blog.example.com"]
+	if !ok {
+		t.Fatal("expected blog.example.com in result")
+	}
+	if blog.TunnelID != "tunnel-beta-id" {
+		t.Errorf("blog.example.com: wrong TunnelID: %q", blog.TunnelID)
+	}
+	if blog.IsDefaultTunnel {
+		t.Error("blog.example.com: expected IsDefaultTunnel=false (it's in beta tunnel)")
+	}
+
+	// No entries should come from the deleted tunnel
+	for hostname, entry := range result {
+		if entry.TunnelID == "tunnel-deleted-id" {
+			t.Errorf("hostname %q belongs to deleted tunnel — should have been skipped", hostname)
+		}
+	}
+}
+
 // ensure strings import is used (avoids lint warnings if helpers are inlined later)
 var _ = strings.Contains
