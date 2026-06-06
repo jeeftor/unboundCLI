@@ -8,11 +8,28 @@ let enabledServices = {};
 let serviceReport = {};
 let mutationEnabled = false;
 let configSummary = {};
+let configSaveTarget = '';
 
 const el = (id) => document.getElementById(id);
 
 async function getJSON(path) {
   const response = await fetch(path);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || response.statusText);
+  }
+  return data;
+}
+
+async function postJSON(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-UnboundCLI-Token': window.UNBOUNDCLI_WEB_CONFIG?.applyToken || ''
+    },
+    body: JSON.stringify(payload)
+  });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || response.statusText);
@@ -204,24 +221,33 @@ function renderServiceHealth() {
 
 function renderConfigSummary() {
   const services = [
-    configSummary.caddy,
-    configSummary.unbound,
-    configSummary.adguard,
-    configSummary.dhcp,
-    configSummary.cloudflare
-  ].filter(Boolean);
+    ['caddy', configSummary.caddy],
+    ['unbound', configSummary.unbound],
+    ['adguard', configSummary.adguard],
+    ['dhcp', configSummary.dhcp],
+    ['cloudflare', configSummary.cloudflare]
+  ].filter(([, service]) => Boolean(service));
   el('config-summary').innerHTML = `
     <div class="panel-heading">
-      <strong>Configuration</strong>
-      <span>Sanitized runtime view. Secrets are never shown.</span>
+      <div>
+        <strong>Configuration</strong>
+        <span>Runtime source and save destination.</span>
+      </div>
+      <span class="save-target">Save target: ${escapeHTML(configSaveTarget || '-')}</span>
     </div>
+    <div id="config-status" class="config-status" role="status" aria-live="polite"></div>
     <div class="config-grid">
-      ${services.map(configCard).join('')}
+      ${services.map(([key, service]) => configCard(key, service)).join('')}
     </div>
   `;
+  document.querySelectorAll('[data-config-save]').forEach((button) => {
+    button.addEventListener('click', () => saveConfig(button.dataset.configSave, button).catch((err) => {
+      setConfigStatus(err.message, 'error');
+    }));
+  });
 }
 
-function configCard(service) {
+function configCard(key, service) {
   const fields = Object.entries(service.fields || {});
   const details = Object.entries(service.details || {}).filter(([, value]) => value);
   const missing = service.missing || [];
@@ -232,13 +258,136 @@ function configCard(service) {
         <strong>${escapeHTML(service.label || 'Service')}</strong>
         <span>${service.client_ready ? 'Client ready' : service.enabled ? 'Configured, incomplete' : 'Not configured'}</span>
       </header>
+      <div class="config-line"><span>Source</span><strong>${escapeHTML(sourceLabel(service.source))}</strong></div>
       ${service.endpoint ? `<div class="config-line"><span>Endpoint</span><strong>${escapeHTML(service.endpoint)}</strong></div>` : ''}
       ${service.insecure ? '<div class="config-line warn"><span>TLS</span><strong>Insecure verification</strong></div>' : ''}
       ${details.map(([key, value]) => `<div class="config-line"><span>${escapeHTML(formatConfigKey(key))}</span><strong>${escapeHTML(value)}</strong></div>`).join('')}
       ${fields.map(([key, value]) => `<div class="config-line"><span>${escapeHTML(formatConfigKey(key))}</span><strong>${value ? 'set' : 'missing'}</strong></div>`).join('')}
       ${missing.length ? `<div class="missing-list">Missing: ${missing.map(escapeHTML).join(', ')}</div>` : '<div class="missing-list ok">Required fields present</div>'}
+      ${configEditor(key, service)}
     </article>
   `;
+}
+
+function sourceLabel(source = {}) {
+  const label = source.label || source.kind || 'Unknown';
+  return source.path ? `${label}: ${source.path}` : label;
+}
+
+function configEditor(key, service) {
+  if (key === 'unbound') {
+    return `
+      <div class="config-editor" data-config-editor="unbound">
+        <label>Base URL<input id="config-unbound-base-url" type="url" value="${escapeHTML(service.endpoint || '')}" placeholder="https://opnsense.local"></label>
+        <label>API key<input id="config-unbound-api-key" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label>API secret<input id="config-unbound-api-secret" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label class="checkbox-row"><input id="config-unbound-insecure" type="checkbox" ${service.insecure ? 'checked' : ''}> Insecure TLS</label>
+        <button type="button" data-config-save="unbound" ${mutationEnabled ? '' : 'disabled'}>Set OPNSense</button>
+      </div>
+    `;
+  }
+  if (key === 'adguard') {
+    return `
+      <div class="config-editor" data-config-editor="adguard">
+        <label class="checkbox-row"><input id="config-adguard-enabled" type="checkbox" ${service.enabled ? 'checked' : ''}> Enabled</label>
+        <label>Base URL<input id="config-adguard-base-url" type="url" value="${escapeHTML(service.endpoint || '')}" placeholder="https://adguard.local"></label>
+        <label>Username<input id="config-adguard-username" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label>Password<input id="config-adguard-password" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label class="checkbox-row"><input id="config-adguard-insecure" type="checkbox" ${service.insecure ? 'checked' : ''}> Insecure TLS</label>
+        <button type="button" data-config-save="adguard" ${mutationEnabled ? '' : 'disabled'}>Set AdGuard</button>
+      </div>
+    `;
+  }
+  if (key === 'cloudflare') {
+    return `
+      <div class="config-editor" data-config-editor="cloudflare">
+        <label class="checkbox-row"><input id="config-cloudflare-enabled" type="checkbox" ${service.enabled ? 'checked' : ''}> Enabled</label>
+        <label>API token<input id="config-cloudflare-api-token" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label>Account ID<input id="config-cloudflare-account-id" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label>Zone ID<input id="config-cloudflare-zone-id" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label>Tunnel ID<input id="config-cloudflare-tunnel-id" type="password" autocomplete="off" placeholder="leave unchanged"></label>
+        <label>Caddy service URL<input id="config-cloudflare-caddy-service-url" type="url" value="${escapeHTML(service.details?.caddy_service_url || '')}" placeholder="http://127.0.0.1:80"></label>
+        <label class="checkbox-row"><input id="config-cloudflare-insecure" type="checkbox" ${service.insecure ? 'checked' : ''}> Insecure TLS</label>
+        <button type="button" data-config-save="cloudflare" ${mutationEnabled ? '' : 'disabled'}>Set Cloudflare</button>
+      </div>
+    `;
+  }
+  return '';
+}
+
+function nonEmptyInput(id) {
+  const value = el(id)?.value.trim() || '';
+  return value || undefined;
+}
+
+function buildConfigUpdate(service) {
+  if (service === 'unbound') {
+    return pruneUndefined({unbound: {
+      base_url: el('config-unbound-base-url').value.trim(),
+      api_key: nonEmptyInput('config-unbound-api-key'),
+      api_secret: nonEmptyInput('config-unbound-api-secret'),
+      insecure: el('config-unbound-insecure').checked
+    }});
+  }
+  if (service === 'adguard') {
+    return pruneUndefined({adguard: {
+      enabled: el('config-adguard-enabled').checked,
+      base_url: el('config-adguard-base-url').value.trim(),
+      username: nonEmptyInput('config-adguard-username'),
+      password: nonEmptyInput('config-adguard-password'),
+      insecure: el('config-adguard-insecure').checked
+    }});
+  }
+  if (service === 'cloudflare') {
+    return pruneUndefined({cloudflare: {
+      enabled: el('config-cloudflare-enabled').checked,
+      api_token: nonEmptyInput('config-cloudflare-api-token'),
+      account_id: nonEmptyInput('config-cloudflare-account-id'),
+      zone_id: nonEmptyInput('config-cloudflare-zone-id'),
+      tunnel_id: nonEmptyInput('config-cloudflare-tunnel-id'),
+      caddy_service_url: el('config-cloudflare-caddy-service-url').value.trim(),
+      insecure: el('config-cloudflare-insecure').checked
+    }});
+  }
+  throw new Error(`Unknown config section ${service}`);
+}
+
+async function saveConfig(service, button) {
+  if (!mutationEnabled) {
+    setConfigStatus('Config changes are unavailable for this web session.', 'error');
+    return;
+  }
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Saving...';
+  setConfigStatus(`Saving ${service} config...`, 'info');
+  try {
+    const config = await postJSON('/api/config', buildConfigUpdate(service));
+    applyEnabledServices(config);
+    setConfigStatus(`Saved ${service} config.`, 'ok');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function setConfigStatus(text, kind = 'info') {
+  const node = el('config-status');
+  if (!node) return;
+  node.textContent = text;
+  node.className = `config-status ${kind}`;
+}
+
+function pruneUndefined(value) {
+  if (!value || typeof value !== 'object') return value;
+  Object.keys(value).forEach((key) => {
+    if (value[key] === undefined) {
+      delete value[key];
+    } else {
+      pruneUndefined(value[key]);
+    }
+  });
+  return value;
 }
 
 function formatConfigKey(key) {
@@ -254,6 +403,7 @@ function applyEnabledServices(config) {
   enabledServices = config.enabled || {};
   mutationEnabled = Boolean(config.mutation_enabled && window.UNBOUNDCLI_WEB_CONFIG?.mutationEnabled);
   configSummary = config.summary || {};
+  configSaveTarget = config.save_target || '';
   document.querySelectorAll('[data-service]').forEach((node) => {
     const service = node.getAttribute('data-service');
     const available = enabledServices[service] !== false;
@@ -448,6 +598,16 @@ async function runE2EActions() {
     }
     if (name === 'sync') {
       await syncNow();
+    }
+    if (name === 'toggleconfig') {
+      el('config-panel').open = value !== 'closed';
+    }
+    if (name === 'setconfig') {
+      if (value === 'unbound') {
+        el('config-unbound-base-url').value = 'https://saved.example.test';
+        el('config-unbound-api-key').value = 'saved-key';
+        await saveConfig('unbound', document.querySelector('[data-config-save="unbound"]'));
+      }
     }
   }
   el('app').setAttribute('data-e2e', 'done');

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
 )
 
 func TestBrowserSmokeWithFakeData(t *testing.T) {
@@ -77,6 +79,7 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	defer opnsense.Close()
 
 	host, port := splitBrowserTestServerHostPort(t, caddy.URL)
+	configPath := filepath.Join(t.TempDir(), "browser-config.json")
 	webHandler := NewServerWithOptions(&app.Runtime{
 		UnboundConfig: api.Config{
 			APIKey:    "fixture-browser-key",
@@ -99,6 +102,7 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 		AllowMutations:  true,
 		BoundHost:       "127.0.0.1",
 		EnableTestHooks: true,
+		ConfigPath:      configPath,
 	})
 	webServer := httptest.NewServer(webHandler)
 	webHandler.options.AllowedOrigin = webServer.URL
@@ -120,8 +124,11 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(dom, `data-mutation-enabled="true"`) {
 		t.Fatalf("browser DOM should report backend-supported sync session:\n%s", dom)
 	}
-	if !strings.Contains(dom, "Configuration") || !strings.Contains(dom, "OPNSense / Unbound") || !strings.Contains(dom, "API Key Set") {
+	if !strings.Contains(dom, `id="config-panel"`) || !strings.Contains(dom, "Configuration") || !strings.Contains(dom, "OPNSense / Unbound") || !strings.Contains(dom, "API Key Set") {
 		t.Fatalf("browser DOM should render sanitized configuration summary:\n%s", dom)
+	}
+	if !strings.Contains(dom, "Save target: "+configPath) || !strings.Contains(dom, "Set OPNSense") || !strings.Contains(dom, "Defaults") {
+		t.Fatalf("browser DOM should render config source, save target, and set buttons:\n%s", dom)
 	}
 	if strings.Contains(dom, "fixture-browser-key") || strings.Contains(dom, "fixture-browser-secret") {
 		t.Fatalf("browser DOM leaked sensitive config values:\n%s", dom)
@@ -179,12 +186,33 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 		t.Fatalf("row preview should render only the selected hostname action:\n%s", rowPreviewDOM)
 	}
 
+	closedConfigDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=toggleconfig:closed", 1280, 900)
+	if !strings.Contains(closedConfigDOM, `id="config-panel" class="config-summary panel"`) || strings.Contains(closedConfigDOM, `id="config-panel" class="config-summary panel" open`) {
+		t.Fatalf("config panel should be closable:\n%s", closedConfigDOM)
+	}
+
 	mobileDOM := runChromeSmoke(t, chromePath, webServer.URL, 390, 844)
 	if !strings.Contains(mobileDOM, `data-mobile="true"`) {
 		t.Fatalf("mobile DOM did not mark mobile layout:\n%s", mobileDOM)
 	}
 	if !strings.Contains(mobileDOM, `data-table-scrolls="true"`) {
 		t.Fatalf("mobile DOM should expose horizontal table scrolling:\n%s", mobileDOM)
+	}
+
+	configSaveDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=setconfig:unbound", 1280, 900)
+	if !strings.Contains(configSaveDOM, "Saved unbound config.") || !strings.Contains(configSaveDOM, "https://saved.example.test") {
+		t.Fatalf("config save should update the browser summary:\n%s", configSaveDOM)
+	}
+	savedData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("expected browser config save to write %s: %v", configPath, err)
+	}
+	var savedConfig config.ExtendedConfig
+	if err := json.Unmarshal(savedData, &savedConfig); err != nil {
+		t.Fatalf("failed to decode browser-saved config: %v", err)
+	}
+	if savedConfig.BaseURL != "https://saved.example.test" || savedConfig.APIKey != "saved-key" || savedConfig.APISecret != "fixture-browser-secret" {
+		t.Fatalf("unexpected browser-saved OPNSense config: %#v", savedConfig.Config)
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -219,6 +221,127 @@ func TestConfigRouteReturnsSanitizedConfigurationSummary(t *testing.T) {
 		if bytes.Contains(raw, []byte(secret)) {
 			t.Fatalf("config response leaked secret or identifier %q: %s", secret, string(raw))
 		}
+	}
+}
+
+func TestConfigRouteReportsSourcesAndSaveTarget(t *testing.T) {
+	t.Setenv(config.EnvAPIKey, "")
+	t.Setenv(config.EnvAPISecret, "")
+	t.Setenv(config.EnvBaseURL, "")
+	t.Setenv(config.EnvAdguardEnabled, "")
+	t.Setenv(config.EnvCFEnabled, "")
+
+	configPath := filepath.Join(t.TempDir(), "caddy-dns-sync.json")
+	if err := config.SaveExtendedConfig(config.ExtendedConfig{
+		Config: api.Config{
+			APIKey:    "file-key",
+			APISecret: "file-secret",
+			BaseURL:   "https://opnsense.example.test",
+		},
+	}, configPath); err != nil {
+		t.Fatalf("failed to write fixture config: %v", err)
+	}
+	server := NewServerWithOptions(&app.Runtime{
+		UnboundConfig: api.Config{BaseURL: "https://opnsense.example.test"},
+	}, Options{ConfigPath: configPath})
+
+	resp := getJSON[ConfigResponse](t, server, "/api/config")
+	if resp.SaveTarget != configPath {
+		t.Fatalf("expected save target %q, got %q", configPath, resp.SaveTarget)
+	}
+	if resp.Summary.Unbound.Source.Kind != "config-file" || resp.Summary.Unbound.Source.Path != configPath {
+		t.Fatalf("expected OPNSense config-file source, got %#v", resp.Summary.Unbound.Source)
+	}
+	if resp.Summary.Cloudflare.Source.Kind != "default" {
+		t.Fatalf("expected Cloudflare default source, got %#v", resp.Summary.Cloudflare.Source)
+	}
+}
+
+func TestConfigUpdateWritesConfigFileAndRefreshesRuntime(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "caddy-dns-sync.json")
+	if err := config.SaveExtendedConfig(config.ExtendedConfig{
+		Config: api.Config{
+			APIKey:    "old-key",
+			APISecret: "old-secret",
+			BaseURL:   "https://old.example.test",
+		},
+		Adguard: config.AdguardConfig{
+			Enabled:     true,
+			Username:    "old-user",
+			Password:    "old-password",
+			BaseURL:     "https://adguard-old.example.test",
+			Description: "Entry created by caddy-dns-sync adguard-sync",
+		},
+	}, configPath); err != nil {
+		t.Fatalf("failed to write fixture config: %v", err)
+	}
+	server := NewServerWithOptions(&app.Runtime{
+		UnboundConfig: api.Config{
+			APIKey:    "old-key",
+			APISecret: "old-secret",
+			BaseURL:   "https://old.example.test",
+		},
+		AdguardConfig: config.AdguardConfig{
+			Enabled:  true,
+			Username: "old-user",
+			Password: "old-password",
+			BaseURL:  "https://adguard-old.example.test",
+		},
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: "127.0.0.1", ServerPort: 2019},
+		Clients:       app.ClientSet{Caddy: api.NewCaddyClient("127.0.0.1", 2019)},
+	}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+		ConfigPath:     configPath,
+	})
+
+	body, err := json.Marshal(map[string]any{
+		"unbound": map[string]any{
+			"base_url":   "https://new.example.test",
+			"insecure":   true,
+			"api_key":    "new-key",
+			"api_secret": "",
+		},
+		"adguard": map[string]any{
+			"enabled":  true,
+			"base_url": "https://adguard-new.example.test",
+			"username": "new-user",
+			"password": "",
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal config update: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected config update 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read saved config: %v", err)
+	}
+	var saved config.ExtendedConfig
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("failed to decode saved config: %v", err)
+	}
+	if saved.BaseURL != "https://new.example.test" || saved.APIKey != "new-key" || saved.APISecret != "old-secret" || !saved.Insecure {
+		t.Fatalf("unexpected saved OPNSense config: %#v", saved.Config)
+	}
+	if saved.Adguard.BaseURL != "https://adguard-new.example.test" || saved.Adguard.Username != "new-user" || saved.Adguard.Password != "old-password" {
+		t.Fatalf("unexpected saved AdGuard config: %#v", saved.Adguard)
+	}
+
+	resp := getJSON[ConfigResponse](t, server, "/api/config")
+	if resp.Summary.Unbound.Endpoint != "https://new.example.test" {
+		t.Fatalf("expected runtime summary to refresh, got %#v", resp.Summary.Unbound)
 	}
 }
 
