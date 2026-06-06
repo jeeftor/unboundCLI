@@ -94,6 +94,17 @@ type ConfigUpdateRequest struct {
 	Cloudflare *CloudflareConfigUpdate `json:"cloudflare,omitempty"`
 }
 
+type ConfigTestRequest struct {
+	Service string `json:"service"`
+}
+
+type ConfigTestResponse struct {
+	Service string            `json:"service"`
+	Success bool              `json:"success"`
+	Message string            `json:"message"`
+	Details map[string]string `json:"details,omitempty"`
+}
+
 type UnboundConfigUpdate struct {
 	APIKey    string  `json:"api_key,omitempty"`
 	APISecret string  `json:"api_secret,omitempty"`
@@ -221,6 +232,7 @@ func (s *Server) routes() {
 	}
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler(http.FileServer(http.FS(staticRoot)))))
 	s.mux.HandleFunc("/api/config", s.handleConfig)
+	s.mux.HandleFunc("/api/config/test", s.handleConfigTest)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
@@ -276,6 +288,25 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleConfigTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	var request ConfigTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid config test request: %w", err))
+		return
+	}
+	resp := s.testConfigService(strings.ToLower(strings.TrimSpace(request.Service)))
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) configResponse() (ConfigResponse, error) {
 	saveTarget, err := s.configPath()
 	if err != nil {
@@ -298,6 +329,77 @@ func (s *Server) configResponse() (ConfigResponse, error) {
 		SaveTarget:      saveTarget,
 		Summary:         s.configSummary(&runtime),
 	}, nil
+}
+
+func (s *Server) testConfigService(service string) ConfigTestResponse {
+	runtime := s.runtimeSnapshot()
+	switch service {
+	case "caddy":
+		if runtime.Clients.Caddy == nil {
+			return failedConfigTest(service, "Caddy is not configured.")
+		}
+		cfg, err := runtime.Clients.Caddy.GetConfig()
+		if err != nil {
+			return failedConfigTest(service, fmt.Sprintf("Caddy test failed: %v", err))
+		}
+		return ConfigTestResponse{
+			Service: service,
+			Success: true,
+			Message: "Connected to Caddy admin API.",
+			Details: map[string]string{
+				"endpoint": fmt.Sprintf("%s:%d", runtime.CaddyEndpoint.ServerIP, runtime.CaddyEndpoint.ServerPort),
+				"sections": fmt.Sprintf("%d", len(cfg)),
+			},
+		}
+	case "unbound":
+		if runtime.Clients.Unbound == nil {
+			return failedConfigTest(service, "OPNSense / Unbound is not configured.")
+		}
+		overrides, err := runtime.Clients.Unbound.GetOverrides()
+		if err != nil {
+			return failedConfigTest(service, fmt.Sprintf("OPNSense / Unbound test failed: %v", err))
+		}
+		return ConfigTestResponse{
+			Service: service,
+			Success: true,
+			Message: "Connected to OPNSense Unbound API.",
+			Details: map[string]string{"overrides": fmt.Sprintf("%d", len(overrides))},
+		}
+	case "adguard":
+		if runtime.Clients.Adguard == nil {
+			return failedConfigTest(service, "AdGuard is not configured.")
+		}
+		rewrites, err := runtime.Clients.Adguard.ListRewrites()
+		if err != nil {
+			return failedConfigTest(service, fmt.Sprintf("AdGuard test failed: %v", err))
+		}
+		return ConfigTestResponse{
+			Service: service,
+			Success: true,
+			Message: "Connected to AdGuard rewrite API.",
+			Details: map[string]string{"rewrites": fmt.Sprintf("%d", len(rewrites))},
+		}
+	case "cloudflare":
+		if runtime.Clients.Cloudflare == nil {
+			return failedConfigTest(service, "Cloudflare is not configured.")
+		}
+		zones, err := runtime.Clients.Cloudflare.ListZones()
+		if err != nil {
+			return failedConfigTest(service, fmt.Sprintf("Cloudflare test failed: %v", err))
+		}
+		return ConfigTestResponse{
+			Service: service,
+			Success: true,
+			Message: "Connected to Cloudflare API.",
+			Details: map[string]string{"zones": fmt.Sprintf("%d", len(zones))},
+		}
+	default:
+		return failedConfigTest(service, fmt.Sprintf("Unknown config service %q.", service))
+	}
+}
+
+func failedConfigTest(service, message string) ConfigTestResponse {
+	return ConfigTestResponse{Service: service, Success: false, Message: message}
 }
 
 func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {

@@ -385,6 +385,10 @@ button:disabled {
   border-top: 1px solid var(--border);
 }
 
+.config-editor.compact {
+  padding-top: 10px;
+}
+
 .config-editor label {
   display: grid;
   gap: 4px;
@@ -414,6 +418,27 @@ button:disabled {
 
 .config-status.ok { color: var(--green); }
 .config-status.error { color: var(--red); }
+
+.config-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.config-test-result {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.config-test-result.ok {
+  color: var(--green);
+}
+
+.config-test-result.error {
+  color: var(--red);
+}
 
 .toolbar {
   display: grid;

@@ -333,6 +333,11 @@ function renderConfigSummary() {
       setConfigStatus(err.message, 'error');
     }));
   });
+  document.querySelectorAll('[data-config-test]').forEach((button) => {
+    button.addEventListener('click', () => testConfig(button.dataset.configTest, button).catch((err) => {
+      setConfigStatus(err.message, 'error');
+    }));
+  });
 }
 
 function configCard(key, service) {
@@ -363,6 +368,14 @@ function sourceLabel(source = {}) {
 }
 
 function configEditor(key, service) {
+  if (key === 'caddy') {
+    return `
+      <div class="config-editor compact" data-config-editor="caddy">
+        ${configTestResult('caddy')}
+        <button type="button" data-config-test="caddy" ${mutationEnabled ? '' : 'disabled'}>Test Caddy</button>
+      </div>
+    `;
+  }
   if (key === 'unbound') {
     return `
       <div class="config-editor" data-config-editor="unbound">
@@ -370,7 +383,11 @@ function configEditor(key, service) {
         <label>API key<input id="config-unbound-api-key" type="password" autocomplete="off" placeholder="leave unchanged"></label>
         <label>API secret<input id="config-unbound-api-secret" type="password" autocomplete="off" placeholder="leave unchanged"></label>
         <label class="checkbox-row"><input id="config-unbound-insecure" type="checkbox" ${service.insecure ? 'checked' : ''}> Insecure TLS</label>
-        <button type="button" data-config-save="unbound" ${mutationEnabled ? '' : 'disabled'}>Set OPNSense</button>
+        ${configTestResult('unbound')}
+        <div class="config-actions">
+          <button type="button" data-config-test="unbound" ${mutationEnabled ? '' : 'disabled'}>Test OPNSense</button>
+          <button type="button" data-config-save="unbound" ${mutationEnabled ? '' : 'disabled'}>Set OPNSense</button>
+        </div>
       </div>
     `;
   }
@@ -382,7 +399,11 @@ function configEditor(key, service) {
         <label>Username<input id="config-adguard-username" type="password" autocomplete="off" placeholder="leave unchanged"></label>
         <label>Password<input id="config-adguard-password" type="password" autocomplete="off" placeholder="leave unchanged"></label>
         <label class="checkbox-row"><input id="config-adguard-insecure" type="checkbox" ${service.insecure ? 'checked' : ''}> Insecure TLS</label>
-        <button type="button" data-config-save="adguard" ${mutationEnabled ? '' : 'disabled'}>Set AdGuard</button>
+        ${configTestResult('adguard')}
+        <div class="config-actions">
+          <button type="button" data-config-test="adguard" ${mutationEnabled ? '' : 'disabled'}>Test AdGuard</button>
+          <button type="button" data-config-save="adguard" ${mutationEnabled ? '' : 'disabled'}>Set AdGuard</button>
+        </div>
       </div>
     `;
   }
@@ -396,11 +417,19 @@ function configEditor(key, service) {
         <label>Tunnel ID<input id="config-cloudflare-tunnel-id" type="password" autocomplete="off" placeholder="leave unchanged"></label>
         <label>Caddy service URL<input id="config-cloudflare-caddy-service-url" type="url" value="${escapeHTML(service.details?.caddy_service_url || '')}" placeholder="http://127.0.0.1:80"></label>
         <label class="checkbox-row"><input id="config-cloudflare-insecure" type="checkbox" ${service.insecure ? 'checked' : ''}> Insecure TLS</label>
-        <button type="button" data-config-save="cloudflare" ${mutationEnabled ? '' : 'disabled'}>Set Cloudflare</button>
+        ${configTestResult('cloudflare')}
+        <div class="config-actions">
+          <button type="button" data-config-test="cloudflare" ${mutationEnabled ? '' : 'disabled'}>Test Cloudflare</button>
+          <button type="button" data-config-save="cloudflare" ${mutationEnabled ? '' : 'disabled'}>Set Cloudflare</button>
+        </div>
       </div>
     `;
   }
   return '';
+}
+
+function configTestResult(service) {
+  return `<div id="config-test-${service}" class="config-test-result" role="status" aria-live="polite"></div>`;
 }
 
 function nonEmptyInput(id) {
@@ -457,6 +486,41 @@ async function saveConfig(service, button) {
     button.disabled = false;
     button.textContent = originalText;
   }
+}
+
+async function testConfig(service, button) {
+  if (!mutationEnabled) {
+    setConfigStatus('Config tests are unavailable for this web session.', 'error');
+    return;
+  }
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Testing...';
+  setConfigStatus(`Testing ${service} config...`, 'info');
+  setConfigTestResult(service, 'Testing connection...', 'info');
+  try {
+    const result = await postJSON('/api/config/test', {service});
+    const kind = result.success ? 'ok' : 'error';
+    const detail = formatTestDetails(result.details || {});
+    setConfigTestResult(service, `${result.message}${detail ? ` ${detail}` : ''}`, kind);
+    setConfigStatus(result.message, kind);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function setConfigTestResult(service, text, kind = 'info') {
+  const node = el(`config-test-${service}`);
+  if (!node) return;
+  node.textContent = text;
+  node.className = `config-test-result ${kind}`;
+}
+
+function formatTestDetails(details) {
+  const entries = Object.entries(details).filter(([, value]) => value !== '');
+  if (!entries.length) return '';
+  return entries.map(([key, value]) => `${formatConfigKey(key)}: ${value}`).join(', ');
 }
 
 function setConfigStatus(text, kind = 'info') {
@@ -719,6 +783,9 @@ async function runE2EActions() {
         el('config-unbound-api-key').value = 'saved-key';
         await saveConfig('unbound', document.querySelector('[data-config-save="unbound"]'));
       }
+    }
+    if (name === 'testconfig') {
+      await testConfig(value, document.querySelector(`[data-config-test="${value}"]`));
     }
   }
   el('app').setAttribute('data-e2e', 'done');
