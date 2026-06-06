@@ -127,8 +127,12 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(dom, `id="config-panel"`) || !strings.Contains(dom, "Configuration") || !strings.Contains(dom, "OPNSense / Unbound") || !strings.Contains(dom, "API Key Set") {
 		t.Fatalf("browser DOM should render sanitized configuration summary:\n%s", dom)
 	}
-	if !strings.Contains(dom, "Save target: "+configPath) || !strings.Contains(dom, "Set OPNSense") || !strings.Contains(dom, "Defaults") {
-		t.Fatalf("browser DOM should render config source, save target, and set buttons:\n%s", dom)
+	if !strings.Contains(dom, "Save target: "+configPath) ||
+		!strings.Contains(dom, "Set OPNSense") ||
+		!strings.Contains(dom, "Test OPNSense") ||
+		!strings.Contains(dom, "Test Caddy") ||
+		!strings.Contains(dom, "Defaults") {
+		t.Fatalf("browser DOM should render config source, save target, set buttons, and test buttons:\n%s", dom)
 	}
 	if strings.Contains(dom, "fixture-browser-key") || strings.Contains(dom, "fixture-browser-secret") {
 		t.Fatalf("browser DOM leaked sensitive config values:\n%s", dom)
@@ -157,6 +161,12 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 		!strings.Contains(loadingDOM, "Loading service status") ||
 		!strings.Contains(loadingDOM, "Reading Caddy, DNS targets, and runtime config") {
 		t.Fatalf("loading DOM should keep a visible labeled loading bar for long refreshes:\n%s", loadingDOM)
+	}
+
+	configTestDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=testconfig:unbound", 1280, 900)
+	if !strings.Contains(configTestDOM, "Connected to OPNSense Unbound API.") ||
+		!strings.Contains(configTestDOM, `id="config-test-unbound"`) {
+		t.Fatalf("config test should call backend and render result:\n%s", configTestDOM)
 	}
 
 	filteredDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=filter:caddy_only,search:browser", 1280, 900)

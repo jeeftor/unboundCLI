@@ -345,6 +345,98 @@ func TestConfigUpdateWritesConfigFileAndRefreshesRuntime(t *testing.T) {
 	}
 }
 
+func TestConfigTestRouteChecksConfiguredServices(t *testing.T) {
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/" {
+			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apps":{"http":{"servers":{}}}}`)
+	}))
+	defer caddy.Close()
+
+	opnsense := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/unbound/settings/searchHostOverride" {
+			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"rows":[{"enabled":"1","hostname":"ok","domain":"example.test","server":"10.0.0.5","description":"fixture"}]}`)
+	}))
+	defer opnsense.Close()
+
+	adguard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/control/rewrite/list" {
+			t.Fatalf("unexpected AdGuard path %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") == "" {
+			t.Fatal("expected AdGuard test to send basic auth")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"domain":"ok.example.test","answer":"10.0.0.5"}]`)
+	}))
+	defer adguard.Close()
+
+	caddyHost, caddyPort := splitWebTestServerHostPort(t, caddy.URL)
+	server := NewServerWithOptions(&app.Runtime{
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: caddyHost, ServerPort: caddyPort},
+		Clients: app.ClientSet{
+			Caddy: api.NewCaddyClient(caddyHost, caddyPort),
+			Unbound: api.NewClient(api.Config{
+				APIKey:    "fixture-key",
+				APISecret: "fixture-secret",
+				BaseURL:   opnsense.URL,
+				Insecure:  true,
+			}),
+			Adguard: api.NewAdguardClient(api.AdguardConfig{
+				BaseURL:  adguard.URL,
+				Username: "fixture-user",
+				Password: "fixture-password",
+			}),
+		},
+	}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+	})
+
+	for _, service := range []string{"caddy", "unbound", "adguard"} {
+		resp := postConfigTest(t, server, service, "test-token", "http://127.0.0.1:8080")
+		if !resp.Success {
+			t.Fatalf("expected %s config test success, got %#v", service, resp)
+		}
+		if resp.Message == "" {
+			t.Fatalf("expected %s config test message, got %#v", service, resp)
+		}
+	}
+}
+
+func TestConfigTestRouteRequiresTokenAndRejectsUnavailableService(t *testing.T) {
+	server := NewServerWithOptions(&app.Runtime{}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+	})
+
+	body, err := json.Marshal(ConfigTestRequest{Service: "unbound"})
+	if err != nil {
+		t.Fatalf("failed to marshal config test request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/config/test", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected missing token to be forbidden, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	resp := postConfigTest(t, server, "unbound", "test-token", "http://127.0.0.1:8080")
+	if resp.Success || !strings.Contains(resp.Message, "not configured") {
+		t.Fatalf("expected unavailable Unbound test to return a failed result, got %#v", resp)
+	}
+}
+
 func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 
@@ -783,6 +875,28 @@ func getRawJSON(t *testing.T, handler http.Handler, path string) []byte {
 		t.Fatalf("GET %s: expected status 200, got %d: %s", path, rec.Code, rec.Body.String())
 	}
 	return rec.Body.Bytes()
+}
+
+func postConfigTest(t *testing.T, handler http.Handler, service, token, origin string) ConfigTestResponse {
+	t.Helper()
+	body, err := json.Marshal(ConfigTestRequest{Service: service})
+	if err != nil {
+		t.Fatalf("failed to marshal config test request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/config/test", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", token)
+	req.Header.Set("Origin", origin)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /api/config/test: expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var out ConfigTestResponse
+	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+		t.Fatalf("POST /api/config/test: failed to decode JSON: %v", err)
+	}
+	return out
 }
 
 func splitWebTestServerHostPort(t *testing.T, rawURL string) (string, int) {
