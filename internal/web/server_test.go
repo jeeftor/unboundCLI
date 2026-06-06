@@ -427,6 +427,119 @@ func TestMutatingApplyRejectsPostedActionsEvenWithToken(t *testing.T) {
 	}
 }
 
+func TestMutatingApplyUsesServerIssuedPlanActions(t *testing.T) {
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/" {
+			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apps":{"http":{"servers":{"srv0":{"routes":[{"match":[{"host":["sync.example.test"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.5:8080"}]}]}]}}}}}`)
+	}))
+	defer caddy.Close()
+
+	var added bool
+	var reconfigured bool
+	opnsense := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/unbound/settings/searchHostOverride":
+			fmt.Fprint(w, `{"rows":[]}`)
+		case "/api/unbound/settings/addHostOverride":
+			added = true
+			fmt.Fprint(w, `{"result":"saved","uuid":"new-uuid"}`)
+		case "/api/unbound/service/reconfigure":
+			reconfigured = true
+			fmt.Fprint(w, `{"result":"saved"}`)
+		default:
+			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
+		}
+	}))
+	defer opnsense.Close()
+
+	host, port := splitWebTestServerHostPort(t, caddy.URL)
+	server := NewServerWithOptions(&app.Runtime{
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
+		Clients: app.ClientSet{
+			Caddy: api.NewCaddyClient(host, port),
+			Unbound: api.NewClient(api.Config{
+				APIKey:    "fixture-key",
+				APISecret: "fixture-secret",
+				BaseURL:   opnsense.URL,
+				Insecure:  true,
+			}),
+		},
+	}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+	})
+
+	configResp := getJSON[ConfigResponse](t, server, "/api/config")
+	if !configResp.MutationEnabled {
+		t.Fatal("expected config to report mutation-enabled local session")
+	}
+	planResp := getJSON[PlanResponse](t, server, "/api/sync/plan?service=unbound")
+	if len(planResp.ActionIDs) != 1 {
+		t.Fatalf("expected one action ID, got %#v", planResp.ActionIDs)
+	}
+
+	body, err := json.Marshal(ApplyRequest{
+		DryRun:    false,
+		PlanID:    planResp.PlanID,
+		ActionIDs: planResp.ActionIDs,
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var applyResp ApplyResponse
+	if err := json.NewDecoder(rec.Body).Decode(&applyResp); err != nil {
+		t.Fatalf("failed to decode apply response: %v", err)
+	}
+	if !applyResp.Result.Success || applyResp.Result.ItemsAdded != 1 {
+		t.Fatalf("expected successful mutating apply, got %#v", applyResp.Result)
+	}
+	if !added || !reconfigured {
+		t.Fatalf("expected add and reconfigure calls, added=%t reconfigured=%t", added, reconfigured)
+	}
+}
+
+func TestMutatingApplyRejectsUnknownActionID(t *testing.T) {
+	server := NewServerWithOptions(&app.Runtime{}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+	})
+	body, err := json.Marshal(ApplyRequest{
+		DryRun:    false,
+		PlanID:    "missing-plan",
+		ActionIDs: []string{"action-missing"},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected unknown plan/action to be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMutatingApplyRejectsWildcardBindHost(t *testing.T) {
 	server := NewServerWithOptions(&app.Runtime{}, Options{
 		ApplyToken:     "test-token",

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
@@ -33,6 +34,12 @@ type Server struct {
 	runtime *app.Runtime
 	options Options
 	mux     *http.ServeMux
+	planMu  sync.Mutex
+	plans   map[string]storedPlan
+}
+
+type storedPlan struct {
+	ActionsByID map[string]syncplan.Action
 }
 
 type CaddyConfigResponse struct {
@@ -41,8 +48,9 @@ type CaddyConfigResponse struct {
 }
 
 type ConfigResponse struct {
-	Caddy   CaddyConfigResponse `json:"caddy"`
-	Enabled map[string]bool     `json:"enabled"`
+	Caddy           CaddyConfigResponse `json:"caddy"`
+	Enabled         map[string]bool     `json:"enabled"`
+	MutationEnabled bool                `json:"mutation_enabled"`
 }
 
 type EntriesResponse struct {
@@ -121,7 +129,7 @@ func NewServerWithOptions(runtime *app.Runtime, options Options) *Server {
 	if runtime == nil {
 		runtime = &app.Runtime{}
 	}
-	server := &Server{runtime: runtime, options: options, mux: http.NewServeMux()}
+	server := &Server{runtime: runtime, options: options, mux: http.NewServeMux(), plans: make(map[string]storedPlan)}
 	server.routes()
 	return server
 }
@@ -158,6 +166,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if s.options.EnableTestHooks {
 		body = []byte(strings.Replace(string(body), "</head>", "  <script>window.UNBOUNDCLI_TEST_HOOKS = true;</script>\n</head>", 1))
 	}
+	body = []byte(strings.Replace(string(body), "</head>", s.clientConfigScript()+"\n</head>", 1))
 	_, _ = w.Write(body)
 }
 
@@ -178,6 +187,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			"dhcp":       s.runtime.Clients.DNSMasq != nil,
 			"cloudflare": s.runtime.Clients.Cloudflare != nil,
 		},
+		MutationEnabled: s.mutationsEnabled(),
 	})
 }
 
@@ -264,9 +274,12 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		CaddyServerIP: s.runtime.CaddyEndpoint.ServerIP,
 	})
 	actions := s.webPlanActions(service, plan.Actions)
+	planID := planID(service, actions)
+	actionIDs := actionIDs(actions)
+	s.storePlan(planID, actions, actionIDs)
 	writeJSON(w, http.StatusOK, PlanResponse{
-		PlanID:    planID(service, actions),
-		ActionIDs: actionIDs(actions),
+		PlanID:    planID,
+		ActionIDs: actionIDs,
 		Actions:   actions,
 		Report:    report,
 	})
@@ -296,18 +309,32 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("mutating apply requires plan_id and action_ids"))
 			return
 		}
-		writeError(w, http.StatusNotImplemented, fmt.Errorf("mutating apply plan validation is not enabled yet"))
+		actions, err := s.actionsForIDs(request.PlanID, request.ActionIDs)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := validateApplyActions(actions); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		result := s.applyActions(r.Context(), actions, false)
+		writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
 		return
 	}
 	if err := validateApplyActions(request.Actions); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	result := syncplan.Apply(r.Context(), syncplan.Clients{
+	result := s.applyActions(r.Context(), request.Actions, request.DryRun)
+	writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
+}
+
+func (s *Server) applyActions(ctx context.Context, actions []syncplan.Action, dryRun bool) *syncplan.Result {
+	return syncplan.Apply(ctx, syncplan.Clients{
 		Unbound: s.runtime.Clients.Unbound,
 		Adguard: s.runtime.Clients.Adguard,
-	}, syncplan.Plan{Actions: request.Actions}, syncplan.ApplyOptions{DryRun: request.DryRun})
-	writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
+	}, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{DryRun: dryRun})
 }
 
 func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
@@ -337,6 +364,61 @@ func validateApplyActions(actions []syncplan.Action) error {
 		}
 	}
 	return nil
+}
+
+func (s *Server) clientConfigScript() string {
+	config := struct {
+		ApplyToken      string `json:"applyToken"`
+		MutationEnabled bool   `json:"mutationEnabled"`
+	}{
+		MutationEnabled: s.mutationsEnabled(),
+	}
+	if config.MutationEnabled {
+		config.ApplyToken = s.options.ApplyToken
+	}
+	data, err := json.Marshal(config)
+	if err != nil {
+		data = []byte(`{"applyToken":"","mutationEnabled":false}`)
+	}
+	return fmt.Sprintf("  <script>window.UNBOUNDCLI_WEB_CONFIG = %s;</script>", data)
+}
+
+func (s *Server) mutationsEnabled() bool {
+	if !s.options.AllowMutations || s.options.ApplyToken == "" {
+		return false
+	}
+	return s.options.AllowUnsafeBind || isLoopbackHost(s.options.BoundHost)
+}
+
+func (s *Server) storePlan(planID string, actions []syncplan.Action, actionIDs []string) {
+	actionsByID := make(map[string]syncplan.Action, len(actions))
+	for i, action := range actions {
+		if i >= len(actionIDs) {
+			break
+		}
+		actionsByID[actionIDs[i]] = action
+	}
+	s.planMu.Lock()
+	s.plans[planID] = storedPlan{ActionsByID: actionsByID}
+	s.planMu.Unlock()
+}
+
+func (s *Server) actionsForIDs(planID string, actionIDs []string) ([]syncplan.Action, error) {
+	s.planMu.Lock()
+	plan, ok := s.plans[planID]
+	s.planMu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("unknown or expired sync plan")
+	}
+	actions := make([]syncplan.Action, 0, len(actionIDs))
+	for _, actionID := range actionIDs {
+		action, ok := plan.ActionsByID[actionID]
+		if !ok {
+			return nil, fmt.Errorf("unknown sync action %q", actionID)
+		}
+		actions = append(actions, action)
+	}
+	return actions, nil
 }
 
 func (s *Server) webPlanActions(service string, actions []syncplan.Action) []syncplan.Action {
