@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -51,6 +52,26 @@ type ConfigResponse struct {
 	Caddy           CaddyConfigResponse `json:"caddy"`
 	Enabled         map[string]bool     `json:"enabled"`
 	MutationEnabled bool                `json:"mutation_enabled"`
+	Summary         ConfigSummary       `json:"summary"`
+}
+
+type ConfigSummary struct {
+	Caddy      ConfigServiceSummary `json:"caddy"`
+	Unbound    ConfigServiceSummary `json:"unbound"`
+	Adguard    ConfigServiceSummary `json:"adguard"`
+	DHCP       ConfigServiceSummary `json:"dhcp"`
+	Cloudflare ConfigServiceSummary `json:"cloudflare"`
+}
+
+type ConfigServiceSummary struct {
+	Label       string            `json:"label"`
+	Enabled     bool              `json:"enabled"`
+	ClientReady bool              `json:"client_ready"`
+	Endpoint    string            `json:"endpoint,omitempty"`
+	Insecure    bool              `json:"insecure,omitempty"`
+	Fields      map[string]bool   `json:"fields,omitempty"`
+	Details     map[string]string `json:"details,omitempty"`
+	Missing     []string          `json:"missing,omitempty"`
 }
 
 type EntriesResponse struct {
@@ -188,6 +209,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			"cloudflare": s.runtime.Clients.Cloudflare != nil,
 		},
 		MutationEnabled: s.mutationsEnabled(),
+		Summary:         s.configSummary(),
 	})
 }
 
@@ -202,6 +224,106 @@ func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, EntriesResponse{Entries: entryResponses(entries), Report: report})
+}
+
+func (s *Server) configSummary() ConfigSummary {
+	unboundMissing := missingFields(map[string]bool{
+		"API key":    s.runtime.UnboundConfig.APIKey != "",
+		"API secret": s.runtime.UnboundConfig.APISecret != "",
+		"Base URL":   s.runtime.UnboundConfig.BaseURL != "",
+	})
+	adguardMissing := missingFields(map[string]bool{
+		"Enabled":  s.runtime.AdguardConfig.Enabled,
+		"Base URL": s.runtime.AdguardConfig.BaseURL != "",
+		"Username": s.runtime.AdguardConfig.Username != "",
+		"Password": s.runtime.AdguardConfig.Password != "",
+	})
+	cloudflareMissing := missingFields(map[string]bool{
+		"Enabled":    s.runtime.CloudflareConfig.Enabled,
+		"API token":  s.runtime.CloudflareConfig.APIToken != "",
+		"Account ID": s.runtime.CloudflareConfig.AccountID != "",
+		"Zone ID":    s.runtime.CloudflareConfig.ZoneID != "",
+		"Tunnel ID":  s.runtime.CloudflareConfig.TunnelID != "",
+	})
+	caddyEndpoint := fmt.Sprintf("%s:%d", s.runtime.CaddyEndpoint.ServerIP, s.runtime.CaddyEndpoint.ServerPort)
+	unboundEndpoint := sanitizeEndpoint(s.runtime.UnboundConfig.BaseURL)
+	adguardEndpoint := sanitizeEndpoint(s.runtime.AdguardConfig.BaseURL)
+	caddyServiceURL := sanitizeEndpoint(s.runtime.CaddyServiceURL)
+	return ConfigSummary{
+		Caddy: ConfigServiceSummary{
+			Label:       "Caddy",
+			Enabled:     s.runtime.Clients.Caddy != nil,
+			ClientReady: s.runtime.Clients.Caddy != nil,
+			Endpoint:    caddyEndpoint,
+		},
+		Unbound: ConfigServiceSummary{
+			Label:       "OPNSense / Unbound",
+			Enabled:     s.runtime.UnboundConfig.BaseURL != "",
+			ClientReady: s.runtime.Clients.Unbound != nil,
+			Endpoint:    unboundEndpoint,
+			Insecure:    s.runtime.UnboundConfig.Insecure,
+			Fields: map[string]bool{
+				"api_key_set":    s.runtime.UnboundConfig.APIKey != "",
+				"api_secret_set": s.runtime.UnboundConfig.APISecret != "",
+				"base_url_set":   s.runtime.UnboundConfig.BaseURL != "",
+			},
+			Missing: unboundMissing,
+		},
+		Adguard: ConfigServiceSummary{
+			Label:       "AdGuard",
+			Enabled:     s.runtime.AdguardConfig.Enabled,
+			ClientReady: s.runtime.Clients.Adguard != nil,
+			Endpoint:    adguardEndpoint,
+			Insecure:    s.runtime.AdguardConfig.Insecure,
+			Fields: map[string]bool{
+				"username_set": s.runtime.AdguardConfig.Username != "",
+				"password_set": s.runtime.AdguardConfig.Password != "",
+				"base_url_set": s.runtime.AdguardConfig.BaseURL != "",
+			},
+			Missing: adguardMissing,
+		},
+		DHCP: ConfigServiceSummary{
+			Label:       "DHCP / DNSMasq",
+			Enabled:     s.runtime.Clients.DNSMasq != nil,
+			ClientReady: s.runtime.Clients.DNSMasq != nil,
+			Endpoint:    unboundEndpoint,
+		},
+		Cloudflare: ConfigServiceSummary{
+			Label:       "Cloudflare",
+			Enabled:     s.runtime.CloudflareConfig.Enabled,
+			ClientReady: s.runtime.Clients.Cloudflare != nil,
+			Insecure:    s.runtime.CloudflareConfig.Insecure,
+			Fields: map[string]bool{
+				"api_token_set":  s.runtime.CloudflareConfig.APIToken != "",
+				"account_id_set": s.runtime.CloudflareConfig.AccountID != "",
+				"zone_id_set":    s.runtime.CloudflareConfig.ZoneID != "",
+				"tunnel_id_set":  s.runtime.CloudflareConfig.TunnelID != "",
+			},
+			Details: map[string]string{
+				"caddy_service_url": caddyServiceURL,
+			},
+			Missing: cloudflareMissing,
+		},
+	}
+}
+
+func sanitizeEndpoint(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.User == nil {
+		return endpoint
+	}
+	parsed.User = nil
+	return parsed.String()
+}
+
+func missingFields(fields map[string]bool) []string {
+	missing := make([]string, 0)
+	for field, present := range fields {
+		if !present {
+			missing = append(missing, field)
+		}
+	}
+	return missing
 }
 
 func entryResponses(entries []*models.Entry) []EntryResponse {

@@ -78,6 +78,12 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 
 	host, port := splitBrowserTestServerHostPort(t, caddy.URL)
 	webHandler := NewServerWithOptions(&app.Runtime{
+		UnboundConfig: api.Config{
+			APIKey:    "fixture-browser-key",
+			APISecret: "fixture-browser-secret",
+			BaseURL:   opnsense.URL,
+			Insecure:  true,
+		},
 		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
 		Clients: app.ClientSet{
 			Caddy: api.NewCaddyClient(host, port),
@@ -113,6 +119,12 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 	if !strings.Contains(dom, `data-mutation-enabled="true"`) {
 		t.Fatalf("browser DOM should report backend-supported sync session:\n%s", dom)
+	}
+	if !strings.Contains(dom, "Configuration") || !strings.Contains(dom, "OPNSense / Unbound") || !strings.Contains(dom, "API Key Set") {
+		t.Fatalf("browser DOM should render sanitized configuration summary:\n%s", dom)
+	}
+	if strings.Contains(dom, "fixture-browser-key") || strings.Contains(dom, "fixture-browser-secret") {
+		t.Fatalf("browser DOM leaked sensitive config values:\n%s", dom)
 	}
 	if !strings.Contains(dom, `data-loading="false"`) || !strings.Contains(dom, `id="top-progress"`) {
 		t.Fatalf("browser DOM should expose completed loading state and progress bar:\n%s", dom)
