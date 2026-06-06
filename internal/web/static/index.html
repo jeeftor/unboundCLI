@@ -17,7 +17,13 @@
         <button id="refresh" type="button">Refresh</button>
       </div>
     </header>
-    <div id="top-progress" class="top-progress" aria-hidden="true"><span></span></div>
+    <div id="top-progress" class="top-progress" role="progressbar" aria-live="polite" aria-label="Loading service status">
+      <div class="progress-copy">
+        <strong id="top-progress-title">Loading service status</strong>
+        <span id="top-progress-detail">Reading Caddy, DNS targets, and runtime config...</span>
+      </div>
+      <div class="progress-track"><span></span></div>
+    </div>
     <main class="dashboard">
       <section id="service-health" class="service-health" aria-label="Service health"></section>
       <details id="config-panel" class="config-summary panel">
@@ -81,7 +87,13 @@
               <button id="dry-run-sync" type="button" disabled>Dry-run sync</button>
               <button id="sync-now" type="button" disabled title="Real sync is disabled until server-side mutation validation is enabled">Sync now</button>
             </div>
-            <div id="sync-progress" class="inline-progress" aria-hidden="true" hidden><span></span></div>
+            <div id="sync-progress" class="inline-progress" role="progressbar" aria-live="polite" aria-label="Planning sync" hidden>
+              <div class="progress-copy compact">
+                <strong id="sync-progress-title">Planning sync</strong>
+                <span id="sync-progress-detail">Building a server-issued action plan...</span>
+              </div>
+              <div class="progress-track"><span></span></div>
+            </div>
             <div id="sync-log" class="log" role="status" aria-live="polite">No actions planned.</div>
           </section>
           <section id="host-inspector" class="panel inspector" aria-live="polite"></section>

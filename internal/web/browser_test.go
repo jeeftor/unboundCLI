@@ -133,8 +133,11 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if strings.Contains(dom, "fixture-browser-key") || strings.Contains(dom, "fixture-browser-secret") {
 		t.Fatalf("browser DOM leaked sensitive config values:\n%s", dom)
 	}
-	if !strings.Contains(dom, `data-loading="false"`) || !strings.Contains(dom, `id="top-progress"`) {
-		t.Fatalf("browser DOM should expose completed loading state and progress bar:\n%s", dom)
+	if !strings.Contains(dom, `data-loading="false"`) ||
+		!strings.Contains(dom, `id="top-progress"`) ||
+		!strings.Contains(dom, `id="top-progress-title"`) ||
+		!strings.Contains(dom, `class="progress-track"`) {
+		t.Fatalf("browser DOM should expose completed loading state and clear progress bar structure:\n%s", dom)
 	}
 	if !strings.Contains(dom, `class="service-card`) || !strings.Contains(dom, `Cloudflare</span>`) {
 		t.Fatalf("browser DOM should render service health cards:\n%s", dom)
@@ -147,6 +150,13 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 	if !strings.Contains(dom, `dns-result bad`) {
 		t.Fatalf("browser DOM should color failed DNS resolution as bad:\n%s", dom)
+	}
+
+	loadingDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=holdloading", 1280, 900)
+	if !strings.Contains(loadingDOM, `data-loading="true"`) ||
+		!strings.Contains(loadingDOM, "Loading service status") ||
+		!strings.Contains(loadingDOM, "Reading Caddy, DNS targets, and runtime config") {
+		t.Fatalf("loading DOM should keep a visible labeled loading bar for long refreshes:\n%s", loadingDOM)
 	}
 
 	filteredDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=filter:caddy_only,search:browser", 1280, 900)
@@ -169,6 +179,9 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 	if !strings.Contains(previewDOM, `data-sync-enabled="true"`) {
 		t.Fatalf("sync button should be enabled after backend-issued planned actions:\n%s", previewDOM)
+	}
+	if !strings.Contains(previewDOM, `id="sync-progress-title"`) || !strings.Contains(previewDOM, `id="sync-progress-detail"`) {
+		t.Fatalf("preview DOM should include labeled sync progress structure:\n%s", previewDOM)
 	}
 
 	dryRunDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,dryrun", 1280, 900)

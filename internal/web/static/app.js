@@ -521,20 +521,29 @@ function setMessage(text, kind = 'info') {
   node.className = `message ${kind}`;
 }
 
-function setLoading(isLoading) {
+function setLoading(isLoading, detail = 'Reading Caddy, DNS targets, and runtime config...') {
   el('refresh').disabled = isLoading;
   el('preview-sync').disabled = isLoading;
   el('app').setAttribute('data-loading', String(isLoading));
   el('top-progress').hidden = !isLoading;
-  if (isLoading) setMessage('Loading service status...', 'info');
+  if (isLoading) {
+    el('top-progress-title').textContent = 'Loading service status';
+    el('top-progress-detail').textContent = detail;
+    setMessage('Loading service status...', 'info');
+  }
 }
 
-function setPreviewLoading(isLoading) {
+function setPreviewLoading(isLoading, title = 'Planning sync', detail = 'Building a server-issued action plan...') {
   el('app').setAttribute('data-preview-loading', String(isLoading));
   el('preview-sync').disabled = isLoading;
   el('dry-run-sync').disabled = isLoading || !plannedActions.length;
   el('sync-now').disabled = isLoading || !canSyncNow();
   el('sync-progress').hidden = !isLoading;
+  if (isLoading) {
+    el('sync-progress-title').textContent = title;
+    el('sync-progress-detail').textContent = detail;
+    el('sync-progress').setAttribute('aria-label', title);
+  }
 }
 
 function setDryRunEnabled(enabled) {
@@ -577,7 +586,11 @@ async function previewSync(service = el('sync-service').value, hostname = '') {
     el('sync-log').textContent = 'DHCP apply is not implemented; preview only.';
     return;
   }
-  setPreviewLoading(true);
+  setPreviewLoading(
+    true,
+    hostname ? 'Planning selected host' : 'Planning sync',
+    hostname ? `Checking available actions for ${hostname}...` : 'Checking Caddy entries against available DNS targets...'
+  );
   el('sync-log').textContent = hostname ? `Planning ${service} sync for ${hostname}...` : `Planning ${service} sync...`;
   try {
     const data = await getJSON(`/api/sync/plan?service=${encodeURIComponent(service)}`);
@@ -627,7 +640,11 @@ async function syncNow() {
     el('sync-log').textContent = mutationEnabled ? 'Preview sync before syncing.' : 'Sync is unavailable for this web session.';
     return;
   }
-  setPreviewLoading(true);
+  setPreviewLoading(
+    true,
+    plannedHostname ? 'Syncing selected host' : 'Applying sync plan',
+    plannedHostname ? `Applying DNS updates for ${plannedHostname}...` : 'Applying server-issued DNS updates...'
+  );
   el('sync-log').textContent = plannedHostname ? `Syncing ${plannedHostname}...` : 'Syncing planned actions...';
   try {
     const response = await fetch('/api/sync/apply', {
@@ -656,6 +673,12 @@ function markResponsiveState() {
   app.setAttribute('data-mobile', window.innerWidth <= 760 ? 'true' : 'false');
   const panel = el('entries-panel');
   app.setAttribute('data-table-scrolls', panel.scrollWidth > panel.clientWidth ? 'true' : 'false');
+}
+
+function shouldHoldLoadingForE2E() {
+  if (window.UNBOUNDCLI_TEST_HOOKS !== true) return false;
+  const script = new URLSearchParams(window.location.search).get('e2e') || '';
+  return script.split(',').includes('holdloading');
 }
 
 async function runE2EActions() {
@@ -720,7 +743,9 @@ async function refreshEntries() {
     el('runtime').textContent = err.message;
     setMessage(err.message, 'error');
   } finally {
-    setLoading(false);
+    if (!shouldHoldLoadingForE2E()) {
+      setLoading(false);
+    }
   }
 }
 
