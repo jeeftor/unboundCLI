@@ -7,12 +7,14 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <div id="app">
+  <div id="app" data-loading="true" data-preview-loading="false">
     <header class="topbar">
       <h1>Caddy DNS Sync</h1>
       <div id="runtime" class="runtime">Loading runtime...</div>
     </header>
+    <div id="top-progress" class="top-progress" aria-hidden="true"><span></span></div>
     <main>
+      <section id="service-health" class="service-health" aria-label="Service health"></section>
       <section id="summary" class="summary" aria-live="polite"></section>
       <section class="toolbar">
         <button id="refresh" type="button">Refresh</button>
@@ -36,7 +38,7 @@
         <table>
           <thead>
             <tr>
-              <th>Hostname</th><th>Source</th><th>Caddy</th><th>DNS</th><th>Unbound</th><th>AdGuard</th><th>Cloudflare</th><th>Status</th>
+              <th>Hostname</th><th>Status</th><th>Services</th><th>Caddy</th><th>DNS</th><th>Cloudflare</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="entries"></tbody>
@@ -53,6 +55,7 @@
           <button id="preview-sync" type="button">Preview sync</button>
           <button id="dry-run-sync" type="button" disabled>Dry-run apply</button>
         </div>
+        <div id="sync-progress" class="inline-progress" aria-hidden="true" hidden><span></span></div>
         <div id="sync-log" class="log" role="status" aria-live="polite">No actions planned.</div>
       </section>
     </main>
