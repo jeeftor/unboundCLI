@@ -73,9 +73,10 @@ func serveWeb(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHo
 	actualAddr := listener.Addr().String()
 	server := &http.Server{
 		Handler: webui.NewServerWithOptions(runtime, webui.Options{
-			ApplyToken:    token,
-			AllowedOrigin: "http://" + actualAddr,
-			BoundHost:     boundHost,
+			ApplyToken:     token,
+			AllowMutations: true,
+			AllowedOrigin:  "http://" + actualAddr,
+			BoundHost:      boundHost,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

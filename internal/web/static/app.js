@@ -1,9 +1,12 @@
 let entries = [];
 let plannedActions = [];
+let plannedActionIDs = [];
+let plannedPlanID = '';
 let plannedService = '';
 let plannedHostname = '';
 let enabledServices = {};
 let serviceReport = {};
+let mutationEnabled = false;
 
 const el = (id) => document.getElementById(id);
 
@@ -107,7 +110,7 @@ function renderEntries() {
             <option value="dhcp">DHCP preview</option>
           </select>
           <button class="row-preview" type="button" data-hostname="${escapeHTML(entry.hostname)}">Preview sync</button>
-          <button class="row-sync" type="button" disabled title="Real sync is disabled until server-side mutation validation is enabled">Sync</button>
+          <button class="row-sync" type="button" data-hostname="${escapeHTML(entry.hostname)}" ${mutationEnabled ? '' : 'disabled'} title="${syncButtonTitle()}">Sync</button>
         </div>
       </td>
     </tr>
@@ -121,7 +124,23 @@ function renderEntries() {
       });
     });
   });
+  document.querySelectorAll('.row-sync').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const row = button.closest('tr');
+      const service = row.querySelector('.row-sync-service').value;
+      try {
+        await previewSync(service, button.dataset.hostname);
+        await syncNow();
+      } catch (err) {
+        el('sync-log').textContent = err.message;
+      }
+    });
+  });
   markResponsiveState();
+}
+
+function syncButtonTitle() {
+  return mutationEnabled ? 'Apply the selected server-issued sync plan' : 'Real sync is unavailable for this web session';
 }
 
 function dnsResultClass(value) {
@@ -184,6 +203,7 @@ function renderServiceHealth() {
 
 function applyEnabledServices(config) {
   enabledServices = config.enabled || {};
+  mutationEnabled = Boolean(config.mutation_enabled && window.UNBOUNDCLI_WEB_CONFIG?.mutationEnabled);
   document.querySelectorAll('[data-service]').forEach((node) => {
     const service = node.getAttribute('data-service');
     const available = enabledServices[service] !== false;
@@ -197,6 +217,8 @@ function applyEnabledServices(config) {
   allOption.textContent = unboundAvailable && adguardAvailable ? 'Unbound + AdGuard' : 'Available DNS targets';
   el('app').setAttribute('data-unbound-enabled', String(unboundAvailable));
   el('app').setAttribute('data-adguard-enabled', String(adguardAvailable));
+  el('app').setAttribute('data-mutation-enabled', String(mutationEnabled));
+  el('sync-now').title = syncButtonTitle();
   renderServiceHealth();
   if (el('sync-service').selectedOptions[0]?.disabled) {
     el('sync-service').value = unboundAvailable ? 'unbound' : adguardAvailable ? 'adguard' : 'dhcp';
@@ -222,16 +244,25 @@ function setPreviewLoading(isLoading) {
   el('app').setAttribute('data-preview-loading', String(isLoading));
   el('preview-sync').disabled = isLoading;
   el('dry-run-sync').disabled = isLoading || !plannedActions.length;
+  el('sync-now').disabled = isLoading || !canSyncNow();
   el('sync-progress').hidden = !isLoading;
 }
 
 function setDryRunEnabled(enabled) {
   el('dry-run-sync').disabled = !enabled;
   el('app').setAttribute('data-dry-run-enabled', String(enabled));
+  el('sync-now').disabled = !canSyncNow();
+  el('app').setAttribute('data-sync-enabled', String(canSyncNow()));
+}
+
+function canSyncNow() {
+  return mutationEnabled && plannedPlanID !== '' && plannedActionIDs.length > 0;
 }
 
 function clearPlannedActions() {
   plannedActions = [];
+  plannedActionIDs = [];
+  plannedPlanID = '';
   plannedService = '';
   plannedHostname = '';
   setDryRunEnabled(false);
@@ -261,7 +292,12 @@ async function previewSync(service = el('sync-service').value, hostname = '') {
   el('sync-log').textContent = hostname ? `Planning ${service} sync for ${hostname}...` : `Planning ${service} sync...`;
   try {
     const data = await getJSON(`/api/sync/plan?service=${encodeURIComponent(service)}`);
-    plannedActions = (data.actions || []).filter((action) => !hostname || action.hostname === hostname);
+    const actionIDs = data.action_ids || [];
+    const paired = (data.actions || []).map((action, index) => ({action, id: actionIDs[index]}));
+    const selected = paired.filter((item) => !hostname || item.action.hostname === hostname);
+    plannedActions = selected.map((item) => item.action);
+    plannedActionIDs = selected.map((item) => item.id).filter(Boolean);
+    plannedPlanID = data.plan_id || '';
     plannedService = service;
     plannedHostname = hostname;
     renderActions(plannedActions, hostname ? `Planned actions for ${hostname}` : 'Planned actions');
@@ -297,6 +333,35 @@ async function dryRunSync() {
   el('sync-log').textContent = `${result.message}\nadded=${result.items_added} updated=${result.items_updated} deleted=${result.items_deleted}`;
 }
 
+async function syncNow() {
+  if (!canSyncNow()) {
+    el('sync-log').textContent = mutationEnabled ? 'Preview sync before syncing.' : 'Sync is unavailable for this web session.';
+    return;
+  }
+  setPreviewLoading(true);
+  el('sync-log').textContent = plannedHostname ? `Syncing ${plannedHostname}...` : 'Syncing planned actions...';
+  try {
+    const response = await fetch('/api/sync/apply', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-UnboundCLI-Token': window.UNBOUNDCLI_WEB_CONFIG?.applyToken || ''
+      },
+      body: JSON.stringify({dry_run: false, plan_id: plannedPlanID, action_ids: plannedActionIDs})
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || response.statusText);
+    }
+    const result = data.result;
+    el('sync-log').textContent = `${result.message}\nadded=${result.items_added} updated=${result.items_updated} deleted=${result.items_deleted}`;
+    clearPlannedActions();
+    await refreshEntries();
+  } finally {
+    setPreviewLoading(false);
+  }
+}
+
 function markResponsiveState() {
   const app = el('app');
   app.setAttribute('data-mobile', window.innerWidth <= 760 ? 'true' : 'false');
@@ -330,6 +395,9 @@ async function runE2EActions() {
     if (name === 'dryrun') {
       await dryRunSync();
     }
+    if (name === 'sync') {
+      await syncNow();
+    }
   }
   el('app').setAttribute('data-e2e', 'done');
 }
@@ -362,6 +430,9 @@ window.addEventListener('DOMContentLoaded', () => {
     el('sync-log').textContent = err.message;
   }));
   el('dry-run-sync').addEventListener('click', () => dryRunSync().catch((err) => {
+    el('sync-log').textContent = err.message;
+  }));
+  el('sync-now').addEventListener('click', () => syncNow().catch((err) => {
     el('sync-log').textContent = err.message;
   }));
   ['status-filter', 'service-filter', 'search'].forEach((id) => {

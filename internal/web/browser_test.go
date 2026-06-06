@@ -61,13 +61,41 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}))
 	defer caddy.Close()
 
+	opnsense := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/unbound/settings/searchHostOverride":
+			fmt.Fprint(w, `{"rows":[]}`)
+		case "/api/unbound/settings/addHostOverride":
+			fmt.Fprint(w, `{"result":"saved","uuid":"new-uuid"}`)
+		case "/api/unbound/service/reconfigure":
+			fmt.Fprint(w, `{"result":"saved"}`)
+		default:
+			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
+		}
+	}))
+	defer opnsense.Close()
+
 	host, port := splitBrowserTestServerHostPort(t, caddy.URL)
-	webServer := httptest.NewServer(NewServerWithOptions(&app.Runtime{
+	webHandler := NewServerWithOptions(&app.Runtime{
 		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
 		Clients: app.ClientSet{
 			Caddy: api.NewCaddyClient(host, port),
+			Unbound: api.NewClient(api.Config{
+				APIKey:    "fixture-key",
+				APISecret: "fixture-secret",
+				BaseURL:   opnsense.URL,
+				Insecure:  true,
+			}),
 		},
-	}, Options{EnableTestHooks: true}))
+	}, Options{
+		ApplyToken:      "browser-token",
+		AllowMutations:  true,
+		BoundHost:       "127.0.0.1",
+		EnableTestHooks: true,
+	})
+	webServer := httptest.NewServer(webHandler)
+	webHandler.options.AllowedOrigin = webServer.URL
 	defer webServer.Close()
 
 	dom := runChromeSmoke(t, chromePath, webServer.URL, 1280, 900)
@@ -82,6 +110,9 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 	if !strings.Contains(dom, `data-adguard-enabled="false"`) {
 		t.Fatalf("browser DOM should mark unavailable AdGuard controls disabled:\n%s", dom)
+	}
+	if !strings.Contains(dom, `data-mutation-enabled="true"`) {
+		t.Fatalf("browser DOM should report backend-supported sync session:\n%s", dom)
 	}
 	if !strings.Contains(dom, `data-loading="false"`) || !strings.Contains(dom, `id="top-progress"`) {
 		t.Fatalf("browser DOM should expose completed loading state and progress bar:\n%s", dom)
@@ -117,10 +148,18 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(previewDOM, `data-dry-run-enabled="true"`) {
 		t.Fatalf("dry-run button should be enabled after planned actions:\n%s", previewDOM)
 	}
+	if !strings.Contains(previewDOM, `data-sync-enabled="true"`) {
+		t.Fatalf("sync button should be enabled after backend-issued planned actions:\n%s", previewDOM)
+	}
 
 	dryRunDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,dryrun", 1280, 900)
 	if !strings.Contains(dryRunDOM, "All operations completed successfully") || !strings.Contains(dryRunDOM, "added=2") {
 		t.Fatalf("dry-run result was not rendered:\n%s", dryRunDOM)
+	}
+
+	syncDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,sync", 1280, 900)
+	if !strings.Contains(syncDOM, "All operations completed successfully") || !strings.Contains(syncDOM, "added=2") {
+		t.Fatalf("backend-backed sync result was not rendered:\n%s", syncDOM)
 	}
 
 	rowPreviewDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=rowpreview:browser.example.test:unbound", 1280, 900)
