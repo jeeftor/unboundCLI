@@ -195,8 +195,8 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(mobileDOM, `data-mobile="true"`) {
 		t.Fatalf("mobile DOM did not mark mobile layout:\n%s", mobileDOM)
 	}
-	if !strings.Contains(mobileDOM, `data-table-scrolls="true"`) {
-		t.Fatalf("mobile DOM should expose horizontal table scrolling:\n%s", mobileDOM)
+	if !strings.Contains(mobileDOM, `data-table-scrolls="false"`) || !strings.Contains(mobileDOM, `id="host-inspector"`) {
+		t.Fatalf("mobile DOM should avoid horizontal table scrolling and render the inspector:\n%s", mobileDOM)
 	}
 
 	configSaveDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=setconfig:unbound", 1280, 900)

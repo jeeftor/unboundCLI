@@ -9,13 +9,18 @@
 <body>
   <div id="app" data-loading="true" data-preview-loading="false">
     <header class="topbar">
-      <h1>Caddy DNS Sync</h1>
-      <div id="runtime" class="runtime">Loading runtime...</div>
+      <div class="brand-block">
+        <h1>Caddy DNS Sync</h1>
+        <div id="runtime" class="runtime">Loading runtime...</div>
+      </div>
+      <div class="top-actions" aria-label="Primary actions">
+        <button id="refresh" type="button">Refresh</button>
+      </div>
     </header>
     <div id="top-progress" class="top-progress" aria-hidden="true"><span></span></div>
-    <main>
+    <main class="dashboard">
       <section id="service-health" class="service-health" aria-label="Service health"></section>
-      <details id="config-panel" class="config-summary panel" open>
+      <details id="config-panel" class="config-summary panel">
         <summary>
           <span>Configuration</span>
           <small>Runtime config</small>
@@ -23,48 +28,64 @@
         <div id="config-summary"></div>
       </details>
       <section id="summary" class="summary" aria-live="polite"></section>
-      <section class="toolbar">
-        <button id="refresh" type="button">Refresh</button>
-        <select id="status-filter" aria-label="Status filter">
-          <option value="all">All entries</option>
-          <option value="out_of_sync">Out of sync</option>
-          <option value="caddy_only">Caddy only</option>
-          <option value="stale">Stale</option>
-        </select>
-        <select id="service-filter" aria-label="Service filter">
-          <option value="all">All services</option>
-          <option data-service="unbound" value="unbound">Unbound</option>
-          <option data-service="adguard" value="adguard">AdGuard</option>
-          <option data-service="cloudflare" value="cloudflare">Cloudflare</option>
-        </select>
-        <label class="field-label" for="search">Search</label>
-        <input id="search" type="search" aria-label="Search hostnames" placeholder="Search hostnames">
-      </section>
       <section id="message" class="message" aria-live="polite"></section>
-      <section id="entries-panel" class="panel">
-        <table>
-          <thead>
-            <tr>
-              <th>Hostname</th><th>Status</th><th>Services</th><th>Caddy</th><th>DNS</th><th>Cloudflare</th><th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="entries"></tbody>
-        </table>
-      </section>
-      <section id="sync-panel" class="panel">
-        <div class="sync-toolbar">
-          <select id="sync-service" aria-label="Sync target">
-            <option id="sync-service-all" value="all">Unbound + AdGuard</option>
-            <option data-service="unbound" value="unbound">Unbound</option>
-            <option data-service="adguard" value="adguard">AdGuard</option>
-            <option value="dhcp">DHCP preview</option>
-          </select>
-          <button id="preview-sync" type="button">Preview sync</button>
-          <button id="dry-run-sync" type="button" disabled>Dry-run sync</button>
-          <button id="sync-now" type="button" disabled title="Real sync is disabled until server-side mutation validation is enabled">Sync now</button>
+
+      <section class="workspace">
+        <div class="entries-workbench">
+          <section class="toolbar panel">
+            <div class="toolbar-title">
+              <strong>Entries</strong>
+              <span>Filter and select a hostname to inspect.</span>
+            </div>
+            <select id="status-filter" aria-label="Status filter">
+              <option value="all">All entries</option>
+              <option value="out_of_sync">Out of sync</option>
+              <option value="caddy_only">Caddy only</option>
+              <option value="stale">Stale</option>
+            </select>
+            <select id="service-filter" aria-label="Service filter">
+              <option value="all">All services</option>
+              <option data-service="unbound" value="unbound">Unbound</option>
+              <option data-service="adguard" value="adguard">AdGuard</option>
+              <option data-service="cloudflare" value="cloudflare">Cloudflare</option>
+            </select>
+            <label class="field-label" for="search">Search</label>
+            <input id="search" type="search" aria-label="Search hostnames" placeholder="Search hostnames">
+          </section>
+          <section id="entries-panel" class="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hostname</th><th>Status</th><th>Services</th><th>Caddy</th><th>DNS</th><th>Cloudflare</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="entries"></tbody>
+            </table>
+          </section>
         </div>
-        <div id="sync-progress" class="inline-progress" aria-hidden="true" hidden><span></span></div>
-        <div id="sync-log" class="log" role="status" aria-live="polite">No actions planned.</div>
+
+        <aside class="action-rail">
+          <section id="sync-panel" class="panel">
+            <div class="rail-heading">
+              <strong>Sync workbench</strong>
+              <span>Preview before applying changes.</span>
+            </div>
+            <div class="sync-toolbar">
+              <select id="sync-service" aria-label="Sync target">
+                <option id="sync-service-all" value="all">Unbound + AdGuard</option>
+                <option data-service="unbound" value="unbound">Unbound</option>
+                <option data-service="adguard" value="adguard">AdGuard</option>
+                <option value="dhcp">DHCP preview</option>
+              </select>
+              <button id="preview-sync" type="button">Preview sync</button>
+              <button id="dry-run-sync" type="button" disabled>Dry-run sync</button>
+              <button id="sync-now" type="button" disabled title="Real sync is disabled until server-side mutation validation is enabled">Sync now</button>
+            </div>
+            <div id="sync-progress" class="inline-progress" aria-hidden="true" hidden><span></span></div>
+            <div id="sync-log" class="log" role="status" aria-live="polite">No actions planned.</div>
+          </section>
+          <section id="host-inspector" class="panel inspector" aria-live="polite"></section>
+        </aside>
       </section>
     </main>
   </div>

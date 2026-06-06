@@ -4,6 +4,7 @@ let plannedActionIDs = [];
 let plannedPlanID = '';
 let plannedService = '';
 let plannedHostname = '';
+let selectedHostname = '';
 let enabledServices = {};
 let serviceReport = {};
 let mutationEnabled = false;
@@ -105,8 +106,14 @@ function renderSummary() {
 
 function renderEntries() {
   const visible = filteredEntries();
+  if (selectedHostname && !visible.some((entry) => entry.hostname === selectedHostname)) {
+    selectedHostname = '';
+  }
+  if (!selectedHostname && visible.length) {
+    selectedHostname = visible[0].hostname;
+  }
   el('entries').innerHTML = visible.map((entry) => `
-    <tr data-hostname="${escapeHTML(entry.hostname)}">
+    <tr data-hostname="${escapeHTML(entry.hostname)}" class="${entry.hostname === selectedHostname ? 'selected-row' : ''}">
       <td>
         <strong>${escapeHTML(entry.hostname)}</strong>
         <span class="subtle">${escapeHTML(entry.data_source || '-')}</span>
@@ -133,20 +140,30 @@ function renderEntries() {
       </td>
     </tr>
   `).join('');
+  document.querySelectorAll('#entries tr').forEach((row) => {
+    row.addEventListener('click', () => {
+      selectedHostname = row.dataset.hostname || '';
+      renderEntries();
+    });
+  });
   document.querySelectorAll('.row-preview').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
       const row = button.closest('tr');
       const service = row.querySelector('.row-sync-service').value;
+      selectedHostname = button.dataset.hostname;
       previewSync(service, button.dataset.hostname).catch((err) => {
         el('sync-log').textContent = err.message;
       });
     });
   });
   document.querySelectorAll('.row-sync').forEach((button) => {
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
       const row = button.closest('tr');
       const service = row.querySelector('.row-sync-service').value;
       try {
+        selectedHostname = button.dataset.hostname;
         await previewSync(service, button.dataset.hostname);
         await syncNow();
       } catch (err) {
@@ -154,6 +171,7 @@ function renderEntries() {
       }
     });
   });
+  renderInspector();
   markResponsiveState();
 }
 
@@ -201,6 +219,76 @@ function cloudflareDetails(status) {
       <span>${status.has_access_policy ? 'Access policy' : 'No access policy'}</span>
     </span>
   `;
+}
+
+function renderInspector() {
+  const entry = entries.find((item) => item.hostname === selectedHostname);
+  const inspector = el('host-inspector');
+  if (!entry) {
+    inspector.innerHTML = `
+      <div class="rail-heading">
+        <strong>Host inspector</strong>
+        <span>Select a row to inspect service state.</span>
+      </div>
+      <div class="empty-state">No hostname selected.</div>
+    `;
+    return;
+  }
+  inspector.innerHTML = `
+    <div class="rail-heading">
+      <strong>${escapeHTML(entry.hostname)}</strong>
+      <span>${escapeHTML(entry.status_label || 'Unknown')}</span>
+    </div>
+    <div class="inspector-status">
+      <span class="status-chip ${statusClassByCode(entry.overall_status)}">${escapeHTML(entry.status_label || 'Unknown')}</span>
+      <span class="dns-result ${dnsResultClass(entry.dns_resolved)}">${escapeHTML(entry.dns_resolved || 'FAIL')}</span>
+    </div>
+    <div class="inspector-grid">
+      ${inspectorLine('Caddy upstream', entry.caddy_upstream || '-')}
+      ${inspectorLine('Source', entry.data_source || '-')}
+      ${inspectorLine('Unbound', serviceStateText(entry.unbound_status))}
+      ${inspectorLine('AdGuard', serviceStateText(entry.adguard_status))}
+      ${inspectorLine('DHCP', dhcpStateText(entry.dhcp_status))}
+      ${inspectorLine('Cloudflare', cloudflareStateText(entry.cloudflare_status))}
+    </div>
+    <div class="inspector-actions">
+      <button type="button" id="inspector-preview">Preview selected</button>
+      <button type="button" id="inspector-sync" ${mutationEnabled ? '' : 'disabled'}>Sync selected</button>
+    </div>
+  `;
+  el('inspector-preview').addEventListener('click', () => previewSync(el('sync-service').value, entry.hostname).catch((err) => {
+    el('sync-log').textContent = err.message;
+  }));
+  el('inspector-sync').addEventListener('click', async () => {
+    try {
+      await previewSync(el('sync-service').value, entry.hostname);
+      await syncNow();
+    } catch (err) {
+      el('sync-log').textContent = err.message;
+    }
+  });
+}
+
+function inspectorLine(label, value) {
+  return `<div class="inspector-line"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></div>`;
+}
+
+function serviceStateText(status) {
+  if (!status?.configured) return 'Missing';
+  if (status.in_sync) return status.ip ? `In sync (${status.ip})` : 'In sync';
+  return status.ip ? `Mismatch (${status.ip})` : 'Mismatch';
+}
+
+function dhcpStateText(status) {
+  if (!status?.configured) return 'Missing';
+  if (status.in_sync) return status.ip ? `In sync (${status.ip})` : 'In sync';
+  return status.ip ? `Mismatch (${status.ip})` : 'Mismatch';
+}
+
+function cloudflareStateText(status) {
+  if (!status?.configured) return 'Not routed';
+  if (status.http_host_header) return status.service || 'Routed';
+  return 'Missing host header';
 }
 
 function renderServiceHealth() {
