@@ -18,13 +18,16 @@ help:
 	@echo "  test           : Run tests"
 	@echo "  vet            : Run go vet"
 	@echo "  fmt            : Format code"
+	@echo "  web-install    : Install web UI dependencies"
+	@echo "  web-build      : Build the React web UI assets"
+	@echo "  web-dev        : Run the React web UI dev server"
 	@echo "  check          : Run all checks (fmt, vet, test)"
 	@echo "  install        : Install the application"
 	@echo "  cross-build    : Cross-compile for multiple platforms"
 	@echo "  release-dry-run: Run GoReleaser in dry-run mode"
 	@echo "  help           : Show this help message"
 
-.PHONY: all help build clean test vet fmt check install release-dry-run
+.PHONY: all help build clean test vet fmt web-install web-build web-dev check install release-dry-run
 
 all: help
 
@@ -53,6 +56,21 @@ vet:
 fmt:
 	@echo "Formatting code..."
 	go fmt ./...
+
+# Install web UI dependencies
+web-install:
+	@echo "Installing web UI dependencies..."
+	cd web && npm install
+
+# Build React web UI assets into internal/web/static
+web-build:
+	@echo "Building web UI assets..."
+	cd web && npm run build
+
+# Run React web UI dev server
+web-dev:
+	@echo "Starting web UI dev server..."
+	cd web && npm run dev
 
 # Run all checks
 check: fmt vet test

@@ -445,8 +445,8 @@ func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
 		contentType string
 		contains    []byte
 	}{
-		{path: "/", contentType: "text/html; charset=utf-8", contains: []byte(`<div id="app"`)},
-		{path: "/static/app.js", contentType: "text/javascript; charset=utf-8", contains: []byte("async function refreshEntries")},
+		{path: "/", contentType: "text/html; charset=utf-8", contains: []byte(`<div id="root"`)},
+		{path: "/static/app.js", contentType: "text/javascript; charset=utf-8", contains: []byte("data-e2e")},
 		{path: "/static/styles.css", contentType: "text/css; charset=utf-8", contains: []byte(".status-chip")},
 	}
 
