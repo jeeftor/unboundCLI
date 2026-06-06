@@ -132,7 +132,42 @@ input {
 .service-card.missing { border-left-color: var(--yellow); }
 
 .config-summary {
+  padding: 0;
+}
+
+.config-summary summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.config-summary summary::-webkit-details-marker {
+  display: none;
+}
+
+.config-summary summary span {
+  font-weight: 700;
+}
+
+.config-summary summary small {
+  color: var(--muted);
+}
+
+.config-summary summary::after {
+  content: "Close";
+  color: var(--muted);
+}
+
+.config-summary:not([open]) summary::after {
+  content: "Open";
+}
+
+.config-summary > div {
+  padding: 0 12px 12px;
 }
 
 .panel-heading {
@@ -145,6 +180,16 @@ input {
 
 .panel-heading span {
   color: var(--muted);
+}
+
+.panel-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.save-target {
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .config-grid {
@@ -197,6 +242,44 @@ input {
 .missing-list.ok {
   color: var(--green);
 }
+
+.config-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.config-editor label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.config-editor input {
+  min-width: 0;
+  width: 100%;
+}
+
+.checkbox-row {
+  align-items: center;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.config-status {
+  min-height: 20px;
+  color: var(--muted);
+}
+
+.config-status.ok { color: var(--green); }
+.config-status.error { color: var(--red); }
 
 button {
   cursor: pointer;
@@ -374,6 +457,10 @@ td:first-child strong,
   .panel-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .save-target {
+    text-align: left;
   }
 
   .config-grid {

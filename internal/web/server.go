@@ -10,13 +10,17 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
 	"github.com/jeeftor/caddy-dns-sync/internal/status"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
+	"github.com/spf13/viper"
 )
 
 //go:embed static/*
@@ -29,14 +33,16 @@ type Options struct {
 	AllowUnsafeBind bool
 	BoundHost       string
 	EnableTestHooks bool
+	ConfigPath      string
 }
 
 type Server struct {
-	runtime *app.Runtime
-	options Options
-	mux     *http.ServeMux
-	planMu  sync.Mutex
-	plans   map[string]storedPlan
+	runtime   *app.Runtime
+	options   Options
+	mux       *http.ServeMux
+	runtimeMu sync.RWMutex
+	planMu    sync.Mutex
+	plans     map[string]storedPlan
 }
 
 type storedPlan struct {
@@ -52,6 +58,7 @@ type ConfigResponse struct {
 	Caddy           CaddyConfigResponse `json:"caddy"`
 	Enabled         map[string]bool     `json:"enabled"`
 	MutationEnabled bool                `json:"mutation_enabled"`
+	SaveTarget      string              `json:"save_target"`
 	Summary         ConfigSummary       `json:"summary"`
 }
 
@@ -67,11 +74,49 @@ type ConfigServiceSummary struct {
 	Label       string            `json:"label"`
 	Enabled     bool              `json:"enabled"`
 	ClientReady bool              `json:"client_ready"`
+	Source      ConfigSource      `json:"source"`
 	Endpoint    string            `json:"endpoint,omitempty"`
 	Insecure    bool              `json:"insecure,omitempty"`
 	Fields      map[string]bool   `json:"fields,omitempty"`
 	Details     map[string]string `json:"details,omitempty"`
 	Missing     []string          `json:"missing,omitempty"`
+}
+
+type ConfigSource struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+	Path  string `json:"path,omitempty"`
+}
+
+type ConfigUpdateRequest struct {
+	Unbound    *UnboundConfigUpdate    `json:"unbound,omitempty"`
+	Adguard    *AdguardConfigUpdate    `json:"adguard,omitempty"`
+	Cloudflare *CloudflareConfigUpdate `json:"cloudflare,omitempty"`
+}
+
+type UnboundConfigUpdate struct {
+	APIKey    string  `json:"api_key,omitempty"`
+	APISecret string  `json:"api_secret,omitempty"`
+	BaseURL   *string `json:"base_url,omitempty"`
+	Insecure  *bool   `json:"insecure,omitempty"`
+}
+
+type AdguardConfigUpdate struct {
+	Enabled  *bool   `json:"enabled,omitempty"`
+	Username string  `json:"username,omitempty"`
+	Password string  `json:"password,omitempty"`
+	BaseURL  *string `json:"base_url,omitempty"`
+	Insecure *bool   `json:"insecure,omitempty"`
+}
+
+type CloudflareConfigUpdate struct {
+	Enabled         *bool   `json:"enabled,omitempty"`
+	APIToken        string  `json:"api_token,omitempty"`
+	AccountID       *string `json:"account_id,omitempty"`
+	ZoneID          *string `json:"zone_id,omitempty"`
+	TunnelID        *string `json:"tunnel_id,omitempty"`
+	Insecure        *bool   `json:"insecure,omitempty"`
+	CaddyServiceURL *string `json:"caddy_service_url,omitempty"`
 }
 
 type EntriesResponse struct {
@@ -159,6 +204,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+func (s *Server) runtimeSnapshot() app.Runtime {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
+	if s.runtime == nil {
+		return app.Runtime{}
+	}
+	return *s.runtime
+}
+
 func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleIndex)
 	staticRoot, err := fs.Sub(staticFiles, "static")
@@ -192,25 +246,58 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		resp, err := s.configResponse()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if err := s.allowMutation(r); err != nil {
+			writeError(w, http.StatusForbidden, err)
+			return
+		}
+		var request ConfigUpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid config update request: %w", err))
+			return
+		}
+		resp, err := s.applyConfigUpdate(request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+	default:
 		writeMethodNotAllowed(w)
-		return
 	}
-	writeJSON(w, http.StatusOK, ConfigResponse{
+}
+
+func (s *Server) configResponse() (ConfigResponse, error) {
+	saveTarget, err := s.configPath()
+	if err != nil {
+		return ConfigResponse{}, err
+	}
+	runtime := s.runtimeSnapshot()
+	return ConfigResponse{
 		Caddy: CaddyConfigResponse{
-			ServerIP:   s.runtime.CaddyEndpoint.ServerIP,
-			ServerPort: s.runtime.CaddyEndpoint.ServerPort,
+			ServerIP:   runtime.CaddyEndpoint.ServerIP,
+			ServerPort: runtime.CaddyEndpoint.ServerPort,
 		},
 		Enabled: map[string]bool{
-			"caddy":      s.runtime.Clients.Caddy != nil,
-			"unbound":    s.runtime.Clients.Unbound != nil,
-			"adguard":    s.runtime.Clients.Adguard != nil,
-			"dhcp":       s.runtime.Clients.DNSMasq != nil,
-			"cloudflare": s.runtime.Clients.Cloudflare != nil,
+			"caddy":      runtime.Clients.Caddy != nil,
+			"unbound":    runtime.Clients.Unbound != nil,
+			"adguard":    runtime.Clients.Adguard != nil,
+			"dhcp":       runtime.Clients.DNSMasq != nil,
+			"cloudflare": runtime.Clients.Cloudflare != nil,
 		},
 		MutationEnabled: s.mutationsEnabled(),
-		Summary:         s.configSummary(),
-	})
+		SaveTarget:      saveTarget,
+		Summary:         s.configSummary(&runtime),
+	}, nil
 }
 
 func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
@@ -226,78 +313,84 @@ func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, EntriesResponse{Entries: entryResponses(entries), Report: report})
 }
 
-func (s *Server) configSummary() ConfigSummary {
+func (s *Server) configSummary(runtime *app.Runtime) ConfigSummary {
+	configPath, _ := s.configPath()
 	unboundMissing := missingFields(map[string]bool{
-		"API key":    s.runtime.UnboundConfig.APIKey != "",
-		"API secret": s.runtime.UnboundConfig.APISecret != "",
-		"Base URL":   s.runtime.UnboundConfig.BaseURL != "",
+		"API key":    runtime.UnboundConfig.APIKey != "",
+		"API secret": runtime.UnboundConfig.APISecret != "",
+		"Base URL":   runtime.UnboundConfig.BaseURL != "",
 	})
 	adguardMissing := missingFields(map[string]bool{
-		"Enabled":  s.runtime.AdguardConfig.Enabled,
-		"Base URL": s.runtime.AdguardConfig.BaseURL != "",
-		"Username": s.runtime.AdguardConfig.Username != "",
-		"Password": s.runtime.AdguardConfig.Password != "",
+		"Enabled":  runtime.AdguardConfig.Enabled,
+		"Base URL": runtime.AdguardConfig.BaseURL != "",
+		"Username": runtime.AdguardConfig.Username != "",
+		"Password": runtime.AdguardConfig.Password != "",
 	})
 	cloudflareMissing := missingFields(map[string]bool{
-		"Enabled":    s.runtime.CloudflareConfig.Enabled,
-		"API token":  s.runtime.CloudflareConfig.APIToken != "",
-		"Account ID": s.runtime.CloudflareConfig.AccountID != "",
-		"Zone ID":    s.runtime.CloudflareConfig.ZoneID != "",
-		"Tunnel ID":  s.runtime.CloudflareConfig.TunnelID != "",
+		"Enabled":    runtime.CloudflareConfig.Enabled,
+		"API token":  runtime.CloudflareConfig.APIToken != "",
+		"Account ID": runtime.CloudflareConfig.AccountID != "",
+		"Zone ID":    runtime.CloudflareConfig.ZoneID != "",
+		"Tunnel ID":  runtime.CloudflareConfig.TunnelID != "",
 	})
-	caddyEndpoint := fmt.Sprintf("%s:%d", s.runtime.CaddyEndpoint.ServerIP, s.runtime.CaddyEndpoint.ServerPort)
-	unboundEndpoint := sanitizeEndpoint(s.runtime.UnboundConfig.BaseURL)
-	adguardEndpoint := sanitizeEndpoint(s.runtime.AdguardConfig.BaseURL)
-	caddyServiceURL := sanitizeEndpoint(s.runtime.CaddyServiceURL)
+	caddyEndpoint := fmt.Sprintf("%s:%d", runtime.CaddyEndpoint.ServerIP, runtime.CaddyEndpoint.ServerPort)
+	unboundEndpoint := sanitizeEndpoint(runtime.UnboundConfig.BaseURL)
+	adguardEndpoint := sanitizeEndpoint(runtime.AdguardConfig.BaseURL)
+	caddyServiceURL := sanitizeEndpoint(runtime.CaddyServiceURL)
 	return ConfigSummary{
 		Caddy: ConfigServiceSummary{
 			Label:       "Caddy",
-			Enabled:     s.runtime.Clients.Caddy != nil,
-			ClientReady: s.runtime.Clients.Caddy != nil,
+			Enabled:     runtime.Clients.Caddy != nil,
+			ClientReady: runtime.Clients.Caddy != nil,
+			Source:      ConfigSource{Kind: "cli", Label: "CLI flags/defaults"},
 			Endpoint:    caddyEndpoint,
 		},
 		Unbound: ConfigServiceSummary{
 			Label:       "OPNSense / Unbound",
-			Enabled:     s.runtime.UnboundConfig.BaseURL != "",
-			ClientReady: s.runtime.Clients.Unbound != nil,
+			Enabled:     runtime.UnboundConfig.BaseURL != "",
+			ClientReady: runtime.Clients.Unbound != nil,
+			Source:      s.configSource(configPath, sourceProbeUnbound),
 			Endpoint:    unboundEndpoint,
-			Insecure:    s.runtime.UnboundConfig.Insecure,
+			Insecure:    runtime.UnboundConfig.Insecure,
 			Fields: map[string]bool{
-				"api_key_set":    s.runtime.UnboundConfig.APIKey != "",
-				"api_secret_set": s.runtime.UnboundConfig.APISecret != "",
-				"base_url_set":   s.runtime.UnboundConfig.BaseURL != "",
+				"api_key_set":    runtime.UnboundConfig.APIKey != "",
+				"api_secret_set": runtime.UnboundConfig.APISecret != "",
+				"base_url_set":   runtime.UnboundConfig.BaseURL != "",
 			},
 			Missing: unboundMissing,
 		},
 		Adguard: ConfigServiceSummary{
 			Label:       "AdGuard",
-			Enabled:     s.runtime.AdguardConfig.Enabled,
-			ClientReady: s.runtime.Clients.Adguard != nil,
+			Enabled:     runtime.AdguardConfig.Enabled,
+			ClientReady: runtime.Clients.Adguard != nil,
+			Source:      s.configSource(configPath, sourceProbeAdguard),
 			Endpoint:    adguardEndpoint,
-			Insecure:    s.runtime.AdguardConfig.Insecure,
+			Insecure:    runtime.AdguardConfig.Insecure,
 			Fields: map[string]bool{
-				"username_set": s.runtime.AdguardConfig.Username != "",
-				"password_set": s.runtime.AdguardConfig.Password != "",
-				"base_url_set": s.runtime.AdguardConfig.BaseURL != "",
+				"username_set": runtime.AdguardConfig.Username != "",
+				"password_set": runtime.AdguardConfig.Password != "",
+				"base_url_set": runtime.AdguardConfig.BaseURL != "",
 			},
 			Missing: adguardMissing,
 		},
 		DHCP: ConfigServiceSummary{
 			Label:       "DHCP / DNSMasq",
-			Enabled:     s.runtime.Clients.DNSMasq != nil,
-			ClientReady: s.runtime.Clients.DNSMasq != nil,
+			Enabled:     runtime.Clients.DNSMasq != nil,
+			ClientReady: runtime.Clients.DNSMasq != nil,
+			Source:      s.configSource(configPath, sourceProbeUnbound),
 			Endpoint:    unboundEndpoint,
 		},
 		Cloudflare: ConfigServiceSummary{
 			Label:       "Cloudflare",
-			Enabled:     s.runtime.CloudflareConfig.Enabled,
-			ClientReady: s.runtime.Clients.Cloudflare != nil,
-			Insecure:    s.runtime.CloudflareConfig.Insecure,
+			Enabled:     runtime.CloudflareConfig.Enabled,
+			ClientReady: runtime.Clients.Cloudflare != nil,
+			Source:      s.configSource(configPath, sourceProbeCloudflare),
+			Insecure:    runtime.CloudflareConfig.Insecure,
 			Fields: map[string]bool{
-				"api_token_set":  s.runtime.CloudflareConfig.APIToken != "",
-				"account_id_set": s.runtime.CloudflareConfig.AccountID != "",
-				"zone_id_set":    s.runtime.CloudflareConfig.ZoneID != "",
-				"tunnel_id_set":  s.runtime.CloudflareConfig.TunnelID != "",
+				"api_token_set":  runtime.CloudflareConfig.APIToken != "",
+				"account_id_set": runtime.CloudflareConfig.AccountID != "",
+				"zone_id_set":    runtime.CloudflareConfig.ZoneID != "",
+				"tunnel_id_set":  runtime.CloudflareConfig.TunnelID != "",
 			},
 			Details: map[string]string{
 				"caddy_service_url": caddyServiceURL,
@@ -305,6 +398,213 @@ func (s *Server) configSummary() ConfigSummary {
 			Missing: cloudflareMissing,
 		},
 	}
+}
+
+type sourceProbe string
+
+const (
+	sourceProbeUnbound    sourceProbe = "unbound"
+	sourceProbeAdguard    sourceProbe = "adguard"
+	sourceProbeCloudflare sourceProbe = "cloudflare"
+)
+
+func (s *Server) configSource(configPath string, probe sourceProbe) ConfigSource {
+	switch probe {
+	case sourceProbeUnbound:
+		if os.Getenv(config.EnvAPIKey) != "" && os.Getenv(config.EnvAPISecret) != "" && os.Getenv(config.EnvBaseURL) != "" {
+			return ConfigSource{Kind: "env", Label: "Environment variables"}
+		}
+		if viper.IsSet("api_key") && viper.IsSet("api_secret") && viper.IsSet("base_url") {
+			if used := viper.ConfigFileUsed(); used != "" {
+				return ConfigSource{Kind: "config-file", Label: "Viper config file", Path: used}
+			}
+			return ConfigSource{Kind: "cli", Label: "Viper/CLI values"}
+		}
+	case sourceProbeAdguard:
+		if os.Getenv(config.EnvAdguardEnabled) != "" {
+			return ConfigSource{Kind: "env", Label: "Environment variables"}
+		}
+		if viper.IsSet("adguard") {
+			if used := viper.ConfigFileUsed(); used != "" {
+				return ConfigSource{Kind: "config-file", Label: "Viper config file", Path: used}
+			}
+			return ConfigSource{Kind: "cli", Label: "Viper/CLI values"}
+		}
+	case sourceProbeCloudflare:
+		if os.Getenv(config.EnvCFEnabled) != "" {
+			return ConfigSource{Kind: "env", Label: "Environment variables"}
+		}
+		if viper.IsSet("cloudflare") {
+			if used := viper.ConfigFileUsed(); used != "" {
+				return ConfigSource{Kind: "config-file", Label: "Viper config file", Path: used}
+			}
+			return ConfigSource{Kind: "cli", Label: "Viper/CLI values"}
+		}
+	}
+	if configPath != "" {
+		if s.configFileHasService(configPath, probe) {
+			return ConfigSource{Kind: "config-file", Label: "Config file", Path: configPath}
+		}
+	}
+	return ConfigSource{Kind: "default", Label: "Defaults"}
+}
+
+func (s *Server) configFileHasService(configPath string, probe sourceProbe) bool {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return false
+	}
+	var cfg config.ExtendedConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return false
+	}
+	switch probe {
+	case sourceProbeUnbound:
+		return cfg.APIKey != "" || cfg.APISecret != "" || cfg.BaseURL != ""
+	case sourceProbeAdguard:
+		return cfg.Adguard.Enabled || cfg.Adguard.BaseURL != "" || cfg.Adguard.Username != "" || cfg.Adguard.Password != ""
+	case sourceProbeCloudflare:
+		return cfg.Cloudflare.Enabled ||
+			cfg.Cloudflare.APIToken != "" ||
+			cfg.Cloudflare.AccountID != "" ||
+			cfg.Cloudflare.ZoneID != "" ||
+			cfg.Cloudflare.TunnelID != "" ||
+			cfg.Cloudflare.CaddyServiceURL != ""
+	default:
+		return false
+	}
+}
+
+func (s *Server) applyConfigUpdate(request ConfigUpdateRequest) (ConfigResponse, error) {
+	configPath, err := s.configPath()
+	if err != nil {
+		return ConfigResponse{}, err
+	}
+	cfg, err := s.loadWritableConfig(configPath)
+	if err != nil {
+		return ConfigResponse{}, err
+	}
+	if request.Unbound != nil {
+		applyUnboundConfigUpdate(&cfg.Config, request.Unbound)
+	}
+	if request.Adguard != nil {
+		applyAdguardConfigUpdate(&cfg.Adguard, request.Adguard)
+	}
+	if request.Cloudflare != nil {
+		applyCloudflareConfigUpdate(&cfg.Cloudflare, request.Cloudflare)
+	}
+	if err := config.SaveExtendedConfig(cfg, configPath); err != nil {
+		return ConfigResponse{}, err
+	}
+	if err := s.reloadRuntimeFromConfig(cfg); err != nil {
+		return ConfigResponse{}, err
+	}
+	return s.configResponse()
+}
+
+func (s *Server) configPath() (string, error) {
+	if s.options.ConfigPath != "" {
+		return s.options.ConfigPath, nil
+	}
+	return config.GetDefaultConfigPath()
+}
+
+func (s *Server) loadWritableConfig(configPath string) (config.ExtendedConfig, error) {
+	if data, err := os.ReadFile(configPath); err == nil {
+		var cfg config.ExtendedConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return cfg, fmt.Errorf("error parsing config file: %w", err)
+		}
+		return cfg, nil
+	} else if !os.IsNotExist(err) {
+		return config.ExtendedConfig{}, fmt.Errorf("error reading config file: %w", err)
+	}
+	runtime := s.runtimeSnapshot()
+	return config.ExtendedConfig{
+		Config:     runtime.UnboundConfig,
+		Caddy:      config.CaddyConfig{ServerIP: runtime.CaddyEndpoint.ServerIP, ServerPort: runtime.CaddyEndpoint.ServerPort},
+		Adguard:    runtime.AdguardConfig,
+		Cloudflare: runtime.CloudflareConfig,
+	}, nil
+}
+
+func applyUnboundConfigUpdate(cfg *api.Config, update *UnboundConfigUpdate) {
+	if update.APIKey != "" {
+		cfg.APIKey = update.APIKey
+	}
+	if update.APISecret != "" {
+		cfg.APISecret = update.APISecret
+	}
+	if update.BaseURL != nil {
+		cfg.BaseURL = strings.TrimSpace(*update.BaseURL)
+	}
+	if update.Insecure != nil {
+		cfg.Insecure = *update.Insecure
+	}
+}
+
+func applyAdguardConfigUpdate(cfg *config.AdguardConfig, update *AdguardConfigUpdate) {
+	if update.Enabled != nil {
+		cfg.Enabled = *update.Enabled
+	}
+	if update.Username != "" {
+		cfg.Username = update.Username
+	}
+	if update.Password != "" {
+		cfg.Password = update.Password
+	}
+	if update.BaseURL != nil {
+		cfg.BaseURL = strings.TrimSpace(*update.BaseURL)
+	}
+	if update.Insecure != nil {
+		cfg.Insecure = *update.Insecure
+	}
+	if cfg.Description == "" {
+		cfg.Description = "Entry created by caddy-dns-sync adguard-sync"
+	}
+}
+
+func applyCloudflareConfigUpdate(cfg *config.CloudflareConfig, update *CloudflareConfigUpdate) {
+	if update.Enabled != nil {
+		cfg.Enabled = *update.Enabled
+	}
+	if update.APIToken != "" {
+		cfg.APIToken = update.APIToken
+	}
+	if update.AccountID != nil {
+		cfg.AccountID = strings.TrimSpace(*update.AccountID)
+	}
+	if update.ZoneID != nil {
+		cfg.ZoneID = strings.TrimSpace(*update.ZoneID)
+	}
+	if update.TunnelID != nil {
+		cfg.TunnelID = strings.TrimSpace(*update.TunnelID)
+	}
+	if update.Insecure != nil {
+		cfg.Insecure = *update.Insecure
+	}
+	if update.CaddyServiceURL != nil {
+		cfg.CaddyServiceURL = strings.TrimSpace(*update.CaddyServiceURL)
+	}
+}
+
+func (s *Server) reloadRuntimeFromConfig(cfg config.ExtendedConfig) error {
+	current := s.runtimeSnapshot()
+	nextRuntime, err := app.NewRuntimeFromConfigs(cfg.Config, cfg.Adguard, cfg.Cloudflare, app.RuntimeOptions{
+		CaddyServerIP:     current.CaddyEndpoint.ServerIP,
+		CaddyServerPort:   current.CaddyEndpoint.ServerPort,
+		IncludeUnbound:    true,
+		IncludeDNSMasq:    current.Clients.DNSMasq != nil,
+		IncludeAdguard:    true,
+		IncludeCloudflare: true,
+	})
+	if err != nil {
+		return fmt.Errorf("error refreshing runtime from saved config: %w", err)
+	}
+	s.runtimeMu.Lock()
+	s.runtime = nextRuntime
+	s.runtimeMu.Unlock()
+	return nil
 }
 
 func sanitizeEndpoint(endpoint string) string {
@@ -391,11 +691,12 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	runtime := s.runtimeSnapshot()
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
 		Service:       service,
-		CaddyServerIP: s.runtime.CaddyEndpoint.ServerIP,
+		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
 	})
-	actions := s.webPlanActions(service, plan.Actions)
+	actions := s.webPlanActions(&runtime, service, plan.Actions)
 	planID := planID(service, actions)
 	actionIDs := actionIDs(actions)
 	s.storePlan(planID, actions, actionIDs)
@@ -453,15 +754,17 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) applyActions(ctx context.Context, actions []syncplan.Action, dryRun bool) *syncplan.Result {
+	runtime := s.runtimeSnapshot()
 	return syncplan.Apply(ctx, syncplan.Clients{
-		Unbound: s.runtime.Clients.Unbound,
-		Adguard: s.runtime.Clients.Adguard,
+		Unbound: runtime.Clients.Unbound,
+		Adguard: runtime.Clients.Adguard,
 	}, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{DryRun: dryRun})
 }
 
 func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
-	return status.LoadEntries(ctx, s.runtime.Clients, status.Options{
-		CaddyServerIP: s.runtime.CaddyEndpoint.ServerIP,
+	runtime := s.runtimeSnapshot()
+	return status.LoadEntries(ctx, runtime.Clients, status.Options{
+		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
 	})
 }
 
@@ -543,25 +846,25 @@ func (s *Server) actionsForIDs(planID string, actionIDs []string) ([]syncplan.Ac
 	return actions, nil
 }
 
-func (s *Server) webPlanActions(service string, actions []syncplan.Action) []syncplan.Action {
+func (s *Server) webPlanActions(runtime *app.Runtime, service string, actions []syncplan.Action) []syncplan.Action {
 	if service != "" && service != "all" {
 		return actions
 	}
 	out := make([]syncplan.Action, 0, len(actions))
 	for _, action := range actions {
-		if s.serviceEnabled(action.Service) {
+		if serviceEnabled(runtime, action.Service) {
 			out = append(out, action)
 		}
 	}
 	return out
 }
 
-func (s *Server) serviceEnabled(service string) bool {
+func serviceEnabled(runtime *app.Runtime, service string) bool {
 	switch service {
 	case "unbound":
-		return s.runtime.Clients.Unbound != nil
+		return runtime.Clients.Unbound != nil
 	case "adguard":
-		return s.runtime.Clients.Adguard != nil
+		return runtime.Clients.Adguard != nil
 	default:
 		return true
 	}
