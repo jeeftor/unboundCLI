@@ -83,6 +83,18 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(dom, `data-adguard-enabled="false"`) {
 		t.Fatalf("browser DOM should mark unavailable AdGuard controls disabled:\n%s", dom)
 	}
+	if !strings.Contains(dom, `data-loading="false"`) || !strings.Contains(dom, `id="top-progress"`) {
+		t.Fatalf("browser DOM should expose completed loading state and progress bar:\n%s", dom)
+	}
+	if !strings.Contains(dom, `class="service-card`) || !strings.Contains(dom, `Cloudflare</span>`) {
+		t.Fatalf("browser DOM should render service health cards:\n%s", dom)
+	}
+	if !strings.Contains(dom, `class="row-preview"`) || !strings.Contains(dom, `Not routed`) {
+		t.Fatalf("browser DOM should render row preview controls and Cloudflare route status:\n%s", dom)
+	}
+	if !strings.Contains(dom, `dns-result bad`) {
+		t.Fatalf("browser DOM should color failed DNS resolution as bad:\n%s", dom)
+	}
 
 	filteredDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=filter:caddy_only,search:browser", 1280, 900)
 	if !strings.Contains(filteredDOM, `data-e2e="done"`) {
@@ -106,6 +118,11 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	dryRunDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,dryrun", 1280, 900)
 	if !strings.Contains(dryRunDOM, "All operations completed successfully") || !strings.Contains(dryRunDOM, "added=2") {
 		t.Fatalf("dry-run result was not rendered:\n%s", dryRunDOM)
+	}
+
+	rowPreviewDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=rowpreview:browser.example.test:unbound", 1280, 900)
+	if !strings.Contains(rowPreviewDOM, "ADD unbound browser.example.test") || strings.Contains(rowPreviewDOM, "ADD unbound hidden.example.test") {
+		t.Fatalf("row preview should render only the selected hostname action:\n%s", rowPreviewDOM)
 	}
 
 	mobileDOM := runChromeSmoke(t, chromePath, webServer.URL, 390, 844)
