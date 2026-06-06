@@ -133,6 +133,136 @@ func TestIndexRouteServesHTML(t *testing.T) {
 	if !bytes.Contains(rec.Body.Bytes(), []byte("Caddy DNS Sync")) {
 		t.Fatalf("index HTML missing app title: %s", rec.Body.String())
 	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("UNBOUNDCLI_TEST_HOOKS = true")) {
+		t.Fatalf("index HTML should not enable test hooks by default: %s", rec.Body.String())
+	}
+}
+
+func TestIndexRouteCanEnableBrowserTestHooks(t *testing.T) {
+	server := NewServerWithOptions(&app.Runtime{}, Options{EnableTestHooks: true})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("UNBOUNDCLI_TEST_HOOKS = true")) {
+		t.Fatalf("index HTML missing test hook flag: %s", rec.Body.String())
+	}
+}
+
+func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+
+	tests := []struct {
+		path        string
+		contentType string
+		contains    []byte
+	}{
+		{path: "/", contentType: "text/html; charset=utf-8", contains: []byte(`<div id="app"`)},
+		{path: "/static/app.js", contentType: "text/javascript; charset=utf-8", contains: []byte("async function refreshEntries")},
+		{path: "/static/styles.css", contentType: "text/css; charset=utf-8", contains: []byte(".status-chip")},
+	}
+
+	for _, tt := range tests {
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d: %s", tt.path, rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("Content-Type"); got != tt.contentType {
+			t.Fatalf("%s: expected content type %q, got %q", tt.path, tt.contentType, got)
+		}
+		if !bytes.Contains(rec.Body.Bytes(), tt.contains) {
+			t.Fatalf("%s: response missing %q", tt.path, tt.contains)
+		}
+	}
+}
+
+func TestPlanRouteSupportsServiceSelection(t *testing.T) {
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/" {
+			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apps":{"http":{"servers":{"srv0":{"routes":[{"match":[{"host":["plan.example.test"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.5:8080"}]}]}]}}}}}`)
+	}))
+	defer caddy.Close()
+
+	host, port := splitWebTestServerHostPort(t, caddy.URL)
+	server := NewServer(&app.Runtime{
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
+		Clients:       app.ClientSet{Caddy: api.NewCaddyClient(host, port)},
+	})
+
+	planResp := getJSON[PlanResponse](t, server, "/api/sync/plan?service=adguard")
+	if len(planResp.Actions) != 1 {
+		t.Fatalf("expected one action, got %#v", planResp.Actions)
+	}
+	if planResp.Actions[0].Service != "adguard" {
+		t.Fatalf("expected adguard action, got %#v", planResp.Actions[0])
+	}
+	if planResp.PlanID == "" {
+		t.Fatal("expected plan response to include plan_id")
+	}
+	if len(planResp.ActionIDs) != len(planResp.Actions) || planResp.ActionIDs[0] == "" {
+		t.Fatalf("expected plan response to include action IDs, got %#v", planResp.ActionIDs)
+	}
+}
+
+func TestAllPlanFiltersUnavailableWebServices(t *testing.T) {
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/" {
+			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apps":{"http":{"servers":{"srv0":{"routes":[{"match":[{"host":["available.example.test"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.5:8080"}]}]}]}}}}}`)
+	}))
+	defer caddy.Close()
+
+	opnsense := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/unbound/settings/searchHostOverride" {
+			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"rows":[]}`)
+	}))
+	defer opnsense.Close()
+
+	host, port := splitWebTestServerHostPort(t, caddy.URL)
+	server := NewServer(&app.Runtime{
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
+		Clients: app.ClientSet{
+			Caddy: api.NewCaddyClient(host, port),
+			Unbound: api.NewClient(api.Config{
+				APIKey:    "fixture-key",
+				APISecret: "fixture-secret",
+				BaseURL:   opnsense.URL,
+				Insecure:  true,
+			}),
+		},
+	})
+
+	planResp := getJSON[PlanResponse](t, server, "/api/sync/plan?service=all")
+	if len(planResp.Actions) != 1 {
+		t.Fatalf("expected only available Unbound action, got %#v", planResp.Actions)
+	}
+	if planResp.Actions[0].Service != "unbound" {
+		t.Fatalf("expected all plan to filter unavailable AdGuard, got %#v", planResp.Actions[0])
+	}
+}
+
+func TestPlanRouteRejectsUnknownService(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	req := httptest.NewRequest(http.MethodGet, "/api/sync/plan?service=bogus", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestApplyRejectsOversizedRequestBody(t *testing.T) {
@@ -152,6 +282,54 @@ func TestApplyRejectsOversizedRequestBody(t *testing.T) {
 	}
 	if nosniff := rec.Header().Get("X-Content-Type-Options"); nosniff != "nosniff" {
 		t.Fatalf("expected nosniff header, got %q", nosniff)
+	}
+}
+
+func TestApplyRouteAllowsDryRunOnly(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	action := syncplan.Action{
+		Type: "add", Service: "unbound", Hostname: "dryrun.example.test", NewIP: "192.168.1.15", Enabled: true,
+	}
+	body, err := json.Marshal(ApplyRequest{DryRun: true, Actions: []syncplan.Action{action}})
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body, err = json.Marshal(ApplyRequest{DryRun: false, PlanID: "plan-1", ActionIDs: []string{"action-1"}})
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApplyRouteRejectsUnsupportedDHCPDryRun(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	action := syncplan.Action{
+		Type: "add", Service: "dhcp", Hostname: "dhcp.example.test", NewIP: "192.168.1.55", Enabled: true,
+	}
+	body, err := json.Marshal(ApplyRequest{DryRun: true, Actions: []syncplan.Action{action}})
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unsupported DHCP apply, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -183,6 +361,96 @@ func TestApplyRejectsRealMutationRequests(t *testing.T) {
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte("dry-run")) {
 		t.Fatalf("expected dry-run-only error, got %s", rec.Body.String())
+	}
+}
+
+func TestMutatingApplyRequiresTokenAndAllowedOrigin(t *testing.T) {
+	server := NewServerWithOptions(&app.Runtime{}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+	})
+	body, err := json.Marshal(ApplyRequest{
+		DryRun:    false,
+		PlanID:    "missing-plan",
+		ActionIDs: []string{"action-1"},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected missing token to be forbidden, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://evil.example")
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected disallowed origin to be forbidden, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMutatingApplyRejectsPostedActionsEvenWithToken(t *testing.T) {
+	server := NewServerWithOptions(&app.Runtime{}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+	})
+	body, err := json.Marshal(map[string]any{
+		"dry_run": false,
+		"actions": []syncplan.Action{
+			{Type: "add", Service: "unbound", Hostname: "forged.example.test", NewIP: "192.168.1.15", Enabled: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal forged request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected forged action request to be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMutatingApplyRejectsWildcardBindHost(t *testing.T) {
+	server := NewServerWithOptions(&app.Runtime{}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "",
+	})
+	body, err := json.Marshal(ApplyRequest{
+		DryRun:    false,
+		PlanID:    "plan-1",
+		ActionIDs: []string{"action-1"},
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/apply", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected wildcard bind host to be forbidden, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

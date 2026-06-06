@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1218;
+  --panel: #171b24;
+  --panel-2: #202635;
+  --text: #e8edf6;
+  --muted: #94a3b8;
+  --border: #303848;
+  --ok: #8fd694;
+  --warn: #ffd166;
+  --bad: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); background: #121620; }
+h1 { margin: 0; font-size: 18px; letter-spacing: 0; }
+main { padding: 18px 20px; display: grid; gap: 14px; }
+.summary, .toolbar, .sync-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.panel { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; overflow: auto; }
+.metric, button, select, input { border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); padding: 7px 10px; font: inherit; }
+button:disabled { opacity: .55; }
+.field-label { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; min-width: 860px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+th { color: var(--muted); font-size: 12px; text-transform: uppercase; background: #151923; }
+.status-chip { display: inline-block; border-radius: 999px; padding: 2px 8px; border: 1px solid var(--border); }
+.status-chip.ok { color: var(--ok); }
+.status-chip.warn { color: var(--warn); }
+.status-chip.bad { color: var(--bad); }
+.runtime, .log { color: var(--muted); }
+.log { padding: 12px; min-height: 44px; border-top: 1px solid var(--border); white-space: pre-wrap; }
+.message { min-height: 20px; color: var(--muted); }
+.message.error { color: var(--bad); }
+.message.info { color: var(--muted); }
+.disabled-service { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .topbar { align-items: flex-start; flex-direction: column; gap: 8px; }
+  main { padding: 12px; }
+  .summary, .toolbar, .sync-toolbar { align-items: stretch; flex-direction: column; }
+  button, select, input { width: 100%; }
+  .panel { border-left: 0; border-right: 0; border-radius: 0; }
+}

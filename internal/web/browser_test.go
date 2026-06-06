@@ -42,6 +42,15 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 											"upstreams": [{"dial": "10.0.0.5:8080"}]
 										}
 									]
+								},
+								{
+									"match": [{"host": ["hidden.example.test"]}],
+									"handle": [
+										{
+											"handler": "reverse_proxy",
+											"upstreams": [{"dial": "10.0.0.6:8080"}]
+										}
+									]
 								}
 							]
 						}
@@ -53,36 +62,78 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	defer caddy.Close()
 
 	host, port := splitBrowserTestServerHostPort(t, caddy.URL)
-	webServer := httptest.NewServer(NewServer(&app.Runtime{
+	webServer := httptest.NewServer(NewServerWithOptions(&app.Runtime{
 		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
 		Clients: app.ClientSet{
 			Caddy: api.NewCaddyClient(host, port),
 		},
-	}))
+	}, Options{EnableTestHooks: true}))
 	defer webServer.Close()
 
-	screenshotPath := filepath.Join(t.TempDir(), "web-smoke.png")
+	dom := runChromeSmoke(t, chromePath, webServer.URL, 1280, 900)
+	if !strings.Contains(dom, "Caddy DNS Sync") || !strings.Contains(dom, "browser.example.test") {
+		t.Fatalf("browser DOM did not render fake entry:\n%s", dom)
+	}
+	if !strings.Contains(dom, `id="message"`) || !strings.Contains(dom, `aria-live="polite"`) {
+		t.Fatalf("browser DOM missing live message region:\n%s", dom)
+	}
+	if strings.Contains(dom, "Failed to fetch") {
+		t.Fatalf("browser DOM shows stale loading or fetch failure:\n%s", dom)
+	}
+	if !strings.Contains(dom, `data-adguard-enabled="false"`) {
+		t.Fatalf("browser DOM should mark unavailable AdGuard controls disabled:\n%s", dom)
+	}
+
+	filteredDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=filter:caddy_only,search:browser", 1280, 900)
+	if !strings.Contains(filteredDOM, `data-e2e="done"`) {
+		t.Fatalf("browser e2e hook did not complete:\n%s", filteredDOM)
+	}
+	if !strings.Contains(filteredDOM, "browser.example.test") {
+		t.Fatalf("filtered DOM missing browser.example.test:\n%s", filteredDOM)
+	}
+	if strings.Contains(filteredDOM, "hidden.example.test") {
+		t.Fatalf("filtered DOM should hide hidden.example.test:\n%s", filteredDOM)
+	}
+
+	previewDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound", 1280, 900)
+	if !strings.Contains(previewDOM, "ADD unbound browser.example.test") {
+		t.Fatalf("preview did not render expected action:\n%s", previewDOM)
+	}
+	if !strings.Contains(previewDOM, `data-dry-run-enabled="true"`) {
+		t.Fatalf("dry-run button should be enabled after planned actions:\n%s", previewDOM)
+	}
+
+	dryRunDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,dryrun", 1280, 900)
+	if !strings.Contains(dryRunDOM, "All operations completed successfully") || !strings.Contains(dryRunDOM, "added=2") {
+		t.Fatalf("dry-run result was not rendered:\n%s", dryRunDOM)
+	}
+
+	mobileDOM := runChromeSmoke(t, chromePath, webServer.URL, 390, 844)
+	if !strings.Contains(mobileDOM, `data-mobile="true"`) {
+		t.Fatalf("mobile DOM did not mark mobile layout:\n%s", mobileDOM)
+	}
+	if !strings.Contains(mobileDOM, `data-table-scrolls="true"`) {
+		t.Fatalf("mobile DOM should expose horizontal table scrolling:\n%s", mobileDOM)
+	}
+}
+
+func runChromeSmoke(t *testing.T, chromePath, targetURL string, width, height int) string {
+	t.Helper()
+	screenshotPath := filepath.Join(t.TempDir(), fmt.Sprintf("web-smoke-%dx%d.png", width, height))
 	cmd := exec.Command(chromePath,
 		"--headless",
 		"--disable-gpu",
 		"--no-sandbox",
 		"--hide-scrollbars",
-		"--window-size=1280,900",
+		fmt.Sprintf("--window-size=%d,%d", width, height),
 		"--virtual-time-budget=5000",
 		"--dump-dom",
 		"--screenshot="+screenshotPath,
-		webServer.URL,
+		targetURL,
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("browser smoke failed: %v\n%s", err, string(output))
-	}
-	dom := string(output)
-	if !strings.Contains(dom, "Caddy DNS Sync") || !strings.Contains(dom, "browser.example.test") {
-		t.Fatalf("browser DOM did not render fake entry:\n%s", dom)
-	}
-	if !strings.Contains(dom, `id="state">Loaded</span>`) || strings.Contains(dom, "Failed to fetch") {
-		t.Fatalf("browser DOM shows stale loading or fetch failure:\n%s", dom)
 	}
 	info, err := os.Stat(screenshotPath)
 	if err != nil {
@@ -91,6 +142,7 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if info.Size() == 0 {
 		t.Fatal("browser screenshot was empty")
 	}
+	return string(output)
 }
 
 func chromeHeadlessShellPath(t *testing.T) string {

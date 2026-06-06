@@ -14,6 +14,8 @@ This repository is a Go CLI for managing Unbound DNS overrides on OPNSense. The 
 - `make check`: run formatting, vetting, and tests.
 - `make cross-build`: build platform binaries into `dist/`.
 - `make release-dry-run`: run a snapshot GoReleaser release without publishing.
+- `rtk go run main.go web --help`: inspect local web UI flags.
+- `rtk env UNBOUNDCLI_BROWSER_TESTS=1 go test ./internal/web -count=1`: run browser smoke checks; set `CHROME_HEADLESS_SHELL` only if auto-discovery fails.
 
 Use `go run . --help` or `go run . <command> --help` for local command exploration.
 
@@ -24,6 +26,8 @@ Use Go 1.23 as declared in `go.mod`. Keep package names short, lowercase, and al
 ## Testing Guidelines
 
 Place tests beside the code they cover with `_test.go` suffixes, and prefer table-driven tests for command parsing, config loading, and API behavior. Use the standard `testing` package unless an existing test introduces another dependency. Run `make test` for normal validation and `make check` before opening a PR.
+
+Browser UI changes should also run `rtk env UNBOUNDCLI_BROWSER_TESTS=1 go test ./internal/web -count=1` so the Chrome Headless Shell smoke test validates rendering, filtering, sync preview, dry-run behavior, and mobile layout markers.
 
 ## Commit & Pull Request Guidelines
 
