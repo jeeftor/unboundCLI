@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -48,14 +52,43 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	token, err := newWebToken()
+	if err != nil {
+		return err
+	}
+
 	addr := fmt.Sprintf("%s:%d", webHost, webPort)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	return serveWeb(listener, runtime, token, webHost, cmd.OutOrStdout())
+}
+
+func serveWebForTest(listener net.Listener, token string, out io.Writer) error {
+	return serveWeb(listener, &runtimeapp.Runtime{}, token, "127.0.0.1", out)
+}
+
+func serveWeb(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHost string, out io.Writer) error {
+	actualAddr := listener.Addr().String()
 	server := &http.Server{
-		Addr:              addr,
-		Handler:           webui.NewServer(runtime),
+		Handler: webui.NewServerWithOptions(runtime, webui.Options{
+			ApplyToken:    token,
+			AllowedOrigin: "http://" + actualAddr,
+			BoundHost:     boundHost,
+		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	logging.Info("Starting web GUI", "addr", addr)
-	fmt.Fprintf(cmd.OutOrStdout(), "Web GUI listening on http://%s\n", addr)
-	return server.ListenAndServe()
+	logging.Info("Starting web GUI", "addr", actualAddr)
+	fmt.Fprintf(out, "Web GUI listening on http://%s\n", actualAddr)
+	return server.Serve(listener)
+}
+
+func newWebToken() (string, error) {
+	var raw [24]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("generate web token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }

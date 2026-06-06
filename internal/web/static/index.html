@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Caddy DNS Sync</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>Caddy DNS Sync</h1>
+      <div id="runtime" class="runtime">Loading runtime...</div>
+    </header>
+    <main>
+      <section id="summary" class="summary" aria-live="polite"></section>
+      <section class="toolbar">
+        <button id="refresh" type="button">Refresh</button>
+        <select id="status-filter" aria-label="Status filter">
+          <option value="all">All entries</option>
+          <option value="out_of_sync">Out of sync</option>
+          <option value="caddy_only">Caddy only</option>
+          <option value="stale">Stale</option>
+        </select>
+        <select id="service-filter" aria-label="Service filter">
+          <option value="all">All services</option>
+          <option data-service="unbound" value="unbound">Unbound</option>
+          <option data-service="adguard" value="adguard">AdGuard</option>
+          <option data-service="cloudflare" value="cloudflare">Cloudflare</option>
+        </select>
+        <label class="field-label" for="search">Search</label>
+        <input id="search" type="search" aria-label="Search hostnames" placeholder="Search hostnames">
+      </section>
+      <section id="message" class="message" aria-live="polite"></section>
+      <section id="entries-panel" class="panel">
+        <table>
+          <thead>
+            <tr>
+              <th>Hostname</th><th>Source</th><th>Caddy</th><th>DNS</th><th>Unbound</th><th>AdGuard</th><th>Cloudflare</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="entries"></tbody>
+        </table>
+      </section>
+      <section id="sync-panel" class="panel">
+        <div class="sync-toolbar">
+          <select id="sync-service" aria-label="Sync target">
+            <option id="sync-service-all" value="all">Unbound + AdGuard</option>
+            <option data-service="unbound" value="unbound">Unbound</option>
+            <option data-service="adguard" value="adguard">AdGuard</option>
+            <option value="dhcp">DHCP preview</option>
+          </select>
+          <button id="preview-sync" type="button">Preview sync</button>
+          <button id="dry-run-sync" type="button" disabled>Dry-run apply</button>
+        </div>
+        <div id="sync-log" class="log" role="status" aria-live="polite">No actions planned.</div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

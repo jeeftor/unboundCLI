@@ -13,6 +13,7 @@ caddy-dns-sync provides seamless DNS override management through the OPNSense AP
 
 - 🎨 **Modern CLI interface** with color output using Cobra and Viper
 - 🖥️ **Interactive TUI** powered by Bubble Tea and Lipgloss
+- 🌐 **Local browser UI** for status review and dry-run sync previews
 - 📝 **Complete CRUD operations** for DNS overrides
 - 🔐 **Secure configuration management**
 - 🌍 **Cross-platform support** (macOS, Linux, Windows)
@@ -70,6 +71,16 @@ Experience the beautiful interactive interface:
 caddy-dns-sync tui
 ```
 
+### Launch the Web UI
+
+Start the local browser interface:
+
+```bash
+caddy-dns-sync web
+```
+
+The web UI is bound to `127.0.0.1:8080` by default. It shows Caddy/DNS status and supports sync previews plus dry-run apply. Real browser-triggered mutations remain disabled until local token and server-side plan validation are enabled.
+
 ## 📖 Usage
 
 ```
@@ -88,6 +99,7 @@ Available Commands:
   help        ❓ Help about any command
   list        📋 List DNS overrides
   tui         💻 Launch the Text User Interface
+  web         🌐 Start the local web GUI
 
 Flags:
   --config string      config file (default: $HOME/.caddy-dns-sync.yaml)
@@ -133,6 +145,15 @@ make cross-build    # 🌍 Cross-compile for multiple platforms
 make release-dry-run # 🚀 Test GoReleaser configuration
 make help           # 📚 Show all available commands
 ```
+
+### Browser UI Checks
+
+```bash
+rtk go run main.go web --help
+rtk env UNBOUNDCLI_BROWSER_TESTS=1 go test ./internal/web -count=1
+```
+
+Set `CHROME_HEADLESS_SHELL=/path/to/chrome-headless-shell` only if the browser smoke test cannot auto-discover a local Chrome Headless Shell binary.
 
 ## 🚢 Release Process
 
