@@ -131,6 +131,73 @@ input {
 .service-card.ok { border-left-color: var(--green); }
 .service-card.missing { border-left-color: var(--yellow); }
 
+.config-summary {
+  padding: 12px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.panel-heading span {
+  color: var(--muted);
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.config-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 160px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 7px;
+  background: var(--panel-2);
+}
+
+.config-card.ok { border-left-color: var(--green); }
+.config-card.warn { border-left-color: var(--yellow); }
+.config-card.missing { border-left-color: var(--red); }
+
+.config-card header {
+  display: grid;
+  gap: 2px;
+}
+
+.config-card header span,
+.config-line span,
+.missing-list {
+  color: var(--muted);
+}
+
+.config-line {
+  display: grid;
+  gap: 2px;
+}
+
+.config-line strong {
+  overflow-wrap: anywhere;
+}
+
+.config-line.warn strong,
+.missing-list {
+  color: var(--yellow);
+}
+
+.missing-list.ok {
+  color: var(--green);
+}
+
 button {
   cursor: pointer;
 }
@@ -276,6 +343,10 @@ td:first-child strong,
   .service-health {
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
+
+  .config-grid {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -297,6 +368,15 @@ td:first-child strong,
   }
 
   .service-health {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .config-grid {
     grid-template-columns: 1fr;
   }
 

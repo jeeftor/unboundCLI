@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
@@ -150,6 +151,74 @@ func TestIndexRouteCanEnableBrowserTestHooks(t *testing.T) {
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte("UNBOUNDCLI_TEST_HOOKS = true")) {
 		t.Fatalf("index HTML missing test hook flag: %s", rec.Body.String())
+	}
+}
+
+func TestConfigRouteReturnsSanitizedConfigurationSummary(t *testing.T) {
+	server := NewServer(&app.Runtime{
+		UnboundConfig: api.Config{
+			APIKey:    "fixture-api-key",
+			APISecret: "fixture-api-secret",
+			BaseURL:   "https://url-user:url-pass@opnsense.example.test",
+			Insecure:  true,
+		},
+		AdguardConfig: config.AdguardConfig{
+			Enabled:  true,
+			Username: "fixture-adguard-user",
+			Password: "fixture-adguard-password",
+			BaseURL:  "https://adguard-user:adguard-url-pass@adguard.example.test",
+		},
+		CloudflareConfig: config.CloudflareConfig{
+			Enabled:         true,
+			APIToken:        "fixture-cloudflare-token",
+			AccountID:       "fixture-account-id",
+			ZoneID:          "fixture-zone-id",
+			TunnelID:        "fixture-tunnel-id",
+			CaddyServiceURL: "http://caddy-user:caddy-pass@caddy.example.test:2019",
+		},
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: "127.0.0.1", ServerPort: 2019},
+		Clients: app.ClientSet{
+			Caddy:   api.NewCaddyClient("127.0.0.1", 2019),
+			Unbound: api.NewClient(api.Config{}),
+		},
+		CaddyServiceURL: "http://caddy-user:caddy-pass@caddy.example.test:2019",
+	})
+
+	resp := getJSON[ConfigResponse](t, server, "/api/config")
+	if !resp.Summary.Unbound.Fields["api_key_set"] || !resp.Summary.Unbound.Fields["api_secret_set"] {
+		t.Fatalf("expected OPNSense credentials to be summarized as present: %#v", resp.Summary.Unbound.Fields)
+	}
+	if resp.Summary.Unbound.Endpoint != "https://opnsense.example.test" {
+		t.Fatalf("expected non-secret OPNSense endpoint, got %q", resp.Summary.Unbound.Endpoint)
+	}
+	if resp.Summary.Adguard.Endpoint != "https://adguard.example.test" {
+		t.Fatalf("expected sanitized AdGuard endpoint, got %q", resp.Summary.Adguard.Endpoint)
+	}
+	if !resp.Summary.Cloudflare.Fields["api_token_set"] ||
+		resp.Summary.Cloudflare.Details["caddy_service_url"] != "http://caddy.example.test:2019" {
+		t.Fatalf("expected Cloudflare config presence and service URL, got %#v", resp.Summary.Cloudflare)
+	}
+
+	raw := getRawJSON(t, server, "/api/config")
+	for _, secret := range []string{
+		"fixture-api-key",
+		"fixture-api-secret",
+		"fixture-adguard-user",
+		"fixture-adguard-password",
+		"fixture-cloudflare-token",
+		"fixture-account-id",
+		"fixture-zone-id",
+		"fixture-tunnel-id",
+		"url-user",
+		"url-pass",
+		"adguard-user",
+		"adguard-url-pass",
+		"caddy-user",
+		"caddy-pass",
+	} {
+		if bytes.Contains(raw, []byte(secret)) {
+			t.Fatalf("config response leaked secret or identifier %q: %s", secret, string(raw))
+		}
 	}
 }
 

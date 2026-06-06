@@ -7,6 +7,7 @@ let plannedHostname = '';
 let enabledServices = {};
 let serviceReport = {};
 let mutationEnabled = false;
+let configSummary = {};
 
 const el = (id) => document.getElementById(id);
 
@@ -201,9 +202,58 @@ function renderServiceHealth() {
   }).join('');
 }
 
+function renderConfigSummary() {
+  const services = [
+    configSummary.caddy,
+    configSummary.unbound,
+    configSummary.adguard,
+    configSummary.dhcp,
+    configSummary.cloudflare
+  ].filter(Boolean);
+  el('config-summary').innerHTML = `
+    <div class="panel-heading">
+      <strong>Configuration</strong>
+      <span>Sanitized runtime view. Secrets are never shown.</span>
+    </div>
+    <div class="config-grid">
+      ${services.map(configCard).join('')}
+    </div>
+  `;
+}
+
+function configCard(service) {
+  const fields = Object.entries(service.fields || {});
+  const details = Object.entries(service.details || {}).filter(([, value]) => value);
+  const missing = service.missing || [];
+  const tone = service.client_ready ? 'ok' : service.enabled ? 'warn' : 'missing';
+  return `
+    <article class="config-card ${tone}">
+      <header>
+        <strong>${escapeHTML(service.label || 'Service')}</strong>
+        <span>${service.client_ready ? 'Client ready' : service.enabled ? 'Configured, incomplete' : 'Not configured'}</span>
+      </header>
+      ${service.endpoint ? `<div class="config-line"><span>Endpoint</span><strong>${escapeHTML(service.endpoint)}</strong></div>` : ''}
+      ${service.insecure ? '<div class="config-line warn"><span>TLS</span><strong>Insecure verification</strong></div>' : ''}
+      ${details.map(([key, value]) => `<div class="config-line"><span>${escapeHTML(formatConfigKey(key))}</span><strong>${escapeHTML(value)}</strong></div>`).join('')}
+      ${fields.map(([key, value]) => `<div class="config-line"><span>${escapeHTML(formatConfigKey(key))}</span><strong>${value ? 'set' : 'missing'}</strong></div>`).join('')}
+      ${missing.length ? `<div class="missing-list">Missing: ${missing.map(escapeHTML).join(', ')}</div>` : '<div class="missing-list ok">Required fields present</div>'}
+    </article>
+  `;
+}
+
+function formatConfigKey(key) {
+  const words = String(key).replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  return words
+    .replace(/\bApi\b/g, 'API')
+    .replace(/\bUrl\b/g, 'URL')
+    .replace(/\bTls\b/g, 'TLS')
+    .replace(/\bDhcp\b/g, 'DHCP');
+}
+
 function applyEnabledServices(config) {
   enabledServices = config.enabled || {};
   mutationEnabled = Boolean(config.mutation_enabled && window.UNBOUNDCLI_WEB_CONFIG?.mutationEnabled);
+  configSummary = config.summary || {};
   document.querySelectorAll('[data-service]').forEach((node) => {
     const service = node.getAttribute('data-service');
     const available = enabledServices[service] !== false;
@@ -220,6 +270,7 @@ function applyEnabledServices(config) {
   el('app').setAttribute('data-mutation-enabled', String(mutationEnabled));
   el('sync-now').title = syncButtonTitle();
   renderServiceHealth();
+  renderConfigSummary();
   if (el('sync-service').selectedOptions[0]?.disabled) {
     el('sync-service').value = unboundAvailable ? 'unbound' : adguardAvailable ? 'adguard' : 'dhcp';
     clearPlannedActions();
@@ -413,6 +464,7 @@ async function refreshEntries() {
     serviceReport = data.report?.services || {};
     renderSummary();
     renderServiceHealth();
+    renderConfigSummary();
     renderEntries();
     setMessage(entries.length ? 'Loaded service status.' : 'No entries found.', 'info');
     await runE2EActions();
