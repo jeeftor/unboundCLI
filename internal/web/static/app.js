@@ -106,7 +106,8 @@ function renderEntries() {
             <option value="adguard">AdGuard</option>
             <option value="dhcp">DHCP preview</option>
           </select>
-          <button class="row-preview" type="button" data-hostname="${escapeHTML(entry.hostname)}">Preview</button>
+          <button class="row-preview" type="button" data-hostname="${escapeHTML(entry.hostname)}">Preview sync</button>
+          <button class="row-sync" type="button" disabled title="Real sync is disabled until server-side mutation validation is enabled">Sync</button>
         </div>
       </td>
     </tr>

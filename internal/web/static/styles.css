@@ -254,7 +254,7 @@ td:first-child strong,
 .row-actions {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(130px, 1fr) auto;
+  grid-template-columns: minmax(130px, 1fr) auto auto;
 }
 
 .log {

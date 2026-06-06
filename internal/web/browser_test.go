@@ -92,6 +92,9 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(dom, `class="row-preview"`) || !strings.Contains(dom, `Not routed`) {
 		t.Fatalf("browser DOM should render row preview controls and Cloudflare route status:\n%s", dom)
 	}
+	if !strings.Contains(dom, `id="sync-now"`) || !strings.Contains(dom, `class="row-sync"`) {
+		t.Fatalf("browser DOM should expose disabled global and row sync buttons:\n%s", dom)
+	}
 	if !strings.Contains(dom, `dns-result bad`) {
 		t.Fatalf("browser DOM should color failed DNS resolution as bad:\n%s", dom)
 	}
