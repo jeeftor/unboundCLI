@@ -210,8 +210,8 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 
 	closedConfigDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=toggleconfig:closed", 1280, 900)
-	if !strings.Contains(closedConfigDOM, `id="config-panel" class="config-summary panel"`) || strings.Contains(closedConfigDOM, `id="config-panel" class="config-summary panel" open`) {
-		t.Fatalf("config panel should be closable:\n%s", closedConfigDOM)
+	if !strings.Contains(closedConfigDOM, `id="config-panel" class="config-modal " hidden`) {
+		t.Fatalf("config modal should be closable and hidden:\n%s", closedConfigDOM)
 	}
 
 	mobileDOM := runChromeSmoke(t, chromePath, webServer.URL, 390, 844)

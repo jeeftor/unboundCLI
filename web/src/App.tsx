@@ -1,20 +1,15 @@
 import {
   Activity,
-  CheckCircle2,
   Cloud,
   Database,
   FileSliders,
-  Gauge,
-  Globe2,
   HardDrive,
-  Loader2,
   Network,
   Play,
   RefreshCw,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
-  TerminalSquare,
+  Settings,
   WifiOff,
   Zap
 } from 'lucide-react';
@@ -446,6 +441,9 @@ export function App() {
           </div>
         </div>
         <div className="top-actions">
+          <button id="config-toggle" type="button" onClick={() => setConfigOpen(true)}>
+            <Settings size={16} /> Settings
+          </button>
           <button id="refresh" type="button" onClick={() => void refreshEntries()} disabled={loading}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -455,53 +453,29 @@ export function App() {
       <ProgressBanner loading={loading} />
 
       <main className="dashboard-shell">
-        <aside className="side-nav">
-          <NavItem icon={Gauge} label="Overview" active />
-          <NavItem icon={FileSliders} label="Config" />
-          <NavItem icon={TerminalSquare} label="Sync" />
-        </aside>
-
         <section className="main-stage">
-          <section className="hero-panel">
+          <section className="status-band">
             <div>
-              <p className="eyebrow">Local DNS operations</p>
-              <h2>Service state, sync plans, and config checks in one workspace.</h2>
+              <h2>DNS operations</h2>
+              <span>Review entries, preview changes, and apply server-issued sync plans.</span>
             </div>
             <div id="message" className={`message ${messageKind}`} aria-live="polite">{message}</div>
           </section>
 
-          <section id="service-health" className="service-health" aria-label="Service health">
-            {serviceOrder.map((service) => (
-              <ServiceCard key={service} service={service} config={config} report={report} />
-            ))}
-          </section>
+          <section className="overview-strip">
+            <section id="service-health" className="service-health" aria-label="Service health">
+              {serviceOrder.map((service) => (
+                <ServiceCard key={service} service={service} config={config} report={report} />
+              ))}
+            </section>
 
-          <details id="config-panel" className="config-summary panel" open={configOpen} onToggle={(event) => setConfigOpen(event.currentTarget.open)}>
-            <summary>
-              <span>Configuration</span>
-              <small>Runtime config</small>
-            </summary>
-            {config && (
-              <ConfigWorkspace
-                config={config}
-                forms={forms}
-                setForms={setForms}
-                mutationEnabled={mutationEnabled}
-                status={configStatus}
-                statusKind={configStatusKind}
-                testResults={testResults}
-                onSave={saveConfig}
-                onTest={testConfig}
-              />
-            )}
-          </details>
-
-          <section id="summary" className="summary" aria-live="polite">
-            <Metric className="neutral" value={summary.entries} label="entries" />
-            <Metric className="bad" value={summary.out} label="out of sync" />
-            <Metric className="warn" value={summary.caddyOnly} label="caddy only" />
-            <Metric className="bad" value={summary.stale} label="stale" />
-            <Metric className="cf" value={summary.cloudflare} label="cloudflare" />
+            <section id="summary" className="summary" aria-live="polite">
+              <Metric className="neutral" value={summary.entries} label="entries" />
+              <Metric className="bad" value={summary.out} label="out of sync" />
+              <Metric className="warn" value={summary.caddyOnly} label="caddy only" />
+              <Metric className="bad" value={summary.stale} label="stale" />
+              <Metric className="cf" value={summary.cloudflare} label="cloudflare" />
+            </section>
           </section>
 
           <section className="workspace">
@@ -582,14 +556,36 @@ export function App() {
               }} />
             </aside>
           </section>
+
+          <div id="config-panel" className={`config-modal ${configOpen ? 'open' : ''}`} hidden={!configOpen} role="dialog" aria-modal="true" aria-labelledby="config-modal-title">
+            <div className="config-backdrop" onClick={() => setConfigOpen(false)} />
+            <section className="config-sheet panel">
+              <header className="config-sheet-header">
+                <div>
+                  <strong id="config-modal-title"><FileSliders size={16} /> Configuration</strong>
+                  <span>Runtime config, source visibility, and connection tests.</span>
+                </div>
+                <button id="config-close" type="button" onClick={() => setConfigOpen(false)}>Close</button>
+              </header>
+              {config && (
+                <ConfigWorkspace
+                  config={config}
+                  forms={forms}
+                  setForms={setForms}
+                  mutationEnabled={mutationEnabled}
+                  status={configStatus}
+                  statusKind={configStatusKind}
+                  testResults={testResults}
+                  onSave={saveConfig}
+                  onTest={testConfig}
+                />
+              )}
+            </section>
+          </div>
         </section>
       </main>
     </div>
   );
-}
-
-function NavItem({ icon: Icon, label, active = false }: { icon: typeof Activity; label: string; active?: boolean }) {
-  return <div className={`nav-item ${active ? 'active' : ''}`}><Icon size={17} /><span>{label}</span></div>;
 }
 
 function ProgressBanner({ loading }: { loading: boolean }) {
