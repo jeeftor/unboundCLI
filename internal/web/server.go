@@ -884,8 +884,10 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
-		Service:       service,
-		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
+		Service:           service,
+		CaddyServerIP:     runtime.CaddyEndpoint.ServerIP,
+		CaddyServiceURL:   runtime.CaddyServiceURL,
+		IncludeCloudflare: runtime.Clients.Cloudflare != nil,
 	})
 	actions := s.webPlanActions(&runtime, service, plan.Actions)
 	if hostname != "" {
@@ -950,8 +952,9 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 func (s *Server) applyActions(ctx context.Context, actions []syncplan.Action, dryRun bool) *syncplan.Result {
 	runtime := s.runtimeSnapshot()
 	return syncplan.Apply(ctx, syncplan.Clients{
-		Unbound: runtime.Clients.Unbound,
-		Adguard: runtime.Clients.Adguard,
+		Unbound:    runtime.Clients.Unbound,
+		Adguard:    runtime.Clients.Adguard,
+		Cloudflare: runtime.Clients.Cloudflare,
 	}, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{DryRun: dryRun})
 }
 
@@ -964,7 +967,7 @@ func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadR
 
 func validPlanService(service string) bool {
 	switch service {
-	case "", "all", "unbound", "adguard", "dhcp":
+	case "", "all", "unbound", "adguard", "dhcp", "cloudflare":
 		return true
 	default:
 		return false
@@ -974,7 +977,7 @@ func validPlanService(service string) bool {
 func validateApplyActions(actions []syncplan.Action) error {
 	for _, action := range actions {
 		switch action.Service {
-		case "unbound", "adguard":
+		case "unbound", "adguard", "cloudflare":
 			continue
 		case "dhcp":
 			return fmt.Errorf("DHCP apply is not implemented")
@@ -1066,6 +1069,8 @@ func serviceEnabled(runtime *app.Runtime, service string) bool {
 		return runtime.Clients.Unbound != nil
 	case "adguard":
 		return runtime.Clients.Adguard != nil
+	case "cloudflare":
+		return runtime.Clients.Cloudflare != nil
 	default:
 		return true
 	}

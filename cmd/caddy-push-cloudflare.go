@@ -130,6 +130,18 @@ func renderCaddyPushCloudflareResult(cmd *cobra.Command, result *sync2.CaddyToCl
 		}
 	}
 
+	if len(result.TunnelUpdated) > 0 {
+		sort.Strings(result.TunnelUpdated)
+		if cpCFDryRun {
+			fmt.Fprintf(cmd.OutOrStdout(), "  [dry-run] Would update %d tunnel rule(s):\n", len(result.TunnelUpdated))
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "  Updated %d tunnel rule(s):\n", len(result.TunnelUpdated))
+		}
+		for _, h := range result.TunnelUpdated {
+			fmt.Fprintf(cmd.OutOrStdout(), "    ~ %s\n", h)
+		}
+	}
+
 	if cpCFVerbose && len(result.AlreadyCovered) > 0 {
 		sort.Strings(result.AlreadyCovered)
 		fmt.Fprintf(cmd.OutOrStdout(), "  Skipped %d hostname(s) covered by other tunnels:\n", len(result.AlreadyCovered))
@@ -161,7 +173,7 @@ func renderCaddyPushCloudflareResult(cmd *cobra.Command, result *sync2.CaddyToCl
 			sort.Strings(result.DNSRemoved)
 			fmt.Fprintf(cmd.OutOrStdout(), "  DNS records removed: %s\n", strings.Join(result.DNSRemoved, ", "))
 		}
-		if len(result.TunnelAdded) == 0 && len(result.TunnelRemoved) == 0 {
+		if len(result.TunnelAdded) == 0 && len(result.TunnelUpdated) == 0 && len(result.TunnelRemoved) == 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), "  No changes needed - tunnel is already in sync.")
 		}
 	}

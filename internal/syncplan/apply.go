@@ -22,10 +22,18 @@ type AdguardClient interface {
 	DeleteRewrite(domain, answer string) error
 }
 
+type CloudflareClient interface {
+	UpdateTunnelRule(api.IngressRuleSpec) error
+	DeleteTunnelRule(hostname string) error
+	EnsureDNSRecord(hostname string) error
+	DeleteDNSRecord(hostname string) error
+}
+
 // Clients contains service clients used to apply a sync plan.
 type Clients struct {
-	Unbound UnboundClient
-	Adguard AdguardClient
+	Unbound    UnboundClient
+	Adguard    AdguardClient
+	Cloudflare CloudflareClient
 }
 
 // ApplyOptions controls sync plan application.
@@ -117,6 +125,8 @@ func applyAction(clients Clients, action Action) error {
 		return applyUnboundAction(clients.Unbound, action)
 	case "adguard":
 		return applyAdguardAction(clients.Adguard, action)
+	case "cloudflare":
+		return applyCloudflareAction(clients.Cloudflare, action)
 	case "dhcp":
 		return fmt.Errorf("DHCP sync not yet implemented")
 	default:
@@ -180,6 +190,37 @@ func applyAdguardAction(client AdguardClient, action Action) error {
 		)
 	case "delete":
 		return client.DeleteRewrite(action.Hostname, action.OldIP)
+	default:
+		return fmt.Errorf("unknown action type: %s", action.Type)
+	}
+}
+
+func applyCloudflareAction(client CloudflareClient, action Action) error {
+	if client == nil {
+		return fmt.Errorf("Cloudflare client not available")
+	}
+
+	switch action.Type {
+	case "add":
+		if err := client.UpdateTunnelRule(api.IngressRuleSpec{
+			Hostname:       action.Hostname,
+			Service:        action.NewService,
+			HTTPHostHeader: action.NewHTTPHostHeader,
+		}); err != nil {
+			return err
+		}
+		return client.EnsureDNSRecord(action.Hostname)
+	case "update":
+		return client.UpdateTunnelRule(api.IngressRuleSpec{
+			Hostname:       action.Hostname,
+			Service:        action.NewService,
+			HTTPHostHeader: action.NewHTTPHostHeader,
+		})
+	case "delete":
+		if err := client.DeleteTunnelRule(action.Hostname); err != nil {
+			return err
+		}
+		return client.DeleteDNSRecord(action.Hostname)
 	default:
 		return fmt.Errorf("unknown action type: %s", action.Type)
 	}

@@ -14,7 +14,12 @@ type TUISyncExecutor struct {
 }
 
 // NewTUISyncExecutor creates a new TUI sync executor.
-func NewTUISyncExecutor(unboundClient *api.Client, adguardClient *api.AdguardClient, dhcpClient *api.DNSMasqClient) *TUISyncExecutor {
+func NewTUISyncExecutor(
+	unboundClient *api.Client,
+	adguardClient *api.AdguardClient,
+	dhcpClient *api.DNSMasqClient,
+	cfClient *api.CloudflareClient,
+) *TUISyncExecutor {
 	_ = dhcpClient
 	executor := &TUISyncExecutor{}
 	if unboundClient != nil {
@@ -22,6 +27,9 @@ func NewTUISyncExecutor(unboundClient *api.Client, adguardClient *api.AdguardCli
 	}
 	if adguardClient != nil {
 		executor.clients.Adguard = adguardClient
+	}
+	if cfClient != nil {
+		executor.clients.Cloudflare = cfClient
 	}
 	return executor
 }

@@ -26,8 +26,11 @@ var (
 // caddySyncCloudflareCmd represents the caddy-sync-cloudflare command
 var caddySyncCloudflareCmd = &cobra.Command{
 	Use:   "caddy-sync-cloudflare",
-	Short: "Synchronize UnboundDNS entries with Caddy server for Cloudflare tunnel routing",
-	Long: `Synchronize DNS entries in Unbound with hostnames from a Caddy server for dual-mode Cloudflare tunnel routing.
+	Short: "Synchronize UnboundDNS overrides for Cloudflare-style Caddy hostnames",
+	Long: `Synchronize DNS override entries in Unbound with hostnames from a Caddy server for dual-mode Cloudflare-style naming.
+
+This command does not modify Cloudflare tunnel ingress rules. Use caddy-push-cloudflare
+to sync Caddy hostnames into the configured Cloudflare tunnel.
 
 This command queries the Caddy server for its configuration, extracts all hostnames from the routes,
 and creates DNS entries with two modes:

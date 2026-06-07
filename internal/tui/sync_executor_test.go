@@ -60,7 +60,7 @@ func TestExecuteSyncAction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			executor := NewTUISyncExecutor(nil, nil, nil)
+			executor := NewTUISyncExecutor(nil, nil, nil, nil)
 
 			err := executor.ExecuteSyncAction(tt.action)
 
@@ -107,7 +107,7 @@ func TestExecuteSyncActions(t *testing.T) {
 		},
 	}
 
-	executor := NewTUISyncExecutor(nil, nil, nil)
+	executor := NewTUISyncExecutor(nil, nil, nil, nil)
 
 	result := executor.ExecuteSyncActions(actions)
 
@@ -130,7 +130,7 @@ func TestExecuteSyncActions(t *testing.T) {
 
 // TestDryRunMode tests that dry run doesn't execute actual API calls
 func TestDryRunMode(t *testing.T) {
-	executor := NewTUISyncExecutor(nil, nil, nil)
+	executor := NewTUISyncExecutor(nil, nil, nil, nil)
 	executor.SetDryRun(true)
 
 	result := executor.ExecuteSyncActions([]syncplan.Action{

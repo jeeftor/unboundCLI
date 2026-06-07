@@ -1,11 +1,14 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/models"
+	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
 // CaddyToCloudflareSyncOptions contains options for the Caddy-to-Cloudflare push sync.
@@ -20,6 +23,7 @@ type CaddyToCloudflareSyncOptions struct {
 type CaddyToCloudflareSyncResult struct {
 	CaddyHostnames []string
 	TunnelAdded    []string          // added to default tunnel
+	TunnelUpdated  []string          // updated in default tunnel
 	TunnelRemoved  []string          // removed from default tunnel
 	AlreadyCovered []string          // found in other tunnels, skipped
 	StaleElsewhere map[string]string // hostname → tunnelName, in another tunnel but not in Caddy (report only)
@@ -64,50 +68,39 @@ func SyncCaddyToCloudflare(
 		result.CaddyHostnames = append(result.CaddyHostnames, h)
 	}
 
-	// 2. Fetch all tunnels' hostnames (read-only scan)
-	allCFHosts, err := cfClient.GetAllTunnelsHostnames()
+	// 2. Fetch all tunnels' ingress details (read-only account scan)
+	allCFHosts, err := cfClient.GetAllTunnelsDetails()
 	if err != nil {
 		return nil, fmt.Errorf("error scanning account tunnels: %w", err)
 	}
 
-	// 3. Fetch default tunnel's hostnames (writeable)
-	defaultHosts, err := cfClient.GetTunnelHostnames()
-	if err != nil {
-		return nil, fmt.Errorf("error fetching default tunnel hostnames: %w", err)
+	entries := cloudflareSyncEntries(caddyHosts, allCFHosts)
+	plan := syncplan.BuildPlan(entries, syncplan.Options{
+		Service:           "cloudflare",
+		CaddyServiceURL:   options.CaddyServiceURL,
+		IncludeCloudflare: true,
+	})
+	for _, action := range plan.Actions {
+		switch action.Type {
+		case "add":
+			result.TunnelAdded = append(result.TunnelAdded, action.Hostname)
+		case "update":
+			result.TunnelUpdated = append(result.TunnelUpdated, action.Hostname)
+		case "delete":
+			result.TunnelRemoved = append(result.TunnelRemoved, action.Hostname)
+		}
 	}
-
-	// 4. Compute diff
-	// toAdd: in Caddy but not anywhere in CF at all
-	// alreadyCovered: in Caddy AND in another (non-default) tunnel
-	// toRemove: in default tunnel but not in Caddy
-	// staleElsewhere: in another tunnel AND not in Caddy (report only)
-
-	for hostname := range caddyHosts {
-		entry, inAllCF := allCFHosts[hostname]
-		_, inDefault := defaultHosts[hostname]
-
-		if !inAllCF {
-			result.TunnelAdded = append(result.TunnelAdded, hostname)
-		} else if !inDefault {
-			// Present in another tunnel — skip, report only
+	for hostname, entry := range allCFHosts {
+		_, inCaddy := caddyHosts[hostname]
+		if entry.IsDefaultTunnel {
+			continue
+		}
+		if inCaddy {
 			result.AlreadyCovered = append(result.AlreadyCovered, hostname)
 			logging.Info("Hostname already covered by another tunnel",
 				"hostname", hostname,
 				"tunnel", entry.TunnelName)
-		}
-		// If inDefault: already correct, nothing to do
-	}
-
-	for hostname := range defaultHosts {
-		if _, inCaddy := caddyHosts[hostname]; !inCaddy {
-			result.TunnelRemoved = append(result.TunnelRemoved, hostname)
-		}
-	}
-
-	for hostname, entry := range allCFHosts {
-		_, inDefault := defaultHosts[hostname]
-		_, inCaddy := caddyHosts[hostname]
-		if !inDefault && !inCaddy {
+		} else {
 			result.StaleElsewhere[hostname] = entry.TunnelName
 		}
 	}
@@ -115,48 +108,74 @@ func SyncCaddyToCloudflare(
 	if options.Verbose {
 		logging.Info("Sync diff computed",
 			"toAdd", len(result.TunnelAdded),
+			"toUpdate", len(result.TunnelUpdated),
 			"toRemove", len(result.TunnelRemoved),
 			"alreadyCovered", len(result.AlreadyCovered),
 			"staleElsewhere", len(result.StaleElsewhere),
 		)
 	}
 
-	// 5. Apply (when not dry-run)
 	if !options.DryRun {
-		// Build new ingress map: defaultHosts - toRemove + toAdd
-		newIngress := make(map[string]string, len(defaultHosts))
-		for h, svc := range defaultHosts {
-			newIngress[h] = svc
-		}
-		for _, h := range result.TunnelRemoved {
-			delete(newIngress, h)
+		applyResult := syncplan.Apply(context.Background(), syncplan.Clients{Cloudflare: cfClient}, plan, syncplan.ApplyOptions{})
+		if !applyResult.Success {
+			return result, fmt.Errorf("error updating Cloudflare tunnel: %s", strings.Join(applyResult.Errors, "; "))
 		}
 		for _, h := range result.TunnelAdded {
-			newIngress[h] = options.CaddyServiceURL
-		}
-
-		if err := cfClient.SetTunnelIngress(newIngress); err != nil {
-			return result, fmt.Errorf("error updating tunnel ingress: %w", err)
-		}
-
-		for _, h := range result.TunnelAdded {
-			if err := cfClient.EnsureDNSRecord(h); err != nil {
-				logging.Error("Failed to create DNS record", "hostname", h, "error", err)
-				continue
-			}
 			result.DNSAdded = append(result.DNSAdded, h)
 		}
-
 		for _, h := range result.TunnelRemoved {
-			if err := cfClient.DeleteDNSRecord(h); err != nil {
-				logging.Error("Failed to delete DNS record", "hostname", h, "error", err)
-				continue
-			}
 			result.DNSRemoved = append(result.DNSRemoved, h)
 		}
 	}
 
 	return result, nil
+}
+
+func cloudflareSyncEntries(
+	caddyHosts map[string]string,
+	cfHosts map[string]api.CloudflareIngressEntry,
+) []*models.Entry {
+	entries := make([]*models.Entry, 0, len(caddyHosts)+len(cfHosts))
+	seen := make(map[string]bool, len(caddyHosts)+len(cfHosts))
+
+	for hostname, upstream := range caddyHosts {
+		entry := &models.Entry{
+			Hostname:      hostname,
+			CaddyUpstream: upstream,
+		}
+		if cfEntry, ok := cfHosts[hostname]; ok {
+			entry.CloudflareStatus = cloudflareStatusFromIngress(cfEntry)
+		}
+		entries = append(entries, entry)
+		seen[hostname] = true
+	}
+
+	for hostname, cfEntry := range cfHosts {
+		if seen[hostname] {
+			continue
+		}
+		entries = append(entries, &models.Entry{
+			Hostname:         hostname,
+			CloudflareStatus: cloudflareStatusFromIngress(cfEntry),
+		})
+	}
+
+	return entries
+}
+
+func cloudflareStatusFromIngress(cfEntry api.CloudflareIngressEntry) models.CloudflareStatus {
+	return models.CloudflareStatus{
+		Configured:      true,
+		TunnelName:      cfEntry.TunnelName,
+		TunnelID:        cfEntry.TunnelID,
+		Service:         cfEntry.Service,
+		Path:            cfEntry.Path,
+		IsDefaultTunnel: cfEntry.IsDefaultTunnel,
+		HTTPHostHeader:  cfEntry.HTTPHostHeader,
+		NoTLSVerify:     cfEntry.NoTLSVerify,
+		Http2Origin:     cfEntry.Http2Origin,
+		HasAccessPolicy: cfEntry.HasAccessPolicy,
+	}
 }
 
 // matchesFilter returns true if hostname ends with any of the given domain suffixes.
