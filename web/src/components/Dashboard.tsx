@@ -2,7 +2,6 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
-  CircleDot,
   Cloud,
   FileSliders,
   Gauge,
@@ -238,7 +237,7 @@ function Topbar({ config, loading, onRefresh, onOpenConfig }: { config: ConfigRe
       <div className="runtime-card" id="runtime">
         <span>Caddy runtime</span>
         <strong>{config ? `${config.caddy.server_ip}:${config.caddy.server_port}` : 'Loading...'}</strong>
-        <em className={config?.enabled?.caddy === false ? 'down' : 'up'}><CircleDot size={12} /> {config?.enabled?.caddy === false ? 'Offline' : 'Running'}</em>
+        <em className={config?.enabled?.caddy === false ? 'down' : ''}>{config?.enabled?.caddy === false ? 'Offline' : 'Running'}</em>
       </div>
       <div className="top-actions">
         <button id="refresh" type="button" onClick={onRefresh} disabled={loading}>
