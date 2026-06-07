@@ -50,11 +50,26 @@ func TestAPIRoutesUseSharedServicesWithoutLAN(t *testing.T) {
 	}))
 	defer caddy.Close()
 
+	opnsense := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/unbound/settings/searchHostOverride" {
+			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"rows":[]}`)
+	}))
+	defer opnsense.Close()
+
 	host, port := splitWebTestServerHostPort(t, caddy.URL)
 	runtime := &app.Runtime{
 		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
 		Clients: app.ClientSet{
 			Caddy: api.NewCaddyClient(host, port),
+			Unbound: api.NewClient(api.Config{
+				APIKey:    "fixture-key",
+				APISecret: "fixture-secret",
+				BaseURL:   opnsense.URL,
+				Insecure:  true,
+			}),
 		},
 	}
 	server := NewServer(runtime)
@@ -476,10 +491,25 @@ func TestPlanRouteSupportsServiceSelection(t *testing.T) {
 	}))
 	defer caddy.Close()
 
+	adguard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/control/rewrite/list" {
+			t.Fatalf("unexpected AdGuard path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[]`)
+	}))
+	defer adguard.Close()
+
 	host, port := splitWebTestServerHostPort(t, caddy.URL)
 	server := NewServer(&app.Runtime{
 		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
-		Clients:       app.ClientSet{Caddy: api.NewCaddyClient(host, port)},
+		Clients: app.ClientSet{
+			Caddy: api.NewCaddyClient(host, port),
+			Adguard: api.NewAdguardClient(api.AdguardConfig{
+				BaseURL: adguard.URL,
+				Enabled: true,
+			}),
+		},
 	})
 
 	planResp := getJSON[PlanResponse](t, server, "/api/sync/plan?service=adguard")
@@ -494,6 +524,48 @@ func TestPlanRouteSupportsServiceSelection(t *testing.T) {
 	}
 	if len(planResp.ActionIDs) != len(planResp.Actions) || planResp.ActionIDs[0] == "" {
 		t.Fatalf("expected plan response to include action IDs, got %#v", planResp.ActionIDs)
+	}
+}
+
+func TestPlanRouteFiltersSelectedHostname(t *testing.T) {
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/" {
+			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apps":{"http":{"servers":{"srv0":{"routes":[{"match":[{"host":["selected.example.test"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.5:8080"}]}]},{"match":[{"host":["other.example.test"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.6:8080"}]}]}]}}}}}`)
+	}))
+	defer caddy.Close()
+
+	opnsense := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/unbound/settings/searchHostOverride" {
+			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"rows":[]}`)
+	}))
+	defer opnsense.Close()
+
+	host, port := splitWebTestServerHostPort(t, caddy.URL)
+	server := NewServer(&app.Runtime{
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
+		Clients: app.ClientSet{
+			Caddy: api.NewCaddyClient(host, port),
+			Unbound: api.NewClient(api.Config{
+				APIKey:    "fixture-key",
+				APISecret: "fixture-secret",
+				BaseURL:   opnsense.URL,
+				Insecure:  true,
+			}),
+		},
+	})
+
+	planResp := getJSON[PlanResponse](t, server, "/api/sync/plan?service=unbound&hostname=selected.example.test")
+	if len(planResp.Actions) != 1 {
+		t.Fatalf("expected one selected-host action, got %#v", planResp.Actions)
+	}
+	if planResp.Actions[0].Hostname != "selected.example.test" {
+		t.Fatalf("expected selected hostname action, got %#v", planResp.Actions[0])
 	}
 }
 
@@ -536,6 +608,32 @@ func TestAllPlanFiltersUnavailableWebServices(t *testing.T) {
 	}
 	if planResp.Actions[0].Service != "unbound" {
 		t.Fatalf("expected all plan to filter unavailable AdGuard, got %#v", planResp.Actions[0])
+	}
+}
+
+func TestPlanRouteRejectsExplicitUnavailableService(t *testing.T) {
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/" {
+			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apps":{"http":{"servers":{"srv0":{"routes":[{"match":[{"host":["unavailable.example.test"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.5:8080"}]}]}]}}}}}`)
+	}))
+	defer caddy.Close()
+
+	host, port := splitWebTestServerHostPort(t, caddy.URL)
+	server := NewServer(&app.Runtime{
+		CaddyEndpoint: app.CaddyEndpoint{ServerIP: host, ServerPort: port},
+		Clients:       app.ClientSet{Caddy: api.NewCaddyClient(host, port)},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/sync/plan?service=unbound", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unbound is unavailable") {
+		t.Fatalf("expected unavailable service error, got %s", rec.Body.String())
 	}
 }
 
