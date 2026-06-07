@@ -63,8 +63,11 @@ input::placeholder{color:var(--text-muted)}
 .operations-header h2{font-size:18px;font-weight:700;letter-spacing:-.03em;color:var(--text)}
 .operations-header p{margin-top:3px;font-size:12.5px;color:var(--text-2)}
 .message{justify-self:end;max-width:340px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-3);font-size:12.5px;font-weight:600;color:var(--text-2)}
+.message.empty{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .message.error{border-color:rgba(247,112,112,.28);color:var(--red);background:rgba(54,12,12,.4)}
 .message.ok{border-color:rgba(46,204,142,.28);color:var(--green);background:rgba(3,38,23,.4)}
+.top-progress.idle{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+.inline-progress[aria-hidden="true"]{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .loading-panel[hidden],.inline-progress[hidden]{display:none}
 .loading-panel,.inline-progress{display:grid;gap:8px}
 .loading-panel{padding:11px 14px;border:1px solid rgba(79,168,255,.22);border-radius:var(--radius-sm);background:rgba(79,168,255,.07)}

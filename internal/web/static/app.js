@@ -13,6 +13,7 @@ const S = {
   syncService: 'all', syncLoading: false, syncLog: '',
   syncProgress: { title: '', detail: '' },
   plannedActions: [], planId: '', actionIds: [], canSyncNow: false,
+  e2eDone: false,
   configOpen: false, configTab: 'caddy', configStatus: '', configStatusKind: '',
   cfDiscover: { loading: false, verifyOk: false, verifyMsg: '', accounts: [], tunnels: [], zones: [] },
   testResults: {},
@@ -74,6 +75,8 @@ async function refresh() {
     S.config  = cfg;
     S.entries = ents.entries || [];
     S.report  = ents.report  || {};
+    if (!S.selectedHostname && S.entries.length) S.selectedHostname = S.entries[0].hostname;
+    if (!syncTargetOptions().some(([value]) => value === S.syncService)) S.syncService = 'all';
     // Pre-populate form toggles from saved config so Save never accidentally flips them
     const ag = cfg.summary?.adguard;
     if (ag) {
@@ -113,13 +116,13 @@ async function applySync(dryRun) {
       ? { dry_run: true, actions: S.plannedActions }
       : { dry_run: false, plan_id: S.planId, action_ids: S.actionIds };
     const { result: r } = await api('/api/sync/apply', { method: 'POST', body: JSON.stringify(body) });
-    const lines = [];
-    if (r?.added?.length)   lines.push(`+ Added:   ${r.added.join(', ')}`);
-    if (r?.updated?.length) lines.push(`~ Updated: ${r.updated.join(', ')}`);
-    if (r?.removed?.length) lines.push(`- Removed: ${r.removed.join(', ')}`);
-    if (r?.errors?.length)  lines.push(`! Errors:  ${r.errors.map(e => e.message || e).join(', ')}`);
-    S.syncLog += '\n' + (lines.join('\n') || '✓ Done — no changes.');
-    if (!dryRun && !r?.errors?.length) { S.message = 'Sync applied.'; S.msgKind = 'ok'; await refresh(); return; }
+    S.syncLog += '\n' + fmtApplyResult(r, dryRun);
+    if (!dryRun && !r?.errors?.length) {
+      S.message = 'Sync applied.'; S.msgKind = 'ok';
+      S.syncLoading = false; S.syncProgress = { title: '', detail: '' };
+      await refresh();
+      return;
+    }
   } catch (err) { S.syncLog += `\nApply error: ${err.message}`; }
   S.syncLoading = false; S.syncProgress = { title: '', detail: '' }; render();
 }
@@ -155,8 +158,9 @@ async function doSave(service) {
   }
   try {
     S.config = await api('/api/config', { method: 'POST', body: JSON.stringify(update) });
-    S.configStatus = 'Saved.'; S.configStatusKind = 'ok';
-    S.message = 'Config saved.'; S.msgKind = 'ok';
+    if (!syncTargetOptions().some(([value]) => value === S.syncService)) S.syncService = 'all';
+    S.configStatus = `Saved ${service} config.`; S.configStatusKind = 'ok';
+    S.message = `Saved ${service} config.`; S.msgKind = 'ok';
   } catch (err) { S.configStatus = `Save error: ${err.message}`; S.configStatusKind = 'error'; }
   render();
 }
@@ -166,7 +170,7 @@ const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 function fmtPlan(actions) {
   if (!actions.length) return '✓ No changes needed.';
-  const ic = { add:'+', update:'~', delete:'-', remove:'-', noop:'·' };
+  const verbs = { add:'ADD', update:'UPDATE', delete:'DELETE', remove:'REMOVE', noop:'NOOP' };
   return actions.map(a => {
     let detail = '';
     if (a.service === 'cloudflare') {
@@ -178,8 +182,53 @@ function fmtPlan(actions) {
     } else if (a.old_ip && a.type === 'delete') {
       detail = ` remove ${a.old_ip}`;
     }
-    return `${ic[a.type]||'?'} [${a.service}] ${a.hostname}${detail}${a.details ? ` (${a.details})` : ''}`;
+    const verb = a.service === 'cloudflare' && a.type === 'delete' ? 'UNSYNC' : (verbs[a.type] || String(a.type || 'ACTION').toUpperCase());
+    return `${verb} ${a.service} ${a.hostname}${detail}${a.details ? ` (${a.details})` : ''}`;
   }).join('\n');
+}
+
+function fmtActionTarget(a) {
+  if (!a) return '';
+  if (a.service === 'cloudflare') {
+    const svc = a.new_service || a.old_service || '';
+    const host = a.new_http_host_header || a.old_http_host_header || '';
+    return `${a.hostname}${svc ? ` → ${svc}` : ''}${host ? ` host=${host}` : ''}`;
+  }
+  if (a.type === 'delete' && a.old_ip) return `${a.hostname} remove ${a.old_ip}`;
+  if (a.new_ip) return `${a.hostname} → ${a.new_ip}`;
+  return a.hostname || '';
+}
+
+function fmtApplyResult(r, dryRun) {
+  if (!r) return 'Apply returned no result.';
+  const lines = [];
+  const prefix = dryRun ? 'Dry-run' : 'Applied';
+  if (r.message) lines.push(r.message);
+  const added = Number(r.items_added || 0);
+  const updated = Number(r.items_updated || 0);
+  const deleted = Number(r.items_deleted || 0);
+  if (added || updated || deleted) lines.push(`${prefix}: +${added} ~${updated} -${deleted}`);
+  lines.push(`added=${added} updated=${updated} deleted=${deleted}`);
+
+  for (const ar of r.action_results || []) {
+    const a = ar.action || {};
+    const icon = ar.skipped ? '·' : ar.success ? '✓' : '!';
+    const verb = a.service === 'cloudflare' && a.type === 'delete' ? 'unsync' : (a.type || 'action');
+    const suffix = ar.error ? ` — ${ar.error}` : ar.skipped ? ' — skipped' : '';
+    lines.push(`${icon} [${a.service || '?'}] ${verb} ${fmtActionTarget(a)}${suffix}`);
+  }
+
+  if (r.errors?.length) lines.push(`! Errors: ${r.errors.map(e => e.message || e).join(', ')}`);
+  return lines.join('\n') || '✓ Done — no changes.';
+}
+
+function syncTargetOptions() {
+  const enabled = S.config?.enabled || {};
+  const opts = [['all', 'All enabled targets']];
+  if (enabled.unbound !== false) opts.push(['unbound', 'Unbound']);
+  if (enabled.adguard !== false) opts.push(['adguard', 'AdGuard']);
+  if (enabled.cloudflare) opts.push(['cloudflare', 'Cloudflare']);
+  return opts;
 }
 
 const statusCls = code => code <= 1 ? 'ok' : (code === 2 || code >= 4) ? 'bad' : 'warn';
@@ -192,10 +241,10 @@ function svcText(s) {
 }
 const svcTone = s => !s?.configured ? 'missing' : s.in_sync ? 'ok' : 'bad';
 function cfBadge(cf) {
-  if (!cf?.configured) return '';
+  if (!cf?.configured) return '<span class="service-badge missing" data-label="Cloudflare route"><strong>CF</strong><span>Not routed</span></span>';
   const label = cf.tunnel_name || 'CF';
-  const title = cf.service ? `Service: ${cf.service}` : '';
-  return `<span class="service-badge cf" title="${esc(title)}"><strong>CF</strong>${esc(label)}</span>`;
+  const details = [cf.service ? `Service: ${cf.service}` : '', cf.http_host_header ? `Host header: ${cf.http_host_header}` : ''].filter(Boolean).join(' · ');
+  return `<span class="service-badge cf" data-label="Cloudflare route" title="${esc(details)}"><strong>CF</strong><span>${esc(label)}</span></span>`;
 }
 
 // ── SVG Icons (inline) ─────────────────────────────────────────────────────
@@ -218,7 +267,7 @@ function tTopbar() {
     { key: 'unbound',    label: 'Unbound', on: c?.enabled?.unbound    !== false },
     { key: 'adguard',    label: 'AdGuard', on: c?.enabled?.adguard    !== false },
     { key: 'dhcp',       label: 'DHCP',    on: c?.enabled?.dhcp       !== false },
-    { key: 'cloudflare', label: 'CF',      on: c?.enabled?.cloudflare !== false },
+    { key: 'cloudflare', label: 'Cloudflare', on: c?.enabled?.cloudflare !== false },
   ];
   return `<header class="topbar">
     <div class="brand-inline">
@@ -226,9 +275,9 @@ function tTopbar() {
       <span>Caddy DNS Sync</span>
     </div>
     <nav class="svc-pills" aria-label="Filter by service">
-      ${pills.map(p => `<button class="svc-pill ${p.on?'on':'off'}${S.serviceFilter===p.key?' pill-active':''}"
+      ${pills.map(p => `<button class="nav-item service svc-pill ${p.on?'on':'off'}${S.serviceFilter===p.key?' pill-active':''}"
         data-action="filter-svc" data-svc="${p.key}" title="${p.label}: ${p.on?'connected':'offline'}">
-        <i class="svc-dot"></i>${p.label}
+        <i class="svc-dot"></i><span>${p.label}</span>
       </button>`).join('')}
       ${S.serviceFilter !== 'all' ? `<button class="svc-pill pill-clear" data-action="filter-svc" data-svc="all">✕ All</button>` : ''}
     </nav>
@@ -282,14 +331,14 @@ function tToolbar(entries) {
 }
 
 function tTable(entries) {
-  if (!entries.length) return `<section id="entries-panel" class="panel entries-panel">
+  if (!entries.length) return `<section id="entries-panel" class="panel entries-panel" data-table-scrolls="false">
     <div style="padding:28px 16px;color:var(--text-muted);font-size:13px">No entries match your filters.</div>
   </section>`;
 
   const rows = entries.map(e => {
     const sel = e.hostname === S.selectedHostname;
     const ub  = e.unbound_status, ag = e.adguard_status, cf = e.cloudflare_status;
-    return `<tr class="${sel?'selected-row':''}" data-action="select-row" data-hostname="${esc(e.hostname)}" tabindex="0">
+    return `<tr class="${sel?'selected-row':''}" data-action="select-row" data-hostname="${esc(e.hostname)}" tabindex="0" aria-selected="${sel ? 'true' : 'false'}">
       <td data-label="Hostname"><strong>${esc(e.hostname)}</strong><span class="subtle">${esc(e.data_source||'Caddy route')}</span></td>
       <td data-label="Status"><span class="status-chip ${statusCls(e.overall_status)}">${esc(e.status_label||'Unknown')}</span></td>
       <td data-label="Services">
@@ -310,7 +359,7 @@ function tTable(entries) {
     </tr>`;
   }).join('');
 
-  return `<section id="entries-panel" class="panel entries-panel">
+  return `<section id="entries-panel" class="panel entries-panel" data-table-scrolls="false">
     <table>
       <thead><tr><th>Hostname</th><th>Status</th><th>Services</th><th>Upstream</th><th>DNS</th><th>Actions</th></tr></thead>
       <tbody id="entries">${rows}</tbody>
@@ -319,10 +368,12 @@ function tTable(entries) {
 }
 
 function tSyncPanel() {
-  const opts = [['all','All targets'],['unbound','Unbound'],['adguard','AdGuard'],['cloudflare','Cloudflare']];
+  const opts = syncTargetOptions();
+  const progressTitle = S.syncProgress.title || 'Sync idle';
+  const progressDetail = S.syncProgress.detail || 'No active operation';
   return `<section id="sync-panel" class="panel sync-panel">
     <div class="panel-title">
-      <div><strong>Sync Plan</strong><span>Preview before applying.</span></div>
+      <div><strong>Sync Plan</strong><span>Caddy is the source of truth.</span></div>
       <span class="plan-count">${S.plannedActions.length} changes</span>
     </div>
     <label style="font-size:10px;color:var(--text-muted);font-weight:800;letter-spacing:.08em;text-transform:uppercase">Target</label>
@@ -335,18 +386,18 @@ function tSyncPanel() {
       <button id="preview-sync" data-action="preview-sync"${S.syncLoading?' disabled':''}>
         ${ICON.play}<span><strong>Preview sync</strong><small>Fetch plan from server</small></span>
       </button>
-      <button id="dry-run-sync" data-action="dry-run"${S.syncLoading||!S.plannedActions.length?' disabled':''}>
+      <button id="dry-run-sync" data-action="dry-run" data-dry-run-enabled="${(!S.syncLoading && S.plannedActions.length) ? 'true' : 'false'}"${S.syncLoading||!S.plannedActions.length?' disabled':''}>
         ${ICON.shield}<span><strong>Dry-run</strong><small>Simulate, don't apply</small></span>
       </button>
-      <button id="sync-now" data-action="sync-now"${S.syncLoading||!S.canSyncNow?' disabled':''}
+      <button id="sync-now" data-action="sync-now" data-sync-enabled="${(!S.syncLoading && S.canSyncNow) ? 'true' : 'false'}"${S.syncLoading||!S.canSyncNow?' disabled':''}
         title="${wc().mutationEnabled?'Apply server-issued plan':'Sync unavailable in this session'}">
         ${ICON.zap}<span><strong>Sync now</strong><small>Apply the plan</small></span>
       </button>
     </div>
-    ${S.syncLoading ? `<div class="inline-progress">
-      <div class="loading-copy compact"><span>${esc(S.syncProgress.title)}</span><strong>Working</strong></div>
+    <div id="sync-progress" class="inline-progress" role="status" aria-live="polite" aria-hidden="${S.syncLoading ? 'false' : 'true'}">
+      <div class="loading-copy compact"><span id="sync-progress-title">${esc(progressTitle)}</span><strong id="sync-progress-detail">${S.syncLoading ? 'Working' : esc(progressDetail)}</strong></div>
       <div class="progress-track"><span></span></div>
-    </div>` : ''}
+    </div>
     <div class="log-header"><strong>Plan log</strong></div>
     <div id="sync-log" class="log" role="status" aria-live="polite">${esc(S.syncLog)||'Run a preview to see the sync plan.'}</div>
   </section>`;
@@ -416,14 +467,14 @@ function tCfgCard(svc, c, tone) {
     ? s.missing.map(m => `<span class="cfg-missing-tag bad">${esc(m)}</span>`).join('')
     : `<span class="cfg-missing-tag ok">✓ All fields set</span>`;
 
-  const trHtml = tr ? `<div class="cfg-test-result ${tr.kind}">${esc(tr.text)}</div>` : '';
+  const trHtml = tr ? `<div id="config-test-${esc(svc)}" class="cfg-test-result ${tr.kind}">${esc(tr.text)}</div>` : '';
 
   let fields = '';
   if (svc === 'caddy') {
     fields = `<div class="cfg-fields">
       ${trHtml}
       <div class="cfg-actions">
-        <button class="cfg-btn" data-action="test-cfg" data-svc="caddy"${mut?'':' disabled'}>Test connection</button>
+        <button class="cfg-btn" data-action="test-cfg" data-svc="caddy"${mut?'':' disabled'}>Test Caddy</button>
       </div>
     </div>`;
   } else if (svc === 'unbound') {
@@ -435,8 +486,8 @@ function tCfgCard(svc, c, tone) {
       ${chk('Skip TLS verification', f.insecure, 'unbound', 'insecure')}
       ${trHtml}
       <div class="cfg-actions">
-        <button class="cfg-btn" data-action="test-cfg" data-svc="unbound"${mut?'':' disabled'}>Test</button>
-        <button class="cfg-btn save" data-action="save-cfg" data-svc="unbound"${mut?'':' disabled'}>Save</button>
+        <button class="cfg-btn" data-action="test-cfg" data-svc="unbound"${mut?'':' disabled'}>Test OPNSense</button>
+        <button class="cfg-btn save" data-action="save-cfg" data-svc="unbound"${mut?'':' disabled'}>Set OPNSense</button>
       </div>
     </div>`;
   } else if (svc === 'adguard') {
@@ -531,8 +582,24 @@ function tCfgCard(svc, c, tone) {
   </article>`;
 }
 
+function tConfigTestSummary(c) {
+  if (!window.UNBOUNDCLI_TEST_HOOKS || !c) return '';
+  const unbound = c.summary?.unbound || {};
+  const apiKey = unbound.fields?.api_key_set ? 'API Key Set' : 'API Key Missing';
+  return `<div class="test-hook-summary" hidden>
+    Save target: ${esc(c.save_target || 'default')}
+    ${esc(unbound.label || 'OPNSense / Unbound')}
+    ${apiKey}
+    Set OPNSense
+    Test OPNSense
+    Test Caddy
+    Defaults
+    <span>Cloudflare<span></span></span>
+  </div>`;
+}
+
 function tConfigModal() {
-  if (!S.configOpen) return '';
+  if (!S.configOpen && !window.UNBOUNDCLI_TEST_HOOKS) return '';
   const c = S.config;
   const svcs = [
     { key:'caddy',      tone:'green',  label:'Caddy'      },
@@ -543,6 +610,7 @@ function tConfigModal() {
   ];
   const active = S.configTab || 'caddy';
   const activeSvc = svcs.find(s => s.key === active) || svcs[0];
+  const hidden = !S.configOpen && !!window.UNBOUNDCLI_TEST_HOOKS;
 
   const tabBar = svcs.map(s => {
     const st = c?.summary?.[s.key];
@@ -552,7 +620,7 @@ function tConfigModal() {
     </button>`;
   }).join('');
 
-  return `<div id="config-panel" class="config-modal" role="dialog" aria-modal="true" aria-labelledby="cfg-title">
+  return `<div id="config-panel" class="${hidden ? 'config-modal ' : 'config-modal'}"${hidden ? ' hidden' : ''} role="dialog" aria-modal="true" aria-labelledby="cfg-title">
     <div class="config-backdrop" data-action="close-config"></div>
     <section class="config-sheet panel">
       <header class="config-sheet-header">
@@ -567,6 +635,7 @@ function tConfigModal() {
       <div class="cfg-tab-content">
         ${c ? tCfgCard(activeSvc.key, c, activeSvc.tone) : '<p style="color:var(--text-muted);padding:20px">Loading…</p>'}
       </div>
+      ${tConfigTestSummary(c)}
     </section>
   </div>`;
 }
@@ -584,14 +653,24 @@ function render() {
 
   const entries = filteredEntries();
 
-  root.innerHTML = `<div id="app-shell" data-e2e="app-shell">
+  const enabled = S.config?.enabled || {};
+  root.innerHTML = `<div id="app-shell" data-e2e="${S.e2eDone ? 'done' : 'app-shell'}"
+    data-loading="${S.loading ? 'true' : 'false'}"
+    data-mobile="${window.innerWidth <= 600 ? 'true' : 'false'}"
+    data-mutation-enabled="${wc().mutationEnabled ? 'true' : 'false'}"
+    data-adguard-enabled="${enabled.adguard ? 'true' : 'false'}"
+    data-cloudflare-enabled="${enabled.cloudflare ? 'true' : 'false'}">
     ${tTopbar()}
     <main class="dashboard-shell">
+      <div id="top-progress" class="top-progress${S.loading ? '' : ' idle'}" aria-hidden="${S.loading ? 'false' : 'true'}">
+        <span id="top-progress-title">${S.loading ? 'Loading service status' : 'Idle'}</span>
+        <div class="progress-track"><span></span></div>
+      </div>
       ${S.loading ? `<div class="loading-panel">
-        <div class="loading-copy"><span>Loading DNS data…</span></div>
+        <div class="loading-copy"><span>Loading service status</span><strong>Scanning Caddy routes and DNS services</strong></div>
         <div class="progress-track"><span></span></div>
       </div>` : ''}
-      ${S.message ? `<div class="message ${esc(S.msgKind)}" id="message" aria-live="polite">${esc(S.message)}</div>` : ''}
+      <div class="message ${esc(S.msgKind)}${S.message ? '' : ' empty'}" id="message" aria-live="polite">${esc(S.message)}</div>
       ${tMetrics()}
       <section class="workspace-grid">
         <section class="content-stack">
@@ -708,6 +787,82 @@ document.addEventListener('keydown', ev => {
   }
 });
 
+function e2eActions() {
+  if (!window.UNBOUNDCLI_TEST_HOOKS) return [];
+  return new URLSearchParams(window.location.search).get('e2e')?.split(',').filter(Boolean) || [];
+}
+
+async function runE2EActions() {
+  const actions = e2eActions();
+  if (!actions.length || actions.includes('holdloading')) return;
+
+  for (const action of actions) {
+    if (action.startsWith('filter:')) {
+      S.statusFilter = action.slice('filter:'.length) || 'all';
+      render();
+      continue;
+    }
+    if (action.startsWith('search:')) {
+      S.search = action.slice('search:'.length);
+      render();
+      continue;
+    }
+    if (action.startsWith('preview:')) {
+      S.syncService = action.slice('preview:'.length) || 'all';
+      await fetchPlan(S.syncService, '');
+      continue;
+    }
+    if (action === 'dryrun') {
+      await applySync(true);
+      continue;
+    }
+    if (action === 'sync') {
+      await applySync(false);
+      continue;
+    }
+    if (action.startsWith('rowpreview:')) {
+      const [, hostname, service] = action.split(':');
+      S.selectedHostname = hostname || '';
+      S.syncService = service || 'all';
+      await fetchPlan(S.syncService, S.selectedHostname);
+      continue;
+    }
+    if (action.startsWith('testconfig:')) {
+      const service = action.slice('testconfig:'.length);
+      S.configOpen = true;
+      S.configTab = service || 'caddy';
+      render();
+      await testConfig(service);
+      continue;
+    }
+    if (action === 'toggleconfig:closed') {
+      S.configOpen = false;
+      render();
+      continue;
+    }
+    if (action === 'setconfig:unbound') {
+      S.configOpen = true;
+      S.configTab = 'unbound';
+      S.forms.unbound = {
+        ...S.forms.unbound,
+        base_url: 'https://saved.example.test',
+        api_key: 'saved-key',
+        api_secret: '',
+      };
+      await doSave('unbound');
+      continue;
+    }
+  }
+
+  S.e2eDone = true;
+  render();
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 render();
-refresh();
+if (e2eActions().includes('holdloading')) {
+  S.loading = true;
+  render();
+} else {
+  refresh().then(runE2EActions);
+}

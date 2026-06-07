@@ -497,7 +497,11 @@ func (w *SyncDialog) formatAction(action syncplan.Action) string {
 	case "update":
 		parts = append(parts, w.theme.Update.Render("~ UPDATE"))
 	case "delete":
-		parts = append(parts, w.theme.Remove.Render("- DELETE"))
+		if action.Service == "cloudflare" {
+			parts = append(parts, w.theme.Remove.Render("- UNSYNC"))
+		} else {
+			parts = append(parts, w.theme.Remove.Render("- DELETE"))
+		}
 	default:
 		parts = append(parts, action.Type)
 	}
@@ -508,10 +512,23 @@ func (w *SyncDialog) formatAction(action syncplan.Action) string {
 	// Hostname
 	parts = append(parts, w.theme.Hostname.Render(action.Hostname))
 
-	// IP change details
-	if action.Type == "update" && action.OldIP != "" && action.NewIP != "" {
+	// Target details
+	if action.Service == "cloudflare" {
+		if action.NewService != "" {
+			parts = append(parts, w.theme.IP.Render(action.NewService))
+		} else if action.OldService != "" {
+			parts = append(parts, w.theme.Dimmed.Render(action.OldService))
+		}
+		if action.NewHTTPHostHeader != "" {
+			parts = append(parts, w.theme.Info.Render("host="+action.NewHTTPHostHeader))
+		} else if action.OldHTTPHostHeader != "" {
+			parts = append(parts, w.theme.Dimmed.Render("host="+action.OldHTTPHostHeader))
+		}
+	} else if action.Type == "update" && action.OldIP != "" && action.NewIP != "" {
 		ipChange := fmt.Sprintf("%s → %s", action.OldIP, action.NewIP)
 		parts = append(parts, w.theme.IP.Render(ipChange))
+	} else if action.Type == "delete" && action.OldIP != "" {
+		parts = append(parts, w.theme.Dimmed.Render("remove "+action.OldIP))
 	} else if action.NewIP != "" {
 		parts = append(parts, w.theme.IP.Render(action.NewIP))
 	}
@@ -535,7 +552,11 @@ func (w *SyncDialog) formatActionInline(action syncplan.Action) string {
 	case "update":
 		parts = append(parts, w.theme.Update.Render("UPD"))
 	case "delete":
-		parts = append(parts, w.theme.Remove.Render("DEL"))
+		if action.Service == "cloudflare" {
+			parts = append(parts, w.theme.Remove.Render("UNSYNC"))
+		} else {
+			parts = append(parts, w.theme.Remove.Render("DEL"))
+		}
 	default:
 		parts = append(parts, action.Type)
 	}
