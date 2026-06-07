@@ -130,6 +130,26 @@ func (c *CloudflareClient) ListTunnels() ([]CloudflareTunnel, error) {
 	return result, nil
 }
 
+// CloudflareAccount represents a Cloudflare account
+type CloudflareAccount struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListAccounts returns all accounts accessible with the current API token
+func (c *CloudflareClient) ListAccounts() ([]CloudflareAccount, error) {
+	ctx := context.Background()
+	accounts, _, err := c.api.Accounts(ctx, cloudflare.AccountsListParams{})
+	if err != nil {
+		return nil, fmt.Errorf("error listing accounts: %w", err)
+	}
+	result := make([]CloudflareAccount, 0, len(accounts))
+	for _, a := range accounts {
+		result = append(result, CloudflareAccount{ID: a.ID, Name: a.Name})
+	}
+	return result, nil
+}
+
 // ListZones returns all zones accessible with the current API token
 func (c *CloudflareClient) ListZones() ([]CloudflareZone, error) {
 	ctx := context.Background()

@@ -105,6 +105,18 @@ type ConfigTestResponse struct {
 	Details map[string]string `json:"details,omitempty"`
 }
 
+type CloudflareDiscoverRequest struct {
+	Token     string `json:"token"`
+	AccountID string `json:"account_id"`
+}
+
+type CloudflareDiscoverResponse struct {
+	Accounts []api.CloudflareAccount `json:"accounts"`
+	Tunnels  []api.CloudflareTunnel  `json:"tunnels"`
+	Zones    []api.CloudflareZone    `json:"zones"`
+	Error    string                  `json:"error,omitempty"`
+}
+
 type UnboundConfigUpdate struct {
 	APIKey    string  `json:"api_key,omitempty"`
 	APISecret string  `json:"api_secret,omitempty"`
@@ -233,6 +245,7 @@ func (s *Server) routes() {
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler(http.FileServer(http.FS(staticRoot)))))
 	s.mux.HandleFunc("/api/config", s.handleConfig)
 	s.mux.HandleFunc("/api/config/test", s.handleConfigTest)
+	s.mux.HandleFunc("/api/cloudflare/discover", s.handleCloudflareDiscover)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
@@ -402,6 +415,75 @@ func failedConfigTest(service, message string) ConfigTestResponse {
 	return ConfigTestResponse{Service: service, Success: false, Message: message}
 }
 
+func (s *Server) handleCloudflareDiscover(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	var req CloudflareDiscoverRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+		return
+	}
+
+	// Fall back to saved config if token not provided
+	runtime := s.runtimeSnapshot()
+	token := req.Token
+	if token == "" {
+		token = runtime.CloudflareConfig.APIToken
+	}
+	if token == "" {
+		writeJSON(w, http.StatusOK, CloudflareDiscoverResponse{Error: "No API token available. Enter a token and try again."})
+		return
+	}
+	accountID := req.AccountID
+	if accountID == "" {
+		accountID = runtime.CloudflareConfig.AccountID
+	}
+
+	cfClient, err := api.NewCloudflareClient(api.CloudflareConfig{
+		APIToken:  token,
+		AccountID: accountID,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusOK, CloudflareDiscoverResponse{Error: fmt.Sprintf("Failed to create Cloudflare client: %v", err)})
+		return
+	}
+
+	resp := CloudflareDiscoverResponse{}
+
+	// List zones (validates the token works)
+	zones, err := cfClient.ListZones()
+	if err != nil {
+		writeJSON(w, http.StatusOK, CloudflareDiscoverResponse{Error: fmt.Sprintf("Token invalid or no zone access: %v", err)})
+		return
+	}
+	resp.Zones = zones
+
+	// List accounts
+	accounts, err := cfClient.ListAccounts()
+	if err == nil {
+		resp.Accounts = accounts
+	}
+
+	// List tunnels if account ID is known
+	if accountID != "" {
+		tunnels, err := cfClient.ListTunnels()
+		if err == nil {
+			// Filter out deleted tunnels
+			for _, t := range tunnels {
+				if t.DeletedAt.IsZero() {
+					resp.Tunnels = append(resp.Tunnels, t)
+				}
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w)
@@ -428,13 +510,15 @@ func (s *Server) configSummary(runtime *app.Runtime) ConfigSummary {
 		"Username": runtime.AdguardConfig.Username != "",
 		"Password": runtime.AdguardConfig.Password != "",
 	})
-	cloudflareMissing := missingFields(map[string]bool{
-		"Enabled":    runtime.CloudflareConfig.Enabled,
-		"API token":  runtime.CloudflareConfig.APIToken != "",
-		"Account ID": runtime.CloudflareConfig.AccountID != "",
-		"Zone ID":    runtime.CloudflareConfig.ZoneID != "",
-		"Tunnel ID":  runtime.CloudflareConfig.TunnelID != "",
-	})
+	cloudflareMissing := []string{}
+	if runtime.CloudflareConfig.Enabled {
+		cloudflareMissing = missingFields(map[string]bool{
+			"API token":  runtime.CloudflareConfig.APIToken != "",
+			"Account ID": runtime.CloudflareConfig.AccountID != "",
+			"Zone ID":    runtime.CloudflareConfig.ZoneID != "",
+			"Tunnel ID":  runtime.CloudflareConfig.TunnelID != "",
+		})
+	}
 	caddyEndpoint := fmt.Sprintf("%s:%d", runtime.CaddyEndpoint.ServerIP, runtime.CaddyEndpoint.ServerPort)
 	unboundEndpoint := sanitizeEndpoint(runtime.UnboundConfig.BaseURL)
 	adguardEndpoint := sanitizeEndpoint(runtime.AdguardConfig.BaseURL)
