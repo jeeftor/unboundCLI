@@ -136,6 +136,7 @@ tbody tr:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
 .service-badge.ok{color:var(--green);border-color:rgba(46,204,142,.22)}
 .service-badge.bad{color:var(--red);border-color:rgba(247,112,112,.22)}
 .service-badge.missing{color:var(--text-muted);opacity:.55}
+.service-badge.cf{color:var(--purple);border-color:rgba(167,139,250,.25);background:rgba(167,139,250,.06)}
 .protocol-pill{margin-top:5px;color:var(--text-muted);background:rgba(255,255,255,.04);border-radius:4px;font-size:9.5px;letter-spacing:.06em;font-family:ui-monospace,monospace}
 .cloudflare-detail{display:grid;gap:2px;width:fit-content;max-width:100%;padding:5px 8px;border-radius:6px;font-size:10.5px;font-weight:700}
 .cloudflare-detail.ok{border-color:rgba(167,139,250,.25);color:var(--purple)}

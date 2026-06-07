@@ -191,6 +191,12 @@ function svcText(s) {
   return (s.ip || 'Mismatch') + ' ✗';
 }
 const svcTone = s => !s?.configured ? 'missing' : s.in_sync ? 'ok' : 'bad';
+function cfBadge(cf) {
+  if (!cf?.configured) return '';
+  const label = cf.tunnel_name || 'CF';
+  const title = cf.service ? `Service: ${cf.service}` : '';
+  return `<span class="service-badge cf" title="${esc(title)}"><strong>CF</strong>${esc(label)}</span>`;
+}
 
 // ── SVG Icons (inline) ─────────────────────────────────────────────────────
 const ICON = {
@@ -282,7 +288,7 @@ function tTable(entries) {
 
   const rows = entries.map(e => {
     const sel = e.hostname === S.selectedHostname;
-    const ub  = e.unbound_status, ag = e.adguard_status;
+    const ub  = e.unbound_status, ag = e.adguard_status, cf = e.cloudflare_status;
     return `<tr class="${sel?'selected-row':''}" data-action="select-row" data-hostname="${esc(e.hostname)}" tabindex="0">
       <td data-label="Hostname"><strong>${esc(e.hostname)}</strong><span class="subtle">${esc(e.data_source||'Caddy route')}</span></td>
       <td data-label="Status"><span class="status-chip ${statusCls(e.overall_status)}">${esc(e.status_label||'Unknown')}</span></td>
@@ -290,6 +296,7 @@ function tTable(entries) {
         <div class="service-stack">
           <span class="service-badge ${svcTone(ub)}"><strong>UB</strong>${esc(svcText(ub))}</span>
           <span class="service-badge ${svcTone(ag)}"><strong>AG</strong>${esc(svcText(ag))}</span>
+          ${cfBadge(cf)}
         </div>
       </td>
       <td data-label="Upstream"><span>${esc(e.caddy_upstream||'—')}</span><span class="subtle">${esc(e.caddy_ip||'')}</span></td>
