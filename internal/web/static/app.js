@@ -14,6 +14,7 @@ const S = {
   syncProgress: { title: '', detail: '' },
   plannedActions: [], planId: '', actionIds: [], canSyncNow: false,
   configOpen: false, configTab: 'caddy', configStatus: '', configStatusKind: '',
+  cfDiscover: { loading: false, verifyOk: false, verifyMsg: '', accounts: [], tunnels: [], zones: [] },
   testResults: {},
   forms: {
     unbound:    { base_url: '', api_key: '', api_secret: '', insecure: false },
@@ -73,6 +74,17 @@ async function refresh() {
     S.config  = cfg;
     S.entries = ents.entries || [];
     S.report  = ents.report  || {};
+    // Pre-populate form toggles from saved config so Save never accidentally flips them
+    const ag = cfg.summary?.adguard;
+    if (ag) {
+      S.forms.adguard.enabled  = !!ag.enabled;
+      S.forms.adguard.insecure = !!ag.insecure;
+    }
+    const cf = cfg.summary?.cloudflare;
+    if (cf) {
+      S.forms.cloudflare.enabled  = !!cf.enabled;
+      S.forms.cloudflare.insecure = !!cf.insecure;
+    }
   } catch (err) { S.message = `Load error: ${err.message}`; S.msgKind = 'error'; }
   S.loading = false; render();
 }
@@ -426,17 +438,61 @@ function tCfgCard(svc, c, tone) {
     fields = `<div class="cfg-fields" style="color:var(--text-muted);font-size:12px">DHCP / DNSMasq is read-only — no config required.</div>`;
   } else if (svc === 'cloudflare') {
     const f = S.forms.cloudflare;
+    const d = S.cfDiscover;
+    const tokenSaved = s?.fields?.api_token_set;
+    const acctSaved  = s?.fields?.account_id_set;
+
+    // Zone/tunnel selects or text inputs depending on discovery state
+    const zoneInput = d.zones.length
+      ? `<select class="cf-select" data-form="cloudflare" data-field="zone_id">
+           <option value="">Select zone…</option>
+           ${d.zones.map(z => `<option value="${esc(z.id)}"${f.zone_id===z.id?' selected':''}>${esc(z.name)} (${esc(z.id.slice(0,8))}…)</option>`).join('')}
+         </select>`
+      : `<input type="text" placeholder="${acctSaved?'(saved)':'Paste zone ID or verify token to auto-load'}" value="${esc(f.zone_id||'')}" data-form="cloudflare" data-field="zone_id"/>`;
+
+    const tunnelInput = d.tunnels.length
+      ? `<select class="cf-select" data-form="cloudflare" data-field="tunnel_id">
+           <option value="">Select tunnel…</option>
+           ${d.tunnels.map(t => `<option value="${esc(t.id)}"${f.tunnel_id===t.id?' selected':''}>${esc(t.name)}</option>`).join('')}
+         </select>`
+      : `<input type="text" placeholder="${acctSaved?'(saved)':'Paste tunnel ID or verify token + account to auto-load'}" value="${esc(f.tunnel_id||'')}" data-form="cloudflare" data-field="tunnel_id"/>`;
+
     fields = `<div class="cfg-fields">
       ${chk('Enable Cloudflare sync', f.enabled, 'cloudflare', 'enabled')}
-      ${field('API Token',   inp('password','leave unchanged', '', 'cloudflare', 'api_token'))}
-      ${field('Account ID',  inp('password','leave unchanged', '', 'cloudflare', 'account_id'))}
-      ${field('Zone ID',     inp('password','leave unchanged', '', 'cloudflare', 'zone_id'))}
-      ${field('Tunnel ID',   inp('password','leave unchanged', '', 'cloudflare', 'tunnel_id'))}
-      ${field('Caddy URL',   inp('url','http://127.0.0.1:80', f.caddy_service_url, 'cloudflare', 'caddy_service_url'))}
-      ${chk('Skip TLS verification', f.insecure, 'cloudflare', 'insecure')}
+
+      <div class="cf-step-block">
+        <div class="cf-step-head"><span class="cf-step-num">1</span>API Token</div>
+        <div class="cf-inline-row">
+          <input type="password" class="cf-token-inp"
+            placeholder="${tokenSaved ? '(saved — enter to replace)' : 'Paste API token…'}"
+            data-form="cloudflare" data-field="api_token"/>
+          <button class="cfg-btn cf-verify-btn" data-action="cf-discover"${d.loading||!mut?' disabled':''}>
+            ${d.loading ? '…' : 'Verify →'}
+          </button>
+        </div>
+        ${d.verifyMsg ? `<div class="cf-result ${d.verifyOk?'ok':'err'}">${esc(d.verifyMsg)}</div>` : ''}
+      </div>
+
+      <div class="cf-step-block">
+        <div class="cf-step-head"><span class="cf-step-num">2</span>Account &amp; Tunnel
+          <small class="cf-step-hint">${d.tunnels.length ? `${d.tunnels.length} tunnel${d.tunnels.length!==1?'s':''} found` : 'verify token to auto-load'}</small>
+        </div>
+        <div class="cfg-field-row"><label>ACCOUNT ID</label>
+          <input type="text" placeholder="${acctSaved?'(saved)':'32-char hex account ID'}" value="${esc(f.account_id||'')}" data-form="cloudflare" data-field="account_id"/>
+        </div>
+        <div class="cfg-field-row"><label>TUNNEL</label>${tunnelInput}</div>
+        <div class="cfg-field-row"><label>ZONE</label>${zoneInput}</div>
+      </div>
+
+      <div class="cf-step-block">
+        <div class="cf-step-head"><span class="cf-step-num">3</span>Connection</div>
+        ${field('CADDY URL', inp('url','http://127.0.0.1:80', f.caddy_service_url, 'cloudflare', 'caddy_service_url'))}
+        ${chk('Skip TLS verification', f.insecure, 'cloudflare', 'insecure')}
+      </div>
+
       ${trHtml}
       <div class="cfg-actions">
-        <button class="cfg-btn" data-action="test-cfg" data-svc="cloudflare"${mut?'':' disabled'}>Test</button>
+        <button class="cfg-btn" data-action="test-cfg" data-svc="cloudflare"${mut?'':' disabled'}>Test saved config</button>
         <button class="cfg-btn save" data-action="save-cfg" data-svc="cloudflare"${mut?'':' disabled'}>Save</button>
       </div>
     </div>`;
@@ -580,6 +636,31 @@ document.addEventListener('click', async ev => {
   if (a === 'inspector-sync')     { if (await fetchPlan(S.syncService, S.selectedHostname)) await applySync(false); return; }
   if (a === 'test-cfg')  { await testConfig(el.dataset.svc); return; }
   if (a === 'save-cfg')  { await doSave(el.dataset.svc); return; }
+  if (a === 'cf-discover') {
+    S.cfDiscover = { ...S.cfDiscover, loading: true, verifyMsg: '' };
+    render();
+    try {
+      const data = await api('/api/cloudflare/discover', {
+        method: 'POST',
+        body: JSON.stringify({ token: S.forms.cloudflare.api_token, account_id: S.forms.cloudflare.account_id })
+      });
+      if (data.error) {
+        S.cfDiscover = { loading: false, verifyOk: false, verifyMsg: data.error, accounts: [], tunnels: [], zones: [] };
+      } else {
+        const nz = data.zones?.length || 0;
+        const nt = data.tunnels?.length || 0;
+        S.cfDiscover = {
+          loading: false, verifyOk: true,
+          verifyMsg: `✓ Token valid — ${nz} zone${nz!==1?'s':''}, ${nt} tunnel${nt!==1?'s':''}`,
+          accounts: data.accounts || [], tunnels: data.tunnels || [], zones: data.zones || []
+        };
+      }
+    } catch(err) {
+      S.cfDiscover = { loading: false, verifyOk: false, verifyMsg: `Error: ${err.message}`, accounts: [], tunnels: [], zones: [] };
+    }
+    render();
+    return;
+  }
 });
 
 document.addEventListener('input', ev => {
