@@ -419,6 +419,15 @@ export function App() {
     void run();
   }, [config, dryRunSync, previewSync, saveConfig, syncNow, testConfig]);
 
+  useEffect(() => {
+    if (!configOpen) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConfigOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [configOpen]);
+
   return (
     <div
       id="app"
@@ -644,8 +653,8 @@ function ConfigWorkspace(props: {
     <div id="config-summary" className="config-workspace">
       <div className="panel-heading">
         <div>
-          <strong>Configuration</strong>
-          <span>Runtime source and save destination.</span>
+          <strong>Runtime sources</strong>
+          <span>Save destination and active input source.</span>
         </div>
         <span className="save-target">Save target: {props.config.save_target || '-'}</span>
       </div>

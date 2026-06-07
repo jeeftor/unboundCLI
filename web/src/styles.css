@@ -193,12 +193,12 @@ h1 {
 
 .dashboard-shell {
   display: block;
-  padding: 14px 18px 22px;
+  padding: 12px 16px 20px;
 }
 
 .main-stage {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   max-width: 1680px;
   margin: 0 auto;
 }
@@ -218,7 +218,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
 .status-band h2 {
@@ -277,8 +277,8 @@ h1 {
 .service-card {
   display: grid;
   gap: 4px;
-  min-height: 62px;
-  padding: 10px 11px;
+  min-height: 56px;
+  padding: 8px 10px;
   border-left: 3px solid var(--line);
 }
 
@@ -304,8 +304,8 @@ h1 {
 .metric {
   display: grid;
   align-content: center;
-  min-height: 62px;
-  padding: 8px 10px;
+  min-height: 56px;
+  padding: 7px 10px;
   color: var(--muted);
   font-weight: 800;
 }
