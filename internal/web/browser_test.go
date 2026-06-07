@@ -143,8 +143,8 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 		!strings.Contains(dom, `class="progress-track"`) {
 		t.Fatalf("browser DOM should expose completed loading state and clear progress bar structure:\n%s", dom)
 	}
-	if !strings.Contains(dom, `class="service-card`) || !strings.Contains(dom, `Cloudflare</span>`) {
-		t.Fatalf("browser DOM should render service health cards:\n%s", dom)
+	if !strings.Contains(dom, `class="nav-item service`) || !strings.Contains(dom, `Cloudflare<span>`) {
+		t.Fatalf("browser DOM should render service health rail:\n%s", dom)
 	}
 	if !strings.Contains(dom, `class="row-preview"`) || !strings.Contains(dom, `Not routed`) {
 		t.Fatalf("browser DOM should render row preview controls and Cloudflare route status:\n%s", dom)
@@ -159,7 +159,7 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	loadingDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=holdloading", 1280, 900)
 	if !strings.Contains(loadingDOM, `data-loading="true"`) ||
 		!strings.Contains(loadingDOM, "Loading service status") ||
-		!strings.Contains(loadingDOM, "Reading Caddy, DNS targets, and runtime config") {
+		!strings.Contains(loadingDOM, "Scanning Caddy routes and DNS services") {
 		t.Fatalf("loading DOM should keep a visible labeled loading bar for long refreshes:\n%s", loadingDOM)
 	}
 
@@ -193,6 +193,9 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(previewDOM, `id="sync-progress-title"`) || !strings.Contains(previewDOM, `id="sync-progress-detail"`) {
 		t.Fatalf("preview DOM should include labeled sync progress structure:\n%s", previewDOM)
 	}
+	if !strings.Contains(previewDOM, `id="sync-progress" class="inline-progress" role="status"`) {
+		t.Fatalf("preview progress should be an indeterminate status region:\n%s", previewDOM)
+	}
 
 	dryRunDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,dryrun", 1280, 900)
 	if !strings.Contains(dryRunDOM, "All operations completed successfully") || !strings.Contains(dryRunDOM, "added=2") {
@@ -220,6 +223,12 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 	if !strings.Contains(mobileDOM, `data-table-scrolls="false"`) || !strings.Contains(mobileDOM, `id="host-inspector"`) {
 		t.Fatalf("mobile DOM should avoid horizontal table scrolling and render the inspector:\n%s", mobileDOM)
+	}
+	if !strings.Contains(mobileDOM, `tabindex="0"`) || !strings.Contains(mobileDOM, `aria-selected="true"`) {
+		t.Fatalf("entry rows should be keyboard-selectable:\n%s", mobileDOM)
+	}
+	if !strings.Contains(mobileDOM, `data-label="Hostname"`) || !strings.Contains(mobileDOM, `data-label="Cloudflare route"`) {
+		t.Fatalf("mobile table cells should expose labels when headers are hidden:\n%s", mobileDOM)
 	}
 
 	configSaveDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=setconfig:unbound", 1280, 900)

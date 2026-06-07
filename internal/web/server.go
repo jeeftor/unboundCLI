@@ -788,17 +788,25 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid sync service %q", service))
 		return
 	}
+	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
 	entries, report, err := s.loadEntries(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
 	runtime := s.runtimeSnapshot()
+	if service != "" && service != "all" && !serviceEnabled(&runtime, service) {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("%s is unavailable in this web session", service))
+		return
+	}
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
 		Service:       service,
 		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
 	})
 	actions := s.webPlanActions(&runtime, service, plan.Actions)
+	if hostname != "" {
+		actions = filterPlanActionsByHostname(actions, hostname)
+	}
 	planID := planID(service, actions)
 	actionIDs := actionIDs(actions)
 	s.storePlan(planID, actions, actionIDs)
@@ -949,12 +957,19 @@ func (s *Server) actionsForIDs(planID string, actionIDs []string) ([]syncplan.Ac
 }
 
 func (s *Server) webPlanActions(runtime *app.Runtime, service string, actions []syncplan.Action) []syncplan.Action {
-	if service != "" && service != "all" {
-		return actions
-	}
 	out := make([]syncplan.Action, 0, len(actions))
 	for _, action := range actions {
 		if serviceEnabled(runtime, action.Service) {
+			out = append(out, action)
+		}
+	}
+	return out
+}
+
+func filterPlanActionsByHostname(actions []syncplan.Action, hostname string) []syncplan.Action {
+	out := make([]syncplan.Action, 0, len(actions))
+	for _, action := range actions {
+		if action.Hostname == hostname {
 			out = append(out, action)
 		}
 	}
