@@ -168,6 +168,84 @@ func TestApplyAdguardActions(t *testing.T) {
 	}
 }
 
+func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
+	cloudflare := &fakeCloudflareClient{}
+
+	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{
+		{
+			Type:              "add",
+			Service:           "cloudflare",
+			Hostname:          "new.example.com",
+			NewService:        "http://192.168.1.15:80",
+			NewHTTPHostHeader: "new.example.com",
+			Enabled:           true,
+		},
+		{
+			Type:              "update",
+			Service:           "cloudflare",
+			Hostname:          "update.example.com",
+			NewService:        "http://192.168.1.15:80",
+			NewHTTPHostHeader: "update.example.com",
+			Enabled:           true,
+		},
+		{
+			Type:     "delete",
+			Service:  "cloudflare",
+			Hostname: "old.example.com",
+			Enabled:  true,
+		},
+	}}, ApplyOptions{})
+
+	if !result.Success {
+		t.Fatalf("expected success, got %#v", result.Errors)
+	}
+	if result.ItemsAdded != 1 || result.ItemsUpdated != 1 || result.ItemsDeleted != 1 {
+		t.Fatalf("unexpected result counts: %#v", result)
+	}
+	if len(cloudflare.updatedRules) != 2 {
+		t.Fatalf("expected two Cloudflare rule updates, got %#v", cloudflare.updatedRules)
+	}
+	if cloudflare.updatedRules[0].Hostname != "new.example.com" ||
+		cloudflare.updatedRules[0].Service != "http://192.168.1.15:80" ||
+		cloudflare.updatedRules[0].HTTPHostHeader != "new.example.com" {
+		t.Fatalf("unexpected add rule spec: %#v", cloudflare.updatedRules[0])
+	}
+	if len(cloudflare.ensuredDNS) != 1 || cloudflare.ensuredDNS[0] != "new.example.com" {
+		t.Fatalf("expected DNS ensure for add only, got %#v", cloudflare.ensuredDNS)
+	}
+	if len(cloudflare.deletedRules) != 1 || cloudflare.deletedRules[0] != "old.example.com" {
+		t.Fatalf("expected one deleted rule, got %#v", cloudflare.deletedRules)
+	}
+	if len(cloudflare.deletedDNS) != 1 || cloudflare.deletedDNS[0] != "old.example.com" {
+		t.Fatalf("expected one deleted DNS record, got %#v", cloudflare.deletedDNS)
+	}
+}
+
+func TestApplyCloudflareDryRunDoesNotMutate(t *testing.T) {
+	cloudflare := &fakeCloudflareClient{}
+
+	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{
+		{
+			Type:              "add",
+			Service:           "cloudflare",
+			Hostname:          "dry.example.com",
+			NewService:        "http://192.168.1.15:80",
+			NewHTTPHostHeader: "dry.example.com",
+			Enabled:           true,
+		},
+	}}, ApplyOptions{DryRun: true})
+
+	if !result.Success {
+		t.Fatalf("expected dry-run success, got %#v", result.Errors)
+	}
+	if result.ItemsAdded != 1 {
+		t.Fatalf("expected one dry-run add count, got %#v", result)
+	}
+	if len(cloudflare.updatedRules) != 0 || len(cloudflare.ensuredDNS) != 0 {
+		t.Fatalf("dry-run mutated Cloudflare: rules=%#v dns=%#v", cloudflare.updatedRules, cloudflare.ensuredDNS)
+	}
+}
+
 type fakeUnboundClient struct {
 	overrides  []api.DNSOverride
 	added      []api.DNSOverride
@@ -224,5 +302,32 @@ func (f *fakeAdguardClient) UpdateRewrite(target, update api.Rewrite) error {
 
 func (f *fakeAdguardClient) DeleteRewrite(domain, answer string) error {
 	f.deleted = append(f.deleted, api.Rewrite{Domain: domain, Answer: answer})
+	return nil
+}
+
+type fakeCloudflareClient struct {
+	updatedRules []api.IngressRuleSpec
+	deletedRules []string
+	ensuredDNS   []string
+	deletedDNS   []string
+}
+
+func (f *fakeCloudflareClient) UpdateTunnelRule(spec api.IngressRuleSpec) error {
+	f.updatedRules = append(f.updatedRules, spec)
+	return nil
+}
+
+func (f *fakeCloudflareClient) DeleteTunnelRule(hostname string) error {
+	f.deletedRules = append(f.deletedRules, hostname)
+	return nil
+}
+
+func (f *fakeCloudflareClient) EnsureDNSRecord(hostname string) error {
+	f.ensuredDNS = append(f.ensuredDNS, hostname)
+	return nil
+}
+
+func (f *fakeCloudflareClient) DeleteDNSRecord(hostname string) error {
+	f.deletedDNS = append(f.deletedDNS, hostname)
 	return nil
 }

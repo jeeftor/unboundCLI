@@ -429,6 +429,103 @@ func TestSetTunnelIngress_PreservesExistingRuleMetadata(t *testing.T) {
 	}
 }
 
+func TestUpdateTunnelRulePreservesOptionalFields(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var capturedBody map[string]interface{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel/test-tunnel-uuid/configurations",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.Method {
+			case http.MethodGet:
+				fmt.Fprint(w, `{
+					"success": true,
+					"errors": [],
+					"messages": [],
+					"result": {
+						"tunnel_id": "test-tunnel-uuid",
+						"version": 1,
+						"config": {
+							"ingress": [
+								{
+									"hostname": "app.example.com",
+									"path": "/api/*",
+									"service": "http://old-caddy:80",
+									"originRequest": {
+										"httpHostHeader": "old.example.com",
+										"noTLSVerify": true,
+										"http2Origin": true,
+										"access": {
+											"required": true,
+											"teamName": "team"
+										}
+									}
+								},
+								{"service": "http_status:404"}
+							]
+						}
+					}
+				}`)
+			case http.MethodPut:
+				json.NewDecoder(r.Body).Decode(&capturedBody)
+				fmt.Fprint(w, tunnelConfigResponse())
+			default:
+				t.Errorf("unexpected method %s", r.Method)
+			}
+		})
+
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	if err := client.UpdateTunnelRule(IngressRuleSpec{
+		Hostname:       "app.example.com",
+		Service:        "http://192.168.1.15:80",
+		HTTPHostHeader: "app.example.com",
+	}); err != nil {
+		t.Fatalf("UpdateTunnelRule failed: %v", err)
+	}
+
+	config, _ := capturedBody["config"].(map[string]interface{})
+	ingress, _ := config["ingress"].([]interface{})
+	if len(ingress) != 2 {
+		t.Fatalf("expected patched rule plus catch-all, got %d rules", len(ingress))
+	}
+
+	first := ingress[0].(map[string]interface{})
+	if first["hostname"] != "app.example.com" {
+		t.Fatalf("expected hostname app.example.com, got %v", first["hostname"])
+	}
+	if first["path"] != "/api/*" {
+		t.Fatalf("expected path to be preserved, got %v", first["path"])
+	}
+	if first["service"] != "http://192.168.1.15:80" {
+		t.Fatalf("expected service to be patched, got %v", first["service"])
+	}
+	originRequest, ok := first["originRequest"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected originRequest to be preserved, got %#v", first["originRequest"])
+	}
+	if originRequest["httpHostHeader"] != "app.example.com" {
+		t.Fatalf("expected host header to be patched, got %v", originRequest["httpHostHeader"])
+	}
+	if originRequest["noTLSVerify"] != true {
+		t.Fatalf("expected noTLSVerify to be preserved, got %v", originRequest["noTLSVerify"])
+	}
+	if originRequest["http2Origin"] != true {
+		t.Fatalf("expected http2Origin to be preserved, got %v", originRequest["http2Origin"])
+	}
+	access, ok := originRequest["access"].(map[string]interface{})
+	if !ok || access["required"] != true {
+		t.Fatalf("expected access policy to be preserved, got %#v", originRequest["access"])
+	}
+	last := ingress[len(ingress)-1].(map[string]interface{})
+	if last["service"] != "http_status:404" {
+		t.Fatalf("expected catch-all to remain last, got %#v", last)
+	}
+}
+
 // --- ListManagedDNSRecords ---
 
 func TestListManagedDNSRecords_FiltersToTunnelCNAMEs(t *testing.T) {

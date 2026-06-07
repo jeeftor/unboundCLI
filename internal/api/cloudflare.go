@@ -510,6 +510,8 @@ type IngressRuleSpec struct {
 	HTTPHostHeader string // empty = not set in OriginRequest
 	NoTLSVerify    bool
 	Http2Origin    bool
+	SetNoTLSVerify bool
+	SetHttp2Origin bool
 }
 
 // UpdateTunnelRule updates (or adds) a single ingress rule in the default tunnel,
@@ -539,7 +541,7 @@ func (c *CloudflareClient) UpdateTunnelRule(spec IngressRuleSpec) error {
 			continue // skip catch-all; re-added at end
 		}
 		if rule.Hostname == spec.Hostname {
-			newIngress = append(newIngress, buildCFIngressRule(spec))
+			newIngress = append(newIngress, patchCFIngressRule(rule, spec))
 			found = true
 		} else {
 			newIngress = append(newIngress, rule)
@@ -623,21 +625,45 @@ func buildCFIngressRule(spec IngressRuleSpec) cloudflare.UnvalidatedIngressRule 
 		Hostname: spec.Hostname,
 		Service:  spec.Service,
 	}
-	if spec.HTTPHostHeader != "" || spec.NoTLSVerify || spec.Http2Origin {
+	if spec.HTTPHostHeader != "" || spec.SetNoTLSVerify || spec.NoTLSVerify || spec.SetHttp2Origin || spec.Http2Origin {
 		or := &cloudflare.OriginRequestConfig{}
 		if spec.HTTPHostHeader != "" {
 			hh := spec.HTTPHostHeader
 			or.HTTPHostHeader = &hh
 		}
-		if spec.NoTLSVerify {
-			v := true
+		if spec.SetNoTLSVerify || spec.NoTLSVerify {
+			v := spec.NoTLSVerify
 			or.NoTLSVerify = &v
 		}
-		if spec.Http2Origin {
-			v := true
+		if spec.SetHttp2Origin || spec.Http2Origin {
+			v := spec.Http2Origin
 			or.Http2Origin = &v
 		}
 		rule.OriginRequest = or
+	}
+	return rule
+}
+
+func patchCFIngressRule(rule cloudflare.UnvalidatedIngressRule, spec IngressRuleSpec) cloudflare.UnvalidatedIngressRule {
+	if spec.Service != "" {
+		rule.Service = spec.Service
+	}
+	if spec.HTTPHostHeader != "" || spec.SetNoTLSVerify || spec.SetHttp2Origin {
+		if rule.OriginRequest == nil {
+			rule.OriginRequest = &cloudflare.OriginRequestConfig{}
+		}
+		if spec.HTTPHostHeader != "" {
+			hh := spec.HTTPHostHeader
+			rule.OriginRequest.HTTPHostHeader = &hh
+		}
+		if spec.SetNoTLSVerify {
+			v := spec.NoTLSVerify
+			rule.OriginRequest.NoTLSVerify = &v
+		}
+		if spec.SetHttp2Origin {
+			v := spec.Http2Origin
+			rule.OriginRequest.Http2Origin = &v
+		}
 	}
 	return rule
 }

@@ -166,8 +166,20 @@ const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 function fmtPlan(actions) {
   if (!actions.length) return '✓ No changes needed.';
-  const ic = { add:'+', update:'~', remove:'-', noop:'·' };
-  return actions.map(a => `${ic[a.type]||'?'} [${a.service}] ${a.hostname}${a.new_ip?` → ${a.new_ip}`:''}`).join('\n');
+  const ic = { add:'+', update:'~', delete:'-', remove:'-', noop:'·' };
+  return actions.map(a => {
+    let detail = '';
+    if (a.service === 'cloudflare') {
+      const svc = a.new_service || a.old_service || '';
+      const hh = a.new_http_host_header || a.old_http_host_header || '';
+      detail = `${svc ? ` → ${svc}` : ''}${hh ? ` host=${hh}` : ''}`;
+    } else if (a.new_ip) {
+      detail = ` → ${a.new_ip}`;
+    } else if (a.old_ip && a.type === 'delete') {
+      detail = ` remove ${a.old_ip}`;
+    }
+    return `${ic[a.type]||'?'} [${a.service}] ${a.hostname}${detail}${a.details ? ` (${a.details})` : ''}`;
+  }).join('\n');
 }
 
 const statusCls = code => code <= 1 ? 'ok' : (code === 2 || code >= 4) ? 'bad' : 'warn';
@@ -300,7 +312,7 @@ function tTable(entries) {
 }
 
 function tSyncPanel() {
-  const opts = [['all','All DNS targets'],['unbound','Unbound'],['adguard','AdGuard']];
+  const opts = [['all','All targets'],['unbound','Unbound'],['adguard','AdGuard'],['cloudflare','Cloudflare']];
   return `<section id="sync-panel" class="panel sync-panel">
     <div class="panel-title">
       <div><strong>Sync Plan</strong><span>Preview before applying.</span></div>
@@ -565,7 +577,7 @@ function render() {
 
   const entries = filteredEntries();
 
-  root.innerHTML = `<div id="app-shell">
+  root.innerHTML = `<div id="app-shell" data-e2e="app-shell">
     ${tTopbar()}
     <main class="dashboard-shell">
       ${S.loading ? `<div class="loading-panel">

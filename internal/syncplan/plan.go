@@ -8,13 +8,25 @@ import (
 
 // Action represents a sync operation to be performed.
 type Action struct {
-	Type     string `json:"type"` // "add", "update", "delete"
-	Hostname string `json:"hostname"`
-	Service  string `json:"service"` // "unbound", "adguard", "dhcp"
-	OldIP    string `json:"old_ip"`
-	NewIP    string `json:"new_ip"`
-	Details  string `json:"details"`
-	Enabled  bool   `json:"enabled"`
+	Type                 string `json:"type"` // "add", "update", "delete"
+	Hostname             string `json:"hostname"`
+	Service              string `json:"service"` // "unbound", "adguard", "dhcp", "cloudflare"
+	OldIP                string `json:"old_ip"`
+	NewIP                string `json:"new_ip"`
+	OldService           string `json:"old_service,omitempty"`
+	NewService           string `json:"new_service,omitempty"`
+	OldHTTPHostHeader    string `json:"old_http_host_header,omitempty"`
+	NewHTTPHostHeader    string `json:"new_http_host_header,omitempty"`
+	TunnelID             string `json:"tunnel_id,omitempty"`
+	TunnelName           string `json:"tunnel_name,omitempty"`
+	Path                 string `json:"path,omitempty"`
+	NoTLSVerify          bool   `json:"no_tls_verify,omitempty"`
+	Http2Origin          bool   `json:"http2_origin,omitempty"`
+	HasAccessPolicy      bool   `json:"has_access_policy,omitempty"`
+	ManagedFields        string `json:"managed_fields,omitempty"`
+	OriginRequestSummary string `json:"origin_request_summary,omitempty"`
+	Details              string `json:"details"`
+	Enabled              bool   `json:"enabled"`
 }
 
 // Plan contains the actions selected for one sync operation.
@@ -43,13 +55,15 @@ type ActionResult struct {
 
 // Options controls sync action planning.
 type Options struct {
-	Service       string
-	CaddyServerIP string
+	Service           string
+	CaddyServerIP     string
+	CaddyServiceURL   string
+	IncludeCloudflare bool
 }
 
 // BuildPlan creates a sync plan from entries for one service or all services.
 func BuildPlan(entries []*models.Entry, options Options) Plan {
-	services := servicesFor(options.Service)
+	services := servicesFor(options.Service, options.IncludeCloudflare)
 	uniqueEntries := uniqueEntriesByHostname(entries)
 	actions := make([]Action, 0)
 
@@ -72,6 +86,12 @@ func BuildPlan(entries []*models.Entry, options Options) Plan {
 			case "dhcp":
 				needsSync = entry.NeedsDHCPStaticEntry()
 				dhcpAction = true
+			case "cloudflare":
+				action := buildCloudflareAction(entry, options.CaddyServiceURL, options.CaddyServerIP)
+				if action.Type != "" {
+					actions = append(actions, action)
+				}
+				continue
 			default:
 				continue
 			}
@@ -95,9 +115,13 @@ func PlanFromEntries(entries []*models.Entry, options Options) []Action {
 	return BuildPlan(entries, options).Actions
 }
 
-func servicesFor(service string) []string {
+func servicesFor(service string, includeCloudflare bool) []string {
 	if service == "" || service == "all" {
-		return []string{"unbound", "adguard"}
+		services := []string{"unbound", "adguard"}
+		if includeCloudflare {
+			services = append(services, "cloudflare")
+		}
+		return services
 	}
 	return []string{service}
 }
@@ -148,4 +172,73 @@ func buildAction(
 	}
 
 	return action
+}
+
+func buildCloudflareAction(entry *models.Entry, caddyServiceURL, caddyServerIP string) Action {
+	desiredService := caddyServiceURL
+	if desiredService == "" && caddyServerIP != "" {
+		desiredService = fmt.Sprintf("http://%s:80", caddyServerIP)
+	}
+	base := Action{
+		Hostname:             entry.Hostname,
+		Service:              "cloudflare",
+		Enabled:              true,
+		ManagedFields:        "service,http_host_header",
+		OriginRequestSummary: "preserve optional origin request fields",
+	}
+
+	cf := entry.CloudflareStatus
+	if entry.IsConfiguredInCaddy() {
+		if cf.Configured && !cf.IsDefaultTunnel {
+			return Action{}
+		}
+		if !cf.Configured {
+			base.Type = "add"
+			base.NewService = desiredService
+			base.NewHTTPHostHeader = entry.Hostname
+			base.Details = "missing in default Cloudflare tunnel"
+			return base
+		}
+		serviceWrong := desiredService != "" && cf.Service != desiredService
+		headerWrong := cf.HTTPHostHeader != entry.Hostname
+		if serviceWrong || headerWrong {
+			base.Type = "update"
+			base.OldService = cf.Service
+			base.NewService = desiredService
+			base.OldHTTPHostHeader = cf.HTTPHostHeader
+			base.NewHTTPHostHeader = entry.Hostname
+			base.TunnelID = cf.TunnelID
+			base.TunnelName = cf.TunnelName
+			base.Path = cf.Path
+			base.NoTLSVerify = cf.NoTLSVerify
+			base.Http2Origin = cf.Http2Origin
+			base.HasAccessPolicy = cf.HasAccessPolicy
+			switch {
+			case serviceWrong && headerWrong:
+				base.Details = "service and host header differ from Caddy"
+			case serviceWrong:
+				base.Details = "service differs from Caddy"
+			default:
+				base.Details = "host header differs from Caddy"
+			}
+			return base
+		}
+		return Action{}
+	}
+
+	if cf.Configured && cf.IsDefaultTunnel {
+		base.Type = "delete"
+		base.OldService = cf.Service
+		base.OldHTTPHostHeader = cf.HTTPHostHeader
+		base.TunnelID = cf.TunnelID
+		base.TunnelName = cf.TunnelName
+		base.Path = cf.Path
+		base.NoTLSVerify = cf.NoTLSVerify
+		base.Http2Origin = cf.Http2Origin
+		base.HasAccessPolicy = cf.HasAccessPolicy
+		base.Details = "no longer in Caddy"
+		return base
+	}
+
+	return Action{}
 }

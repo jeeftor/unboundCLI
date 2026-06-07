@@ -527,6 +527,79 @@ func TestPlanRouteSupportsServiceSelection(t *testing.T) {
 	}
 }
 
+func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
+	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/config/" {
+			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apps":{"http":{"servers":{"srv0":{"routes":[{"match":[{"host":["cf-plan.example.test"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.5:8080"}]}]}]}}}}}`)
+	}))
+	defer caddy.Close()
+
+	cloudflareAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/client/v4/accounts/test-account/cfd_tunnel":
+			fmt.Fprint(w, `{
+				"success": true,
+				"errors": [],
+				"messages": [],
+				"result": [
+					{"id": "tunnel-default", "name": "default", "created_at": "2021-01-01T00:00:00Z", "deleted_at": null, "connections": []}
+				],
+				"result_info": {"page": 1, "per_page": 20, "total_pages": 1, "count": 1, "total_count": 1}
+			}`)
+		case "/client/v4/accounts/test-account/cfd_tunnel/tunnel-default/configurations":
+			fmt.Fprint(w, `{
+				"success": true,
+				"errors": [],
+				"messages": [],
+				"result": {
+					"tunnel_id": "tunnel-default",
+					"version": 1,
+					"config": {"ingress": [{"service": "http_status:404"}]}
+				}
+			}`)
+		default:
+			t.Fatalf("unexpected Cloudflare path %s", r.URL.Path)
+		}
+	}))
+	defer cloudflareAPI.Close()
+
+	cfClient, err := api.NewCloudflareClientWithBaseURL(api.CloudflareConfig{
+		APIToken:  "fixture-token",
+		AccountID: "test-account",
+		ZoneID:    "test-zone",
+		TunnelID:  "tunnel-default",
+	}, cloudflareAPI.URL+"/client/v4")
+	if err != nil {
+		t.Fatalf("failed to create Cloudflare client: %v", err)
+	}
+
+	host, port := splitWebTestServerHostPort(t, caddy.URL)
+	server := NewServer(&app.Runtime{
+		CaddyEndpoint:   app.CaddyEndpoint{ServerIP: host, ServerPort: port},
+		CaddyServiceURL: "http://192.168.1.15:80",
+		Clients: app.ClientSet{
+			Caddy:      api.NewCaddyClient(host, port),
+			Cloudflare: cfClient,
+		},
+	})
+
+	planResp := getJSON[PlanResponse](t, server, "/api/sync/plan?service=cloudflare")
+	if len(planResp.Actions) != 1 {
+		t.Fatalf("expected one Cloudflare action, got %#v", planResp.Actions)
+	}
+	action := planResp.Actions[0]
+	if action.Service != "cloudflare" || action.Type != "add" {
+		t.Fatalf("expected Cloudflare add action, got %#v", action)
+	}
+	if action.NewService != "http://192.168.1.15:80" || action.NewHTTPHostHeader != "cf-plan.example.test" {
+		t.Fatalf("unexpected Cloudflare action details: %#v", action)
+	}
+}
+
 func TestPlanRouteFiltersSelectedHostname(t *testing.T) {
 	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/config/" {

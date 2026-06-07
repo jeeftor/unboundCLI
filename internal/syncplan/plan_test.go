@@ -120,6 +120,105 @@ func TestPlanFromEntriesCreatesStaleDeleteActions(t *testing.T) {
 	})
 }
 
+func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T) {
+	actions := PlanFromEntries([]*models.Entry{
+		{
+			Hostname:      "missing.example.com",
+			CaddyUpstream: "10.0.0.5:8080",
+			CloudflareStatus: models.CloudflareStatus{
+				Configured: false,
+			},
+		},
+		{
+			Hostname:      "wrong.example.com",
+			CaddyUpstream: "10.0.0.6:8080",
+			CloudflareStatus: models.CloudflareStatus{
+				Configured:      true,
+				IsDefaultTunnel: true,
+				TunnelID:        "tunnel-default",
+				TunnelName:      "default",
+				Service:         "http://old-caddy:80",
+				HTTPHostHeader:  "",
+				Path:            "/api/*",
+				NoTLSVerify:     true,
+				HasAccessPolicy: true,
+			},
+		},
+		{
+			Hostname: "stale.example.com",
+			CloudflareStatus: models.CloudflareStatus{
+				Configured:      true,
+				IsDefaultTunnel: true,
+				TunnelID:        "tunnel-default",
+				TunnelName:      "default",
+				Service:         "http://192.168.1.15:80",
+				HTTPHostHeader:  "stale.example.com",
+			},
+		},
+		{
+			Hostname:      "other-tunnel.example.com",
+			CaddyUpstream: "10.0.0.7:8080",
+			CloudflareStatus: models.CloudflareStatus{
+				Configured:      true,
+				IsDefaultTunnel: false,
+				TunnelID:        "tunnel-other",
+				TunnelName:      "other",
+				Service:         "http://192.168.1.15:80",
+				HTTPHostHeader:  "other-tunnel.example.com",
+			},
+		},
+	}, Options{
+		Service:         "cloudflare",
+		CaddyServiceURL: "http://192.168.1.15:80",
+	})
+
+	if len(actions) != 3 {
+		t.Fatalf("expected three Cloudflare actions, got %d: %#v", len(actions), actions)
+	}
+	assertAction(t, actions[0], Action{
+		Type:                 "add",
+		Service:              "cloudflare",
+		Hostname:             "missing.example.com",
+		NewService:           "http://192.168.1.15:80",
+		NewHTTPHostHeader:    "missing.example.com",
+		Details:              "missing in default Cloudflare tunnel",
+		Enabled:              true,
+		ManagedFields:        "service,http_host_header",
+		OriginRequestSummary: "preserve optional origin request fields",
+	})
+	assertAction(t, actions[1], Action{
+		Type:                 "update",
+		Service:              "cloudflare",
+		Hostname:             "wrong.example.com",
+		OldService:           "http://old-caddy:80",
+		NewService:           "http://192.168.1.15:80",
+		OldHTTPHostHeader:    "",
+		NewHTTPHostHeader:    "wrong.example.com",
+		TunnelID:             "tunnel-default",
+		TunnelName:           "default",
+		Path:                 "/api/*",
+		NoTLSVerify:          true,
+		HasAccessPolicy:      true,
+		Details:              "service and host header differ from Caddy",
+		Enabled:              true,
+		ManagedFields:        "service,http_host_header",
+		OriginRequestSummary: "preserve optional origin request fields",
+	})
+	assertAction(t, actions[2], Action{
+		Type:                 "delete",
+		Service:              "cloudflare",
+		Hostname:             "stale.example.com",
+		OldService:           "http://192.168.1.15:80",
+		OldHTTPHostHeader:    "stale.example.com",
+		TunnelID:             "tunnel-default",
+		TunnelName:           "default",
+		Details:              "no longer in Caddy",
+		Enabled:              true,
+		ManagedFields:        "service,http_host_header",
+		OriginRequestSummary: "preserve optional origin request fields",
+	})
+}
+
 func TestPlanFromEntriesDeduplicatesHostnames(t *testing.T) {
 	entry := &models.Entry{
 		Hostname:      "duplicate.example.com",

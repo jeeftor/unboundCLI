@@ -381,6 +381,8 @@ func (m *AppModel) handleTableViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					HTTPHostHeader: spec.HTTPHostHeader,
 					NoTLSVerify:    spec.NoTLSVerify,
 					Http2Origin:    spec.Http2Origin,
+					SetNoTLSVerify: true,
+					SetHttp2Origin: true,
 				}
 				err := cfClient.UpdateTunnelRule(apiSpec)
 				return cfEditSavedMsg{err: err}
@@ -600,7 +602,7 @@ func (m *AppModel) updateLayout() {
 // showSyncDialog prepares and shows the sync dialog for selected entries or all entries
 func (m *AppModel) showSyncDialog() {
 	// Create sync executor with API clients
-	executor := NewTUISyncExecutor(m.unboundClient, m.adguardClient, m.dnsmasqClient)
+	executor := NewTUISyncExecutor(m.unboundClient, m.adguardClient, m.dnsmasqClient, m.cfClient)
 
 	// Inject sync executor into dialog
 	m.syncDialog.SetSyncExecutor(executor.ExecuteSyncActions)
@@ -609,10 +611,10 @@ func (m *AppModel) showSyncDialog() {
 	selectedEntries := m.tableWidget.GetSelectedEntries()
 	if len(selectedEntries) > 0 {
 		// Use selected entries
-		m.syncDialog.AddActionsFromEntries(selectedEntries, "all", m.caddyServerIP)
+		m.syncDialog.AddActionsFromEntries(selectedEntries, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil)
 	} else {
 		// Use all entries if nothing selected
-		m.syncDialog.AddActionsFromEntries(m.entries, "all", m.caddyServerIP)
+		m.syncDialog.AddActionsFromEntries(m.entries, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil)
 	}
 }
 
@@ -627,13 +629,13 @@ func (m *AppModel) showSingleEntrySync() {
 	}
 
 	// Create sync executor with API clients
-	executor := NewTUISyncExecutor(m.unboundClient, m.adguardClient, m.dnsmasqClient)
+	executor := NewTUISyncExecutor(m.unboundClient, m.adguardClient, m.dnsmasqClient, m.cfClient)
 
 	// Inject sync executor into dialog
 	m.syncDialog.SetSyncExecutor(executor.ExecuteSyncActions)
 
 	// Generate actions for just this entry
-	m.syncDialog.AddActionsFromEntries([]*models.Entry{entry}, "all", m.caddyServerIP)
+	m.syncDialog.AddActionsFromEntries([]*models.Entry{entry}, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil)
 }
 
 // cycleFilter cycles through the available filters based on what data is present.
