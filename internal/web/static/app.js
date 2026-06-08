@@ -8,12 +8,13 @@ const wc = () => window.UNBOUNDCLI_WEB_CONFIG || { applyToken: '', mutationEnabl
 const S = {
   config: null, entries: [], report: {},
   loading: true, message: '', msgKind: 'info',
-  search: '', statusFilter: 'all', serviceFilter: 'all',
+  search: '', statusFilter: 'all', statusFilterInverse: false, serviceFilter: 'all',
   selectedHostname: '',
   syncService: 'all', syncLoading: false, syncLog: '',
   syncProgress: { title: '', detail: '' },
   plannedActions: [], planId: '', actionIds: [], canSyncNow: false,
   e2eDone: false,
+  cfWizard: { open: false, hostname: '', loading: false, actions: [], planId: '', actionIds: [], log: '', applied: false },
   configOpen: false, configTab: 'caddy', configStatus: '', configStatusKind: '',
   cfDiscover: { loading: false, verifyOk: false, verifyMsg: '', accounts: [], tunnels: [], zones: [] },
   testResults: {},
@@ -30,11 +31,17 @@ function filteredEntries() {
   return S.entries.filter(e => {
     if (q && !e.hostname.toLowerCase().includes(q)) return false;
     const st = S.statusFilter;
-    if (st === 'synced'      && e.overall_status !== 0) return false;
-    if (st === 'out_of_sync' && e.overall_status <= 1) return false;
-    if (st === 'caddy_only'  && e.overall_status !== 3) return false;
-    if (st === 'stale'       && e.overall_status !== 4) return false;
-    if (st === 'cloudflare'  && !e.cloudflare_status?.configured) return false;
+    const inv = S.statusFilterInverse;
+    function matchStatus() {
+      if (st === 'all')        return true;
+      if (st === 'synced')     return e.overall_status === 0;
+      if (st === 'out_of_sync') return e.overall_status > 1;
+      if (st === 'caddy_only') return e.overall_status === 3;
+      if (st === 'stale')      return e.overall_status === 4;
+      if (st === 'cloudflare') return !!e.cloudflare_status?.configured;
+      return true;
+    }
+    if (st !== 'all' && matchStatus() === inv) return false;
     const sf = S.serviceFilter;
     if (sf === 'caddy'      && !e.caddy_upstream)                return false;
     if (sf === 'unbound'    && !e.unbound_status?.configured)    return false;
@@ -240,8 +247,12 @@ function svcText(s) {
   return (s.ip || 'Mismatch') + ' ✗';
 }
 const svcTone = s => !s?.configured ? 'missing' : s.in_sync ? 'ok' : 'bad';
-function cfBadge(cf) {
-  if (!cf?.configured) return '<span class="service-badge missing" data-label="Cloudflare route"><strong>CF</strong><span>Not routed</span></span>';
+function cfBadge(cf, hostname) {
+  if (!cf?.configured) {
+    const cfReady = S.config?.summary?.cloudflare?.client_ready;
+    if (!cfReady) return '';  // CF not configured at all — don't show badge
+    return `<button class="service-badge missing cf-unrouted" data-action="cf-wizard" data-hostname="${esc(hostname)}" title="Not in Cloudflare tunnel — click to add"><strong>CF</strong><span>+ Route</span></button>`;
+  }
   const label = cf.tunnel_name || 'CF';
   const details = [cf.service ? `Service: ${cf.service}` : '', cf.http_host_header ? `Host header: ${cf.http_host_header}` : ''].filter(Boolean).join(' · ');
   return `<span class="service-badge cf" data-label="Cloudflare route" title="${esc(details)}"><strong>CF</strong><span>${esc(label)}</span></span>`;
@@ -275,7 +286,7 @@ function tTopbar() {
       <span>Caddy DNS Sync</span>
     </div>
     <nav class="svc-pills" aria-label="Filter by service">
-      ${pills.map(p => `<button class="nav-item service svc-pill ${p.on?'on':'off'}${S.serviceFilter===p.key?' pill-active':''}"
+      ${pills.map(p => `<button class="svc-pill ${p.on?'on':'off'}${S.serviceFilter===p.key?' pill-active':''}"
         data-action="filter-svc" data-svc="${p.key}" title="${p.label}: ${p.on?'connected':'offline'}">
         <i class="svc-dot"></i><span>${p.label}</span>
       </button>`).join('')}
@@ -295,11 +306,14 @@ function tTopbar() {
 
 function tMetrics() {
   const s = summary();
-  const sf = S.statusFilter;
+  const sf = S.statusFilter, inv = S.statusFilterInverse;
   function mcard(tone, status, label, val, sub) {
-    const active = sf === status ? ' metric-active' : '';
-    const act = status === 'all' ? 'data-action="filter-status" data-status="all"' : `data-action="filter-status" data-status="${status}"`;
-    return `<article class="metric-card ${tone}${active}" ${act} role="button" tabindex="0" title="Filter: ${label}"><div><span>${label}</span><strong>${val}</strong><small>${sub}</small></div></article>`;
+    const isActive = sf === status && status !== 'all';
+    const cls = isActive ? (inv ? ' metric-active metric-inverse' : ' metric-active') : '';
+    const titleHint = isActive ? (inv ? `Showing: NOT ${label} — click to clear` : `Showing: ${label} — click to invert`) : `Click to filter: ${label}`;
+    return `<article class="metric-card ${tone}${cls}" data-action="filter-status" data-status="${status}" role="button" tabindex="0" title="${titleHint}">
+      <div><span>${label}${isActive ? `<em class="filter-mode-tag">${inv ? '≠' : '='}</em>` : ''}</span><strong>${val}</strong><small>${sub}</small></div>
+    </article>`;
   }
   return `<section class="metric-grid">
     ${mcard('neutral','all',    'Total',      s.total,     'hostnames')}
@@ -345,7 +359,7 @@ function tTable(entries) {
         <div class="service-stack">
           <span class="service-badge ${svcTone(ub)}"><strong>UB</strong>${esc(svcText(ub))}</span>
           <span class="service-badge ${svcTone(ag)}"><strong>AG</strong>${esc(svcText(ag))}</span>
-          ${cfBadge(cf)}
+          ${cfBadge(cf, e.hostname)}
         </div>
       </td>
       <td data-label="Upstream"><span>${esc(e.caddy_upstream||'—')}</span><span class="subtle">${esc(e.caddy_ip||'')}</span></td>
@@ -598,6 +612,62 @@ function tConfigTestSummary(c) {
   </div>`;
 }
 
+function tCfWizard() {
+  const w = S.cfWizard;
+  if (!w.open) return '';
+  const cfg = S.config;
+  const tunnelName = cfg?.summary?.cloudflare?.extra?.tunnel_name || cfg?.cloudflare?.tunnel_id || 'configured tunnel';
+  const serviceURL = cfg?.summary?.cloudflare?.extra?.caddy_service_url || cfg?.caddy?.server_ip ? `http://${cfg.caddy.server_ip}:80` : '';
+
+  let body = '';
+  if (w.loading) {
+    body = `<div class="wiz-loading"><div class="wiz-spinner"></div><span>Fetching sync plan…</span></div>`;
+  } else if (w.applied) {
+    body = `<div class="wiz-result ok"><strong>✓ Synced!</strong><p>${esc(w.hostname)} has been added to the Cloudflare tunnel.</p>
+      <pre class="wiz-log">${esc(w.log)}</pre></div>`;
+  } else if (w.actions.length === 0) {
+    body = `<div class="wiz-result ok"><strong>✓ Already routed</strong><p>${esc(w.hostname)} is already in the Cloudflare tunnel — nothing to do.</p></div>`;
+  } else {
+    const a = w.actions[0];
+    const verb = a.type === 'add' ? 'Add to' : a.type === 'update' ? 'Update in' : 'Remove from';
+    const svcURL = a.new_service || a.old_service || serviceURL;
+    body = `
+      <div class="wiz-preview">
+        <div class="wiz-action-row">
+          <span class="wiz-verb ${a.type}">${verb}</span>
+          <span class="wiz-tunnel">⟶ ${esc(tunnelName)}</span>
+        </div>
+        <table class="wiz-detail-table">
+          <tr><th>Hostname</th><td><code>${esc(a.hostname)}</code></td></tr>
+          ${svcURL ? `<tr><th>Origin service</th><td><code>${esc(svcURL)}</code></td></tr>` : ''}
+          ${a.new_http_host_header ? `<tr><th>Host header</th><td><code>${esc(a.new_http_host_header)}</code></td></tr>` : ''}
+          ${a.details ? `<tr><th>Note</th><td>${esc(a.details)}</td></tr>` : ''}
+        </table>
+        ${w.log ? `<pre class="wiz-log error">${esc(w.log)}</pre>` : ''}
+      </div>`;
+  }
+
+  const canApply = w.actions.length > 0 && !w.applied && !w.loading && wc().mutationEnabled;
+
+  return `<div class="cf-wizard-backdrop" data-action="cf-wizard-close"></div>
+  <div class="cf-wizard" role="dialog" aria-modal="true" aria-labelledby="wiz-title">
+    <div class="wiz-head">
+      <div>
+        <span class="wiz-cf-icon">☁</span>
+        <h2 id="wiz-title">Route to Cloudflare</h2>
+      </div>
+      <button class="wiz-close" data-action="cf-wizard-close" aria-label="Close">✕</button>
+    </div>
+    <div class="wiz-hostname">${esc(w.hostname)}</div>
+    <div class="wiz-body">${body}</div>
+    <div class="wiz-foot">
+      <button class="wiz-btn secondary" data-action="cf-wizard-close">Cancel</button>
+      ${canApply ? `<button class="wiz-btn primary" data-action="cf-wizard-apply">Sync to Cloudflare</button>` : ''}
+      ${w.applied ? `<button class="wiz-btn secondary" data-action="cf-wizard-close">Done</button>` : ''}
+    </div>
+  </div>`;
+}
+
 function tConfigModal() {
   if (!S.configOpen && !window.UNBOUNDCLI_TEST_HOOKS) return '';
   const c = S.config;
@@ -684,6 +754,7 @@ function render() {
       </section>
     </main>
     ${tConfigModal()}
+    ${tCfWizard()}
   </div>`;
 
   const newEp = document.getElementById('entries-panel');
@@ -706,8 +777,53 @@ document.addEventListener('click', async ev => {
   if (a === 'open-config')    { S.configOpen = true;  render(); return; }
   if (a === 'close-config')   { S.configOpen = false; render(); return; }
   if (a === 'filter-svc')     { S.serviceFilter = el.dataset.svc || 'all'; render(); return; }
-  if (a === 'filter-status')  { S.statusFilter = el.dataset.status || 'all'; render(); return; }
+  if (a === 'filter-status') {
+    const st = el.dataset.status || 'all';
+    if (st === 'all') { S.statusFilter = 'all'; S.statusFilterInverse = false; }
+    else if (S.statusFilter !== st) { S.statusFilter = st; S.statusFilterInverse = false; }      // 1st click: filter
+    else if (!S.statusFilterInverse) { S.statusFilterInverse = true; }                            // 2nd click: invert
+    else { S.statusFilter = 'all'; S.statusFilterInverse = false; }                               // 3rd click: clear
+    render(); return;
+  }
   if (a === 'cfg-tab')        { S.configTab = el.dataset.tab; render(); return; }
+
+  if (a === 'cf-wizard') {
+    ev.stopPropagation();
+    const hostname = el.dataset.hostname;
+    S.cfWizard = { open: true, hostname, loading: true, actions: [], planId: '', actionIds: [], log: '', applied: false };
+    render();
+    try {
+      const plan = await api(`/api/sync/plan?service=cloudflare&hostname=${encodeURIComponent(hostname)}`);
+      S.cfWizard.actions = plan.actions || [];
+      S.cfWizard.planId = plan.plan_id || '';
+      S.cfWizard.actionIds = plan.action_ids || [];
+    } catch (err) {
+      S.cfWizard.log = `Failed to load plan: ${err.message}`;
+    }
+    S.cfWizard.loading = false;
+    render();
+    return;
+  }
+  if (a === 'cf-wizard-close') {
+    S.cfWizard = { ...S.cfWizard, open: false };
+    render(); return;
+  }
+  if (a === 'cf-wizard-apply') {
+    S.cfWizard.loading = true; render();
+    try {
+      const body = S.cfWizard.planId
+        ? { dry_run: false, plan_id: S.cfWizard.planId, action_ids: S.cfWizard.actionIds }
+        : { dry_run: false, actions: S.cfWizard.actions };
+      const { result: r } = await api('/api/sync/apply', { method: 'POST', body: JSON.stringify(body) });
+      S.cfWizard.log = fmtApplyResult(r, false);
+      S.cfWizard.applied = !r?.errors?.length;
+      if (S.cfWizard.applied) await refresh();
+    } catch (err) {
+      S.cfWizard.log = `Apply error: ${err.message}`;
+    }
+    S.cfWizard.loading = false;
+    render(); return;
+  }
 
   if (a === 'select-row') {
     const tr = el.closest('tr');
@@ -770,7 +886,7 @@ document.addEventListener('input', ev => {
 });
 
 document.addEventListener('change', ev => {
-  if (ev.target.id === 'status-filter') { S.statusFilter = ev.target.value; render(); return; }
+  if (ev.target.id === 'status-filter') { S.statusFilter = ev.target.value; S.statusFilterInverse = false; render(); return; }
   if (ev.target.id === 'sync-service')  { S.syncService  = ev.target.value; return; }
   const { form, field } = ev.target.dataset;
   if (form && field && S.forms[form]) {
@@ -779,6 +895,7 @@ document.addEventListener('change', ev => {
 });
 
 document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && S.cfWizard.open) { S.cfWizard = { ...S.cfWizard, open: false }; render(); return; }
   if (ev.key === 'Escape' && S.configOpen) { S.configOpen = false; render(); return; }
   if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset.action === 'select-row') {
     ev.preventDefault();
