@@ -508,20 +508,41 @@ type IngressRuleSpec struct {
 	Hostname       string
 	Service        string
 	HTTPHostHeader string // empty = not set in OriginRequest
-	NoTLSVerify    bool
-	Http2Origin    bool
-	SetNoTLSVerify bool
-	SetHttp2Origin bool
+	// OriginServerName is the TLS SNI hostname cloudflared uses when connecting
+	// to the origin. Required when routing via Caddy (HTTPS origin with a
+	// hostname-based cert). Usually set to the same value as Hostname.
+	OriginServerName string
+	NoTLSVerify      bool
+	Http2Origin      bool
+	// DisableChunkedEncoding disables chunked transfer encoding. Useful for
+	// WSGI servers (Gunicorn, uWSGI) and some older HTTP/1.0 backends.
+	DisableChunkedEncoding bool
+
+	// Set* flags control whether the corresponding bool field is written even
+	// when its value is false (i.e. explicitly clear a previously-set flag).
+	SetNoTLSVerify            bool
+	SetHttp2Origin            bool
+	SetDisableChunkedEncoding bool
+	SetOriginServerName       bool
+
+	// TunnelID overrides the client's default tunnel for this operation.
+	// If empty, the client's configured TunnelID is used.
+	TunnelID string
 }
 
-// UpdateTunnelRule updates (or adds) a single ingress rule in the default tunnel,
-// preserving all other existing rules unchanged. If the hostname does not currently
-// have a rule it is added before the catch-all.
+// UpdateTunnelRule updates (or adds) a single ingress rule in the specified tunnel
+// (defaulting to the client's configured tunnel), preserving all other existing rules
+// unchanged. If the hostname does not currently have a rule it is added before the catch-all.
 // A backup of the pre-edit state is written to ~/.caddy-dns-sync-backups/ automatically.
 func (c *CloudflareClient) UpdateTunnelRule(spec IngressRuleSpec) error {
 	ctx := context.Background()
 
-	current, err := c.api.GetTunnelConfiguration(ctx, cloudflare.ResourceIdentifier(c.accountID), c.tunnelID)
+	tunnelID := c.tunnelID
+	if spec.TunnelID != "" {
+		tunnelID = spec.TunnelID
+	}
+
+	current, err := c.api.GetTunnelConfiguration(ctx, cloudflare.ResourceIdentifier(c.accountID), tunnelID)
 	if err != nil {
 		return fmt.Errorf("error getting tunnel config: %w", err)
 	}
@@ -556,7 +577,7 @@ func (c *CloudflareClient) UpdateTunnelRule(spec IngressRuleSpec) error {
 	_, err = c.api.UpdateTunnelConfiguration(ctx,
 		cloudflare.ResourceIdentifier(c.accountID),
 		cloudflare.TunnelConfigurationParams{
-			TunnelID: c.tunnelID,
+			TunnelID: tunnelID,
 			Config:   cloudflare.TunnelConfiguration{Ingress: newIngress},
 		},
 	)
@@ -564,17 +585,29 @@ func (c *CloudflareClient) UpdateTunnelRule(spec IngressRuleSpec) error {
 		return fmt.Errorf("error updating tunnel configuration: %w", err)
 	}
 
-	logging.Info("Updated tunnel rule", "hostname", spec.Hostname, "service", spec.Service)
+	logging.Info("Updated tunnel rule", "hostname", spec.Hostname, "service", spec.Service, "tunnelID", tunnelID)
 	return nil
 }
 
-// DeleteTunnelRule removes a single ingress rule from the default tunnel by hostname,
-// preserving all other rules. A backup is written before the mutation.
-// It is a no-op if the hostname is not found.
+// DeleteTunnelRule removes a single ingress rule from the specified tunnel (defaulting
+// to the client's configured tunnel) by hostname, preserving all other rules.
+// A backup is written before the mutation. It is a no-op if the hostname is not found.
+// Pass tunnelIDOverride="" to use the client's configured tunnel.
 func (c *CloudflareClient) DeleteTunnelRule(hostname string) error {
+	return c.DeleteTunnelRuleInTunnel(hostname, "")
+}
+
+// DeleteTunnelRuleInTunnel removes a single ingress rule from the specified tunnel.
+// If tunnelIDOverride is empty the client's configured tunnel is used.
+func (c *CloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelIDOverride string) error {
 	ctx := context.Background()
 
-	current, err := c.api.GetTunnelConfiguration(ctx, cloudflare.ResourceIdentifier(c.accountID), c.tunnelID)
+	tunnelID := c.tunnelID
+	if tunnelIDOverride != "" {
+		tunnelID = tunnelIDOverride
+	}
+
+	current, err := c.api.GetTunnelConfiguration(ctx, cloudflare.ResourceIdentifier(c.accountID), tunnelID)
 	if err != nil {
 		return fmt.Errorf("error getting tunnel config: %w", err)
 	}
@@ -607,7 +640,7 @@ func (c *CloudflareClient) DeleteTunnelRule(hostname string) error {
 	_, err = c.api.UpdateTunnelConfiguration(ctx,
 		cloudflare.ResourceIdentifier(c.accountID),
 		cloudflare.TunnelConfigurationParams{
-			TunnelID: c.tunnelID,
+			TunnelID: tunnelID,
 			Config:   cloudflare.TunnelConfiguration{Ingress: newIngress},
 		},
 	)
@@ -615,7 +648,7 @@ func (c *CloudflareClient) DeleteTunnelRule(hostname string) error {
 		return fmt.Errorf("error updating tunnel configuration: %w", err)
 	}
 
-	logging.Info("Deleted tunnel rule", "hostname", hostname)
+	logging.Info("Deleted tunnel rule", "hostname", hostname, "tunnelID", tunnelID)
 	return nil
 }
 
@@ -625,11 +658,20 @@ func buildCFIngressRule(spec IngressRuleSpec) cloudflare.UnvalidatedIngressRule 
 		Hostname: spec.Hostname,
 		Service:  spec.Service,
 	}
-	if spec.HTTPHostHeader != "" || spec.SetNoTLSVerify || spec.NoTLSVerify || spec.SetHttp2Origin || spec.Http2Origin {
+	needsOriginRequest := spec.HTTPHostHeader != "" ||
+		spec.OriginServerName != "" ||
+		spec.SetNoTLSVerify || spec.NoTLSVerify ||
+		spec.SetHttp2Origin || spec.Http2Origin ||
+		spec.SetDisableChunkedEncoding || spec.DisableChunkedEncoding
+	if needsOriginRequest {
 		or := &cloudflare.OriginRequestConfig{}
 		if spec.HTTPHostHeader != "" {
 			hh := spec.HTTPHostHeader
 			or.HTTPHostHeader = &hh
+		}
+		if spec.OriginServerName != "" {
+			osn := spec.OriginServerName
+			or.OriginServerName = &osn
 		}
 		if spec.SetNoTLSVerify || spec.NoTLSVerify {
 			v := spec.NoTLSVerify
@@ -638,6 +680,10 @@ func buildCFIngressRule(spec IngressRuleSpec) cloudflare.UnvalidatedIngressRule 
 		if spec.SetHttp2Origin || spec.Http2Origin {
 			v := spec.Http2Origin
 			or.Http2Origin = &v
+		}
+		if spec.SetDisableChunkedEncoding || spec.DisableChunkedEncoding {
+			v := spec.DisableChunkedEncoding
+			or.DisableChunkedEncoding = &v
 		}
 		rule.OriginRequest = or
 	}
@@ -648,13 +694,22 @@ func patchCFIngressRule(rule cloudflare.UnvalidatedIngressRule, spec IngressRule
 	if spec.Service != "" {
 		rule.Service = spec.Service
 	}
-	if spec.HTTPHostHeader != "" || spec.SetNoTLSVerify || spec.SetHttp2Origin {
+	needsPatch := spec.HTTPHostHeader != "" ||
+		spec.SetOriginServerName ||
+		spec.SetNoTLSVerify ||
+		spec.SetHttp2Origin ||
+		spec.SetDisableChunkedEncoding
+	if needsPatch {
 		if rule.OriginRequest == nil {
 			rule.OriginRequest = &cloudflare.OriginRequestConfig{}
 		}
 		if spec.HTTPHostHeader != "" {
 			hh := spec.HTTPHostHeader
 			rule.OriginRequest.HTTPHostHeader = &hh
+		}
+		if spec.SetOriginServerName {
+			osn := spec.OriginServerName
+			rule.OriginRequest.OriginServerName = &osn
 		}
 		if spec.SetNoTLSVerify {
 			v := spec.NoTLSVerify
@@ -663,6 +718,10 @@ func patchCFIngressRule(rule cloudflare.UnvalidatedIngressRule, spec IngressRule
 		if spec.SetHttp2Origin {
 			v := spec.Http2Origin
 			rule.OriginRequest.Http2Origin = &v
+		}
+		if spec.SetDisableChunkedEncoding {
+			v := spec.DisableChunkedEncoding
+			rule.OriginRequest.DisableChunkedEncoding = &v
 		}
 	}
 	return rule

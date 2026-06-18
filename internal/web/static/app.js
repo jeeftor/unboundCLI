@@ -12,12 +12,17 @@ const S = {
   selectedHostname: '',
   syncService: 'all', syncLoading: false, syncLog: '',
   syncProgress: { title: '', detail: '' },
-  plannedActions: [], planId: '', actionIds: [], canSyncNow: false,
+  plannedActions: [], planId: '', actionIds: [], canSyncNow: false, disabledPlanIndices: new Set(),
   e2eDone: false,
-  cfWizard: { open: false, hostname: '', loading: false, actions: [], planId: '', actionIds: [], log: '', applied: false },
+  cfWizard: { open: false, hostname: '', loading: false, actions: [], planId: '', actionIds: [], log: '', applied: false,
+              originMode: 'via-caddy', noTLSVerify: false, disableChunkedEncoding: false, selectedTunnelId: '',
+              availableTunnels: [], tunnelsLoading: false },
   configOpen: false, configTab: 'caddy', configStatus: '', configStatusKind: '',
   cfDiscover: { loading: false, verifyOk: false, verifyMsg: '', accounts: [], tunnels: [], zones: [] },
   testResults: {},
+  probe: { loading: false, result: null, hostname: '' },
+  inspectorPlan: { loading: false, actions: [], planId: '', actionIds: [], log: '', applying: false, applyLog: '', disabledIndices: new Set() },
+  rowModal: { open: false, hostname: '', loading: false, actions: [], planId: '', actionIds: [], applying: false, applyLog: '', disabledIndices: new Set() },
   forms: {
     unbound:    { base_url: '', api_key: '', api_secret: '', insecure: false },
     adguard:    { enabled: false, base_url: '', username: '', password: '', insecure: false },
@@ -97,6 +102,57 @@ async function refresh() {
     }
   } catch (err) { S.message = `Load error: ${err.message}`; S.msgKind = 'error'; }
   S.loading = false; render();
+}
+
+// fetchInspectorPlan: scoped to one hostname, results go to the inspector panel.
+// opts: { service: 'all'|'unbound'|'adguard', unsync: bool }
+async function fetchInspectorPlan(hostname, opts = {}) {
+  S.inspectorPlan = { loading: true, actions: [], planId: '', actionIds: [], log: '', applying: false, applyLog: '', disabledIndices: new Set() };
+  render();
+  try {
+    const params = new URLSearchParams({ service: opts.service || 'all', hostname });
+    if (opts.unsync) params.set('unsync', 'true');
+    const url = `/api/sync/plan?${params}`;
+    const data = await api(url);
+    const actions = data.actions || [];
+    S.inspectorPlan = {
+      loading: false, applying: false, applyLog: '',
+      actions,
+      planId:    data.plan_id    || '',
+      actionIds: data.action_ids || [],
+      log: fmtPlan(actions),
+      disabledIndices: new Set(),
+    };
+  } catch (err) {
+    S.inspectorPlan = { loading: false, actions: [], planId: '', actionIds: [], log: `Error: ${err.message}`, applying: false, applyLog: '', disabledIndices: new Set() };
+  }
+  render();
+}
+
+async function applyInspectorPlan() {
+  const p = S.inspectorPlan;
+  if (!p.actions.length) return;
+  // Filter out disabled (unchecked) actions
+  const enabledIds = (p.actionIds || []).filter((_, i) => !p.disabledIndices.has(i));
+  if (!enabledIds.length && p.planId) { S.inspectorPlan = { ...p, applyLog: 'No actions selected.' }; render(); return; }
+  S.inspectorPlan = { ...p, applying: true, applyLog: '' };
+  render();
+  try {
+    const body = p.planId
+      ? { dry_run: false, plan_id: p.planId, action_ids: enabledIds }
+      : { dry_run: false, actions: p.actions.filter((_, i) => !p.disabledIndices.has(i)) };
+    const { result: r } = await api('/api/sync/apply', { method: 'POST', body: JSON.stringify(body) });
+    const applyLog = fmtApplyResult(r, false);
+    if (!r?.errors?.length) {
+      S.inspectorPlan = { loading: false, actions: [], planId: '', actionIds: [], log: '', applying: false, applyLog };
+      await refresh();
+      return;
+    }
+    S.inspectorPlan = { ...S.inspectorPlan, applying: false, applyLog };
+  } catch (err) {
+    S.inspectorPlan = { ...S.inspectorPlan, applying: false, applyLog: `Apply error: ${err.message}` };
+  }
+  render();
 }
 
 async function fetchPlan(service, hostname) {
@@ -257,6 +313,16 @@ function cfBadge(cf, hostname) {
   const details = [cf.service ? `Service: ${cf.service}` : '', cf.http_host_header ? `Host header: ${cf.http_host_header}` : ''].filter(Boolean).join(' · ');
   return `<span class="service-badge cf" data-label="Cloudflare route" title="${esc(details)}"><strong>CF</strong><span>${esc(label)}</span></span>`;
 }
+// Compact pill variant for table rows
+function cfPill(cf, hostname) {
+  if (!cf?.configured) {
+    const cfReady = S.config?.summary?.cloudflare?.client_ready;
+    if (!cfReady) return '';
+    return `<button class="svc-pill missing cf-unrouted" data-action="cf-wizard" data-hostname="${esc(hostname)}" title="Not in Cloudflare — click to add">CF+</button>`;
+  }
+  const tip = cf.service ? `CF: ${cf.service}` : `CF: ${cf.tunnel_name||'Routed'}`;
+  return `<span class="svc-pill cf" title="${esc(tip)}">CF</span>`;
+}
 
 // ── SVG Icons (inline) ─────────────────────────────────────────────────────
 const ICON = {
@@ -349,25 +415,25 @@ function tTable(entries) {
     <div style="padding:28px 16px;color:var(--text-muted);font-size:13px">No entries match your filters.</div>
   </section>`;
 
-  const rows = entries.map(e => {
+  const rows = entries.map((e, idx) => {
     const sel = e.hostname === S.selectedHostname;
     const ub  = e.unbound_status, ag = e.adguard_status, cf = e.cloudflare_status;
-    return `<tr class="${sel?'selected-row':''}" data-action="select-row" data-hostname="${esc(e.hostname)}" tabindex="0" aria-selected="${sel ? 'true' : 'false'}">
-      <td data-label="Hostname"><strong>${esc(e.hostname)}</strong><span class="subtle">${esc(e.data_source||'Caddy route')}</span></td>
+    return `<tr class="${sel?'selected-row':''}" data-action="select-row" data-hostname="${esc(e.hostname)}" data-idx="${idx}" tabindex="0" aria-selected="${sel ? 'true' : 'false'}">
+      <td data-label="Hostname"><strong>${esc(e.hostname)}</strong><br><span class="subtle">${esc(e.data_source||'Caddy')}</span></td>
       <td data-label="Status"><span class="status-chip ${statusCls(e.overall_status)}">${esc(e.status_label||'Unknown')}</span></td>
       <td data-label="Services">
         <div class="service-stack">
-          <span class="service-badge ${svcTone(ub)}"><strong>UB</strong>${esc(svcText(ub))}</span>
-          <span class="service-badge ${svcTone(ag)}"><strong>AG</strong>${esc(svcText(ag))}</span>
+          <span class="service-badge ${svcTone(ub)}"><strong>UB</strong> ${esc(svcText(ub))}</span>
+          <span class="service-badge ${svcTone(ag)}"><strong>AG</strong> ${esc(svcText(ag))}</span>
           ${cfBadge(cf, e.hostname)}
         </div>
       </td>
-      <td data-label="Upstream"><span>${esc(e.caddy_upstream||'—')}</span><span class="subtle">${esc(e.caddy_ip||'')}</span></td>
+      <td data-label="Upstream"><span>${esc(e.caddy_upstream||'—')}</span><br><span class="subtle">${esc(e.caddy_ip||'')}</span></td>
       <td data-label="DNS"><span class="dns-result ${dnsCls(e.dns_resolved)}">${esc(e.dns_resolved||'FAIL')}</span></td>
       <td data-label="Actions">
         <div class="row-actions">
           <button class="row-preview" data-action="row-preview" data-hostname="${esc(e.hostname)}">Preview</button>
-          <button class="row-sync" data-action="row-sync" data-hostname="${esc(e.hostname)}"${wc().mutationEnabled?'':' disabled'}>Sync</button>
+          <button class="row-sync${e.overall_status===4?' row-cleanup':''}" data-action="row-sync" data-hostname="${esc(e.hostname)}"${wc().mutationEnabled?'':' disabled'}>${e.overall_status===4?'Clean up':'Sync'}</button>
         </div>
       </td>
     </tr>`;
@@ -375,7 +441,9 @@ function tTable(entries) {
 
   return `<section id="entries-panel" class="panel entries-panel" data-table-scrolls="false">
     <table>
-      <thead><tr><th>Hostname</th><th>Status</th><th>Services</th><th>Upstream</th><th>DNS</th><th>Actions</th></tr></thead>
+      <thead><tr>
+        <th>Hostname</th><th>Status</th><th>Services</th><th>Upstream</th><th>DNS</th><th>Actions</th>
+      </tr></thead>
       <tbody id="entries">${rows}</tbody>
     </table>
   </section>`;
@@ -417,6 +485,75 @@ function tSyncPanel() {
   </section>`;
 }
 
+function tInspectorPlan(e) {
+  const p = S.inspectorPlan;
+  const isStale = e.overall_status === 4;
+  const mut = wc().mutationEnabled;
+
+  // Plan not yet fetched — show a single "Check changes" button
+  if (!p.loading && !p.actions.length && !p.log && !p.applyLog) {
+    return `<div class="insp-plan-idle">
+      <button class="insp-plan-check" data-action="inspector-preview">Check what needs to change</button>
+    </div>`;
+  }
+
+  // Loading
+  if (p.loading) {
+    return `<div class="insp-plan-wrap">
+      <div class="insp-plan-header"><strong>Changes needed</strong><span class="probe-pending">Checking…</span></div>
+    </div>`;
+  }
+
+  // Applied result
+  if (p.applyLog) {
+    return `<div class="insp-plan-wrap">
+      <div class="insp-plan-header"><strong>Result</strong></div>
+      <pre class="insp-plan-log ok">${esc(p.applyLog)}</pre>
+      <button class="insp-plan-check" data-action="inspector-preview">Check again</button>
+    </div>`;
+  }
+
+  // No changes needed
+  if (!p.actions.length) {
+    return `<div class="insp-plan-wrap">
+      <div class="insp-plan-header"><strong>Changes needed</strong><span class="probe-up">✓ Already in sync</span></div>
+      <button class="insp-plan-recheck" data-action="inspector-preview">Re-check</button>
+    </div>`;
+  }
+
+  // Has actions — show them with checkboxes + apply button
+  const enabledCount = p.actions.filter((_, i) => !p.disabledIndices.has(i)).length;
+  const rows = p.actions.map((a, i) => {
+    const enabled = !p.disabledIndices.has(i);
+    const typeClass = a.type === 'delete' ? 'plan-del' : a.type === 'add' ? 'plan-add' : 'plan-upd';
+    const verb = a.type === 'delete' ? '−' : a.type === 'add' ? '+' : '~';
+    const svc  = (a.service || '').toUpperCase().slice(0, 2);
+    const detail = a.new_ip || a.new_service || a.old_ip || '';
+    return `<label class="plan-row ${typeClass}${enabled?'':' plan-row-disabled'}" title="${enabled?'Click to skip':'Click to include'}">
+      <input type="checkbox" class="plan-row-check" data-action="toggle-insp-action" data-idx="${i}"${enabled?' checked':''}>
+      <span class="plan-verb">${verb}</span>
+      <span class="plan-svc">${svc}</span>
+      <span class="plan-detail">${esc(detail || a.details || '')}</span>
+    </label>`;
+  }).join('');
+
+  const applyLabel = p.applying ? 'Applying…' : isStale ? 'Clean up' : `Apply${enabledCount < p.actions.length ? ` (${enabledCount}/${p.actions.length})` : ''}`;
+  const applyBtn = mut
+    ? `<button class="insp-plan-apply" data-action="inspector-apply"${(p.applying || enabledCount === 0)?' disabled':''}>
+         ${applyLabel}
+       </button>`
+    : `<button class="insp-plan-apply" disabled title="Read-only session">Apply (disabled)</button>`;
+
+  return `<div class="insp-plan-wrap">
+    <div class="insp-plan-header">
+      <strong>Changes needed</strong>
+      <button class="insp-plan-recheck" data-action="inspector-preview">Re-check</button>
+    </div>
+    <div class="insp-plan-rows">${rows}</div>
+    ${applyBtn}
+  </div>`;
+}
+
 function tInspector() {
   const e = selectedEntry();
   if (!e) return `<section id="host-inspector" class="panel inspector" aria-live="polite">
@@ -425,6 +562,51 @@ function tInspector() {
   </section>`;
 
   const ub = e.unbound_status, ag = e.adguard_status, cf = e.cloudflare_status;
+  const isStale = e.overall_status === 4;
+  // Probe target: prefer caddy_upstream (has real port), fall back to DNS IP from Unbound/AdGuard.
+  const probeUpstream = e.caddy_upstream || ub?.ip || ag?.ip || '';
+
+  // Build probe result display
+  let probeHtml = '';
+  if (probeUpstream) {
+    const pr = (S.probe.hostname === e.hostname) ? S.probe.result : null;
+    const probeLoading = S.probe.loading && S.probe.hostname === e.hostname;
+    let probeResult = '';
+    if (probeLoading) {
+      probeResult = `<span class="probe-pending">Probing…</span>`;
+    } else if (pr) {
+      if (pr.reachable) {
+        probeResult = `<span class="probe-up">✓ Responding (${pr.status_code||'—'}, ${pr.latency_ms}ms)</span>`;
+      } else {
+        const msg = pr.error ? pr.error.replace(/.*:.*:\s*/, '') : 'unreachable';
+        probeResult = `<span class="probe-down">✗ ${esc(msg)}</span>`;
+      }
+    }
+    probeHtml = `<div class="probe-row">
+      <button class="probe-btn" data-action="probe" data-hostname="${esc(e.hostname)}" data-upstream="${esc(probeUpstream)}"${probeLoading?' disabled':''}>Probe</button>
+      <span class="probe-target">${esc(probeUpstream)}</span>
+      ${probeResult}
+    </div>`;
+  }
+
+  // Stale banner
+  const staleBanner = isStale ? `<div class="stale-banner">
+    <strong>Stale DNS entry</strong> — This hostname is no longer in Caddy's config but still has DNS records in ${[ub?.configured&&'Unbound', ag?.configured&&'AdGuard'].filter(Boolean).join(' + ')}. Use <em>Clean up</em> to delete them.
+  </div>` : '';
+
+  // Build unsync buttons for services that are currently configured for this hostname
+  const mut = wc().mutationEnabled;
+  const unsyncBtns = [];
+  if (ub?.configured && !isStale) {
+    unsyncBtns.push(`<button class="unsync-btn" data-action="unsync-svc" data-hostname="${esc(e.hostname)}" data-svc="unbound"${mut?'':' disabled'} title="Remove this entry from OPNSense / Unbound DNS">Remove from Unbound</button>`);
+  }
+  if (ag?.configured && !isStale) {
+    unsyncBtns.push(`<button class="unsync-btn" data-action="unsync-svc" data-hostname="${esc(e.hostname)}" data-svc="adguard"${mut?'':' disabled'} title="Remove this entry from AdGuard DNS">Remove from AdGuard</button>`);
+  }
+  const unsyncSection = unsyncBtns.length
+    ? `<div class="unsync-section"><span class="unsync-label">Manual removal</span>${unsyncBtns.join('')}</div>`
+    : '';
+
   return `<section id="host-inspector" class="panel inspector" aria-live="polite">
     <div class="host-title">
       <strong>${esc(e.hostname)}</strong>
@@ -433,6 +615,7 @@ function tInspector() {
         <span class="dns-result ${dnsCls(e.dns_resolved)}">${esc(e.dns_resolved||'FAIL')}</span>
       </div>
     </div>
+    ${staleBanner}
     <div class="inspector-grid">
       <div class="inspector-line"><span>Upstream</span><strong>${esc(e.caddy_upstream||'—')}</strong></div>
       <div class="inspector-line"><span>Source</span><strong>${esc(e.data_source||'—')}</strong></div>
@@ -440,10 +623,9 @@ function tInspector() {
       <div class="inspector-line ${svcTone(ag)}"><span>AdGuard</span><strong>${esc(svcText(ag))}</strong></div>
       <div class="inspector-line ${cf?.configured?'violet':''}"><span>Cloudflare</span><strong>${cf?.configured?esc(cf.service||'Routed'):'Not routed'}</strong></div>
     </div>
-    <div class="inspector-actions">
-      <button id="inspector-preview" data-action="inspector-preview">Preview</button>
-      <button id="inspector-sync" data-action="inspector-sync"${wc().mutationEnabled?'':' disabled'}>Sync</button>
-    </div>
+    ${unsyncSection}
+    ${probeHtml}
+    ${tInspectorPlan(e)}
   </section>`;
 }
 
@@ -612,12 +794,107 @@ function tConfigTestSummary(c) {
   </div>`;
 }
 
+// Re-fetch the CF wizard sync plan using current wizard options.
+async function cfWizardRefreshPlan() {
+  const w = S.cfWizard;
+  S.cfWizard.loading = true;
+  S.cfWizard.log = '';
+  render();
+  try {
+    const params = new URLSearchParams({
+      service: 'cloudflare',
+      hostname: w.hostname,
+      origin_mode: w.originMode || 'via-caddy',
+      no_tls_verify: w.noTLSVerify ? 'true' : 'false',
+      disable_chunked_encoding: w.disableChunkedEncoding ? 'true' : 'false',
+      tunnel_id: w.selectedTunnelId || '',
+    });
+    const plan = await api(`/api/sync/plan?${params}`);
+    S.cfWizard.actions   = plan.actions    || [];
+    S.cfWizard.planId    = plan.plan_id    || '';
+    S.cfWizard.actionIds = plan.action_ids || [];
+  } catch (err) {
+    S.cfWizard.log = `Failed to load plan: ${err.message}`;
+  }
+  S.cfWizard.loading = false;
+  render();
+}
+
+function tCfWizardOptions(w, cfg) {
+  // Tunnel selector
+  const tunnels = w.availableTunnels || [];
+  const configuredTunnelId = cfg?.summary?.cloudflare?.details?.tunnel_id || '';
+  let tunnelSection = '';
+  if (tunnels.length > 1) {
+    const opts = tunnels.map(t => {
+      const isDefault = t.id === configuredTunnelId;
+      const sel = (w.selectedTunnelId || configuredTunnelId) === t.id ? ' selected' : '';
+      return `<option value="${esc(t.id)}"${sel}>${esc(t.name)}${isDefault ? ' (default)' : ''}</option>`;
+    }).join('');
+    tunnelSection = `
+      <div class="wiz-opt-row">
+        <label class="wiz-opt-label">Tunnel</label>
+        <select class="wiz-opt-select" id="wiz-tunnel-select">${opts}</select>
+      </div>`;
+  } else if (tunnels.length === 1) {
+    tunnelSection = `
+      <div class="wiz-opt-row">
+        <label class="wiz-opt-label">Tunnel</label>
+        <span class="wiz-opt-value">${esc(tunnels[0].name)}</span>
+      </div>`;
+  }
+
+  // Origin mode toggle
+  const viaCaddyActive  = w.originMode !== 'direct';
+  const directActive    = w.originMode === 'direct';
+  const originSection = `
+    <div class="wiz-opt-row">
+      <label class="wiz-opt-label">Origin</label>
+      <div class="wiz-seg">
+        <button class="wiz-seg-btn${viaCaddyActive ? ' active' : ''}" data-action="cf-wiz-origin" data-mode="via-caddy" title="CF tunnel → Caddy → service (recommended)">Via Caddy</button>
+        <button class="wiz-seg-btn${directActive  ? ' active' : ''}" data-action="cf-wiz-origin" data-mode="direct"    title="CF tunnel → service directly (bypasses Caddy)">Direct to service</button>
+      </div>
+      <span class="wiz-opt-hint">${directActive ? 'CF → service (bypasses Caddy)' : 'CF → Caddy → service'}</span>
+    </div>`;
+
+  // TLS / advanced options checkboxes
+  const tlsChecked   = w.noTLSVerify             ? ' checked' : '';
+  const chunkChecked = w.disableChunkedEncoding   ? ' checked' : '';
+  const viaCaddy     = w.originMode !== 'direct';
+  const originSNI    = viaCaddy ? `
+      <div class="wiz-opt-row wiz-opt-subrow">
+        <label class="wiz-opt-label">SNI</label>
+        <span class="wiz-opt-hint">cloudflared will use <strong>${esc(w.hostname)}</strong> as the TLS server name</span>
+      </div>` : '';
+  const optionsSection = `
+    <div class="wiz-opt-row">
+      <label class="wiz-opt-label">Options</label>
+      <div class="wiz-opt-checks">
+        <label class="wiz-opt-check">
+          <input type="checkbox" id="wiz-no-tls-verify"${tlsChecked}>
+          <span>Skip TLS verify${w.noTLSVerify ? ' <span class="wiz-opt-warn visible">⚠ insecure</span>' : ''}</span>
+        </label>
+        <label class="wiz-opt-check">
+          <input type="checkbox" id="wiz-disable-chunked"${chunkChecked}>
+          <span>Disable chunked encoding <span class="wiz-opt-hint2">for WSGI / legacy backends</span></span>
+        </label>
+      </div>
+    </div>${originSNI}`;
+
+  return `<div class="wiz-options">${tunnelSection}${originSection}${optionsSection}</div>`;
+}
+
 function tCfWizard() {
   const w = S.cfWizard;
   if (!w.open) return '';
   const cfg = S.config;
-  const tunnelName = cfg?.summary?.cloudflare?.extra?.tunnel_name || cfg?.cloudflare?.tunnel_id || 'configured tunnel';
-  const serviceURL = cfg?.summary?.cloudflare?.extra?.caddy_service_url || cfg?.caddy?.server_ip ? `http://${cfg.caddy.server_ip}:80` : '';
+  const configuredTunnelId = cfg?.summary?.cloudflare?.details?.tunnel_id || '';
+  const tunnels = w.availableTunnels || [];
+  // Resolve tunnel name for display
+  const selectedId = w.selectedTunnelId || configuredTunnelId;
+  const selectedTunnel = tunnels.find(t => t.id === selectedId);
+  const tunnelName = selectedTunnel?.name || cfg?.cloudflare?.tunnel_id || 'configured tunnel';
+  const serviceURL = cfg?.summary?.cloudflare?.details?.caddy_service_url || (cfg?.caddy?.server_ip ? `http://${cfg.caddy.server_ip}:80` : '');
 
   let body = '';
   if (w.loading) {
@@ -631,6 +908,9 @@ function tCfWizard() {
     const a = w.actions[0];
     const verb = a.type === 'add' ? 'Add to' : a.type === 'update' ? 'Update in' : 'Remove from';
     const svcURL = a.new_service || a.old_service || serviceURL;
+    const noTLSNote = a.no_tls_verify ? `<tr><th>TLS verify</th><td class="wiz-warn">⚠ disabled</td></tr>` : '';
+    const sniNote = a.origin_server_name ? `<tr><th>TLS SNI</th><td><code>${esc(a.origin_server_name)}</code></td></tr>` : '';
+    const chunkedNote = a.disable_chunked_encoding ? `<tr><th>Chunked enc.</th><td class="wiz-warn">disabled</td></tr>` : '';
     body = `
       <div class="wiz-preview">
         <div class="wiz-action-row">
@@ -641,6 +921,7 @@ function tCfWizard() {
           <tr><th>Hostname</th><td><code>${esc(a.hostname)}</code></td></tr>
           ${svcURL ? `<tr><th>Origin service</th><td><code>${esc(svcURL)}</code></td></tr>` : ''}
           ${a.new_http_host_header ? `<tr><th>Host header</th><td><code>${esc(a.new_http_host_header)}</code></td></tr>` : ''}
+          ${sniNote}${noTLSNote}${chunkedNote}
           ${a.details ? `<tr><th>Note</th><td>${esc(a.details)}</td></tr>` : ''}
         </table>
         ${w.log ? `<pre class="wiz-log error">${esc(w.log)}</pre>` : ''}
@@ -659,6 +940,7 @@ function tCfWizard() {
       <button class="wiz-close" data-action="cf-wizard-close" aria-label="Close">✕</button>
     </div>
     <div class="wiz-hostname">${esc(w.hostname)}</div>
+    ${!w.applied ? tCfWizardOptions(w, cfg) : ''}
     <div class="wiz-body">${body}</div>
     <div class="wiz-foot">
       <button class="wiz-btn secondary" data-action="cf-wizard-close">Cancel</button>
@@ -711,6 +993,60 @@ function tConfigModal() {
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
+function tRowModal() {
+  const m = S.rowModal;
+  if (!m.open) return '';
+
+  const mut = wc().mutationEnabled;
+  let body = '';
+
+  if (m.loading) {
+    body = `<div class="row-modal-loading"><div class="wiz-spinner"></div><span>Fetching changes…</span></div>`;
+  } else if (m.applyLog) {
+    body = `<pre class="row-modal-result">${esc(m.applyLog)}</pre>`;
+  } else if (!m.actions.length) {
+    body = `<div class="row-modal-ok">✓ Already in sync — nothing to do.</div>`;
+  } else {
+    const enabledCount = m.actions.filter((_, i) => !m.disabledIndices.has(i)).length;
+    const rows = m.actions.map((a, i) => {
+      const enabled = !m.disabledIndices.has(i);
+      const typeClass = a.type === 'delete' ? 'plan-del' : a.type === 'add' ? 'plan-add' : 'plan-upd';
+      const verb = a.type === 'delete' ? '−' : a.type === 'add' ? '+' : '~';
+      const svc = (a.service || '').toUpperCase();
+      const detail = a.new_ip || a.new_service || a.old_ip || a.details || '';
+      const badge = a.type === 'delete' ? 'Remove' : a.type === 'add' ? 'Add' : 'Update';
+      return `<label class="row-modal-action ${typeClass}${enabled ? '' : ' plan-row-disabled'}" title="${enabled ? 'Uncheck to skip' : 'Check to include'}">
+        <input type="checkbox" class="plan-row-check" data-action="toggle-row-modal-action" data-idx="${i}"${enabled ? ' checked' : ''}>
+        <span class="row-modal-badge ${a.type}">${badge}</span>
+        <span class="row-modal-svc">${esc(svc)}</span>
+        <span class="row-modal-detail">${esc(detail)}</span>
+      </label>`;
+    }).join('');
+
+    const applyBtn = mut
+      ? `<button class="row-modal-apply-btn" data-action="row-modal-apply"${(m.applying || enabledCount === 0) ? ' disabled' : ''}>
+           ${m.applying ? 'Applying…' : `Apply ${enabledCount} change${enabledCount !== 1 ? 's' : ''}`}
+         </button>`
+      : `<button class="row-modal-apply-btn" disabled>Apply (read-only session)</button>`;
+
+    body = `<div class="row-modal-actions">${rows}</div>
+      <div class="row-modal-footer">${applyBtn}</div>`;
+  }
+
+  return `<div class="row-modal-overlay" data-action="row-modal-close" id="row-modal-overlay">
+    <div class="row-modal" role="dialog" aria-modal="true" id="row-modal-inner">
+      <div class="row-modal-header">
+        <div>
+          <div class="row-modal-title">${esc(m.hostname)}</div>
+          <div class="row-modal-subtitle">${m.loading ? 'Loading…' : m.applyLog ? 'Done' : m.actions.length ? `${m.actions.length} change${m.actions.length !== 1 ? 's' : ''} pending` : 'No changes'}</div>
+        </div>
+        <button class="row-modal-close" data-action="row-modal-close">✕</button>
+      </div>
+      <div class="row-modal-body">${body}</div>
+    </div>
+  </div>`;
+}
+
 function render() {
   const root = document.getElementById('root');
   if (!root) return;
@@ -755,6 +1091,7 @@ function render() {
     </main>
     ${tConfigModal()}
     ${tCfWizard()}
+    ${tRowModal()}
   </div>`;
 
   const newEp = document.getElementById('entries-panel');
@@ -790,23 +1127,36 @@ document.addEventListener('click', async ev => {
   if (a === 'cf-wizard') {
     ev.stopPropagation();
     const hostname = el.dataset.hostname;
-    S.cfWizard = { open: true, hostname, loading: true, actions: [], planId: '', actionIds: [], log: '', applied: false };
+    const cfDetails = S.config?.summary?.cloudflare?.details || {};
+    const defaultTunnelId = cfDetails.tunnel_id || '';
+    S.cfWizard = {
+      open: true, hostname, loading: true, actions: [], planId: '', actionIds: [], log: '', applied: false,
+      originMode: 'via-caddy', noTLSVerify: false, disableChunkedEncoding: false, selectedTunnelId: defaultTunnelId,
+      availableTunnels: S.cfWizard.availableTunnels || [], tunnelsLoading: false,
+    };
     render();
-    try {
-      const plan = await api(`/api/sync/plan?service=cloudflare&hostname=${encodeURIComponent(hostname)}`);
-      S.cfWizard.actions = plan.actions || [];
-      S.cfWizard.planId = plan.plan_id || '';
-      S.cfWizard.actionIds = plan.action_ids || [];
-    } catch (err) {
-      S.cfWizard.log = `Failed to load plan: ${err.message}`;
+    // Fetch available tunnels once (reuse if already loaded)
+    if (!S.cfWizard.availableTunnels.length) {
+      S.cfWizard.tunnelsLoading = true;
+      try {
+        const tunnels = await api('/api/cloudflare/tunnels');
+        S.cfWizard.availableTunnels = Array.isArray(tunnels) ? tunnels : [];
+      } catch (_) { /* ignore — fall back to no selector */ }
+      S.cfWizard.tunnelsLoading = false;
     }
-    S.cfWizard.loading = false;
-    render();
+    await cfWizardRefreshPlan();
     return;
   }
   if (a === 'cf-wizard-close') {
     S.cfWizard = { ...S.cfWizard, open: false };
     render(); return;
+  }
+  if (a === 'cf-wiz-origin') {
+    const newMode = el.dataset.mode || 'via-caddy';
+    S.cfWizard.originMode = newMode;
+    // Via Caddy uses a local Caddy cert → auto-enable NoTLSVerify
+    if (newMode === 'via-caddy') S.cfWizard.noTLSVerify = true;
+    await cfWizardRefreshPlan(); return;
   }
   if (a === 'cf-wizard-apply') {
     S.cfWizard.loading = true; render();
@@ -828,26 +1178,98 @@ document.addEventListener('click', async ev => {
   if (a === 'select-row') {
     const tr = el.closest('tr');
     const h  = tr?.dataset.hostname ?? el.dataset.hostname;
-    if (h) { S.selectedHostname = h; render(); }
+    if (h && h !== S.selectedHostname) {
+      S.selectedHostname = h;
+      S.inspectorPlan = { loading: false, actions: [], planId: '', actionIds: [], log: '', applying: false, applyLog: '' };
+    }
+    if (h) render();
     return;
   }
-  if (a === 'row-preview') {
+  if (a === 'row-preview' || a === 'row-sync') {
     ev.stopPropagation();
-    S.selectedHostname = el.dataset.hostname;
-    await fetchPlan(S.syncService, el.dataset.hostname);
+    const hostname = el.dataset.hostname;
+    S.rowModal = { open: true, hostname, loading: true, actions: [], planId: '', actionIds: [], applying: false, applyLog: '', disabledIndices: new Set() };
+    render();
+    try {
+      const data = await api(`/api/sync/plan?hostname=${encodeURIComponent(hostname)}&service=${encodeURIComponent(S.syncService === 'all' ? '' : S.syncService)}`);
+      const plan = data.plan || data;
+      S.rowModal = { ...S.rowModal, loading: false, actions: plan.actions || [], planId: plan.plan_id || data.plan_id || '', actionIds: plan.action_ids || data.action_ids || [], disabledIndices: new Set() };
+    } catch (err) {
+      S.rowModal = { ...S.rowModal, loading: false, applyLog: `Error: ${err.message}` };
+    }
+    render();
     return;
   }
-  if (a === 'row-sync') {
+  if (a === 'row-modal-close') {
+    // Only close if clicking the overlay backdrop, not the modal card itself
+    if (ev.target.id === 'row-modal-inner') return;
+    S.rowModal = { ...S.rowModal, open: false };
+    render();
+    return;
+  }
+  if (a === 'toggle-row-modal-action') {
+    const idx = parseInt(el.dataset.idx, 10);
+    const dis = new Set(S.rowModal.disabledIndices);
+    if (dis.has(idx)) dis.delete(idx); else dis.add(idx);
+    S.rowModal = { ...S.rowModal, disabledIndices: dis };
+    render();
+    return;
+  }
+  if (a === 'row-modal-apply') {
+    const m = S.rowModal;
+    const enabledIds = (m.actionIds || []).filter((_, i) => !m.disabledIndices.has(i));
+    if (!enabledIds.length) return;
+    S.rowModal = { ...m, applying: true };
+    render();
+    try {
+      const body = m.planId
+        ? { dry_run: false, plan_id: m.planId, action_ids: enabledIds }
+        : { dry_run: false, actions: m.actions.filter((_, i) => !m.disabledIndices.has(i)) };
+      const { result: r } = await api('/api/sync/apply', { method: 'POST', body: JSON.stringify(body) });
+      const log = fmtApplyResult(r, false);
+      S.rowModal = { ...S.rowModal, applying: false, applyLog: log, actions: [], planId: '', actionIds: [] };
+      await refresh();
+    } catch (err) {
+      S.rowModal = { ...S.rowModal, applying: false, applyLog: `Apply error: ${err.message}` };
+    }
+    render();
+    return;
+  }
+  if (a === 'preview-sync')      { await fetchPlan(S.syncService); return; }  // global — no hostname scope
+  if (a === 'dry-run')           { await applySync(true);  return; }
+  if (a === 'sync-now')          { await applySync(false); return; }
+  if (a === 'inspector-preview') { await fetchInspectorPlan(S.selectedHostname); return; }
+  if (a === 'inspector-apply')   { await applyInspectorPlan(); return; }
+  if (a === 'toggle-insp-action') {
+    const idx = parseInt(el.dataset.idx, 10);
+    const p = S.inspectorPlan;
+    const dis = new Set(p.disabledIndices);
+    if (dis.has(idx)) dis.delete(idx); else dis.add(idx);
+    S.inspectorPlan = { ...p, disabledIndices: dis };
+    render(); return;
+  }
+  if (a === 'unsync-svc') {
     ev.stopPropagation();
-    S.selectedHostname = el.dataset.hostname;
-    if (await fetchPlan(S.syncService, el.dataset.hostname)) await applySync(false);
+    const hostname = el.dataset.hostname, svc = el.dataset.svc;
+    S.selectedHostname = hostname;
+    // Fetch an unsync plan (generates delete actions) scoped to this hostname + service
+    await fetchInspectorPlan(hostname, { service: svc, unsync: true });
     return;
   }
-  if (a === 'preview-sync')       { await fetchPlan(S.syncService, S.selectedHostname); return; }
-  if (a === 'dry-run')            { await applySync(true);  return; }
-  if (a === 'sync-now')           { await applySync(false); return; }
-  if (a === 'inspector-preview')  { await fetchPlan(S.syncService, S.selectedHostname); return; }
-  if (a === 'inspector-sync')     { if (await fetchPlan(S.syncService, S.selectedHostname)) await applySync(false); return; }
+
+  if (a === 'probe') {
+    ev.stopPropagation();
+    const upstream = el.dataset.upstream, hostname = el.dataset.hostname;
+    S.probe = { loading: true, result: null, hostname };
+    render();
+    try {
+      const r = await api(`/api/probe?upstream=${encodeURIComponent(upstream)}&hostname=${encodeURIComponent(hostname)}`);
+      S.probe = { loading: false, result: r, hostname };
+    } catch (err) {
+      S.probe = { loading: false, result: { reachable: false, error: err.message }, hostname };
+    }
+    render(); return;
+  }
   if (a === 'test-cfg')  { await testConfig(el.dataset.svc); return; }
   if (a === 'save-cfg')  { await doSave(el.dataset.svc); return; }
   if (a === 'cf-discover') {
@@ -885,9 +1307,21 @@ document.addEventListener('input', ev => {
   }
 });
 
-document.addEventListener('change', ev => {
+document.addEventListener('change', async ev => {
   if (ev.target.id === 'status-filter') { S.statusFilter = ev.target.value; S.statusFilterInverse = false; render(); return; }
   if (ev.target.id === 'sync-service')  { S.syncService  = ev.target.value; return; }
+  if (ev.target.id === 'wiz-tunnel-select' && S.cfWizard.open) {
+    S.cfWizard.selectedTunnelId = ev.target.value;
+    await cfWizardRefreshPlan(); return;
+  }
+  if (ev.target.id === 'wiz-no-tls-verify' && S.cfWizard.open) {
+    S.cfWizard.noTLSVerify = ev.target.checked;
+    await cfWizardRefreshPlan(); return;
+  }
+  if (ev.target.id === 'wiz-disable-chunked' && S.cfWizard.open) {
+    S.cfWizard.disableChunkedEncoding = ev.target.checked;
+    await cfWizardRefreshPlan(); return;
+  }
   const { form, field } = ev.target.dataset;
   if (form && field && S.forms[form]) {
     S.forms[form] = { ...S.forms[form], [field]: ev.target.dataset.type === 'checkbox' ? ev.target.checked : ev.target.value };

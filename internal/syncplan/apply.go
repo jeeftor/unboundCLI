@@ -203,18 +203,32 @@ func applyCloudflareAction(client CloudflareClient, action Action) error {
 	switch action.Type {
 	case "add":
 		if err := client.UpdateTunnelRule(api.IngressRuleSpec{
-			Hostname:       action.Hostname,
-			Service:        action.NewService,
-			HTTPHostHeader: action.NewHTTPHostHeader,
+			Hostname:                  action.Hostname,
+			Service:                   action.NewService,
+			HTTPHostHeader:            action.NewHTTPHostHeader,
+			OriginServerName:          action.OriginServerName,
+			SetOriginServerName:       action.OriginServerName != "",
+			NoTLSVerify:               action.NoTLSVerify,
+			SetNoTLSVerify:            action.NoTLSVerify,
+			DisableChunkedEncoding:    action.DisableChunkedEncoding,
+			SetDisableChunkedEncoding: action.DisableChunkedEncoding,
+			TunnelID:                  action.TunnelID,
 		}); err != nil {
 			return err
 		}
 		return client.EnsureDNSRecord(action.Hostname)
 	case "update":
 		return client.UpdateTunnelRule(api.IngressRuleSpec{
-			Hostname:       action.Hostname,
-			Service:        action.NewService,
-			HTTPHostHeader: action.NewHTTPHostHeader,
+			Hostname:                  action.Hostname,
+			Service:                   action.NewService,
+			HTTPHostHeader:            action.NewHTTPHostHeader,
+			OriginServerName:          action.OriginServerName,
+			SetOriginServerName:       true, // always write on update
+			NoTLSVerify:               action.NoTLSVerify,
+			SetNoTLSVerify:            true,
+			DisableChunkedEncoding:    action.DisableChunkedEncoding,
+			SetDisableChunkedEncoding: true,
+			TunnelID:                  action.TunnelID,
 		})
 	case "delete":
 		if err := client.DeleteTunnelRule(action.Hostname); err != nil {
