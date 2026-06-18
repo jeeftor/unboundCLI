@@ -1,11 +1,16 @@
-.idea
-# Binaries for programs and plugins
+.idea/
+
+# Binaries / build output
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 unboundCLI
+caddy-dns-sync
+test-build
+*.zip
+dist/
 
 # Test binary, built with `go test -c`
 *.test
@@ -13,17 +18,14 @@ unboundCLI
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# Dependency directories (remove the comment below to include it)
+# Dependency directories
 vendor/
 node_modules/
-
-# GoReleaser output directory
-dist/
 
 # macOS specific files
 .DS_Store
 
-# IDE specific files
+# IDE / editor files
 .vscode/
 *.swp
 *.swo
@@ -31,3 +33,25 @@ dist/
 # Local configuration files
 .env
 .env.local
+
+# nix / direnv
+.direnv/
+.envrc
+
+# cosign keys (never commit private keys)
+cosign.key
+cosign.pub
+
+# Claude / AI tool local settings
+.claude/settings.local.json
+
+# RTK (token-saver tool)
+.rtk/
+
+# Runtime logs and temp scripts
+*.log
+fix_*.sh
+
+# Misc leftover plan files (keep intentional ones explicitly)
+TUI_REBUILD_PLAN.md
+WIDGET_REFACTOR_FINAL_STEPS.md

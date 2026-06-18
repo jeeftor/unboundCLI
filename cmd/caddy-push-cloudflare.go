@@ -13,12 +13,13 @@ import (
 )
 
 var (
-	cpCFDryRun          bool
-	cpCFCaddyIP         string
-	cpCFCaddyPort       int
-	cpCFCaddyServiceURL string
-	cpCFHostFilter      []string
-	cpCFVerbose         bool
+	cpCFDryRun           bool
+	cpCFCaddyIP          string
+	cpCFCaddyPort        int
+	cpCFCaddyServiceURL  string
+	cpCFHostFilter       []string
+	cpCFExcludeHostnames []string
+	cpCFVerbose          bool
 )
 
 var caddyPushCloudflareCmd = &cobra.Command{
@@ -82,10 +83,11 @@ func runCaddyPushCloudflare(cmd *cobra.Command, args []string) error {
 	caddyClient := api.NewCaddyClient(caddyIP, caddyPort)
 
 	options := sync2.CaddyToCloudflareSyncOptions{
-		DryRun:          cpCFDryRun,
-		CaddyServiceURL: serviceURL,
-		HostFilter:      cpCFHostFilter,
-		Verbose:         cpCFVerbose,
+		DryRun:           cpCFDryRun,
+		CaddyServiceURL:  serviceURL,
+		HostFilter:       cpCFHostFilter,
+		ExcludeHostnames: cpCFExcludeHostnames,
+		Verbose:          cpCFVerbose,
 	}
 
 	if cpCFDryRun {
@@ -194,6 +196,9 @@ func init() {
 	caddyPushCloudflareCmd.Flags().
 		StringSliceVar(&cpCFHostFilter, "host-filter", nil,
 			"Only sync hostnames matching these domain suffixes (repeatable)")
+	caddyPushCloudflareCmd.Flags().
+		StringSliceVar(&cpCFExcludeHostnames, "exclude-hostnames", nil,
+			"Hostnames to skip entirely (comma-separated or repeatable); their CF rules are left untouched")
 	caddyPushCloudflareCmd.Flags().
 		BoolVar(&cpCFVerbose, "verbose", false, "Show additional detail including skipped hostnames")
 }

@@ -13,10 +13,11 @@ import (
 
 // CaddyToCloudflareSyncOptions contains options for the Caddy-to-Cloudflare push sync.
 type CaddyToCloudflareSyncOptions struct {
-	DryRun          bool
-	CaddyServiceURL string   // target service URL for new ingress rules, e.g. "http://10.0.0.15:80"
-	HostFilter      []string // optional: only sync hostnames matching these domain suffixes
-	Verbose         bool
+	DryRun           bool
+	CaddyServiceURL  string   // target service URL for new ingress rules, e.g. "https://10.0.0.15"
+	HostFilter       []string // optional: only sync hostnames matching these domain suffixes
+	ExcludeHostnames []string // hostnames to skip entirely; their CF rules are left untouched
+	Verbose          bool
 }
 
 // CaddyToCloudflareSyncResult holds the outcome of a Caddy-to-Cloudflare push sync.
@@ -64,6 +65,21 @@ func SyncCaddyToCloudflare(
 		caddyHosts = filtered
 	}
 
+	// Build exclude set once — applied to both caddyHosts and allCFHosts so
+	// the planner is completely blind to these hostnames and never touches them.
+	excludeSet := make(map[string]bool, len(options.ExcludeHostnames))
+	for _, h := range options.ExcludeHostnames {
+		excludeSet[strings.TrimSpace(h)] = true
+	}
+	for h := range caddyHosts {
+		if excludeSet[h] {
+			delete(caddyHosts, h)
+			if options.Verbose {
+				logging.Info("Skipping excluded hostname", "hostname", h)
+			}
+		}
+	}
+
 	for h := range caddyHosts {
 		result.CaddyHostnames = append(result.CaddyHostnames, h)
 	}
@@ -72,6 +88,12 @@ func SyncCaddyToCloudflare(
 	allCFHosts, err := cfClient.GetAllTunnelsDetails()
 	if err != nil {
 		return nil, fmt.Errorf("error scanning account tunnels: %w", err)
+	}
+
+	// Remove excluded hostnames from the CF map too — prevents the planner
+	// from generating delete actions for them.
+	for h := range excludeSet {
+		delete(allCFHosts, h)
 	}
 
 	entries := cloudflareSyncEntries(caddyHosts, allCFHosts)
