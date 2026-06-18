@@ -223,9 +223,11 @@ func buildCloudflareAction(entry *models.Entry, options Options) Action {
 		if desiredService == "" && options.CaddyServerIP != "" {
 			desiredService = fmt.Sprintf("https://%s", options.CaddyServerIP)
 		}
-		// Upgrade http:// → https:// when the user hasn't specified a scheme.
+		// Upgrade http:// → https:// when the user hasn't specified a scheme,
+		// and strip port :80 (default HTTP port is meaningless for HTTPS).
 		if strings.HasPrefix(desiredService, "http://") {
 			desiredService = "https://" + strings.TrimPrefix(desiredService, "http://")
+			desiredService = strings.TrimSuffix(desiredService, ":80")
 		}
 	}
 

@@ -22,7 +22,7 @@ const S = {
   testResults: {},
   probe: { loading: false, result: null, hostname: '' },
   inspectorPlan: { loading: false, actions: [], planId: '', actionIds: [], log: '', applying: false, applyLog: '', disabledIndices: new Set() },
-  rowModal: { open: false, hostname: '', loading: false, actions: [], planId: '', actionIds: [], applying: false, applyLog: '', disabledIndices: new Set() },
+  rowModal: { open: false, hostname: '', loading: false, actions: [], planId: '', actionIds: [], applying: false, applyLog: '', disabledIndices: new Set(), autoApply: false, unsyncLoading: '', svcOps: {} },
   forms: {
     unbound:    { base_url: '', api_key: '', api_secret: '', insecure: false },
     adguard:    { enabled: false, base_url: '', username: '', password: '', insecure: false },
@@ -432,8 +432,8 @@ function tTable(entries) {
       <td data-label="DNS"><span class="dns-result ${dnsCls(e.dns_resolved)}">${esc(e.dns_resolved||'FAIL')}</span></td>
       <td data-label="Actions">
         <div class="row-actions">
-          <button class="row-preview" data-action="row-preview" data-hostname="${esc(e.hostname)}">Preview</button>
-          <button class="row-sync${e.overall_status===4?' row-cleanup':''}" data-action="row-sync" data-hostname="${esc(e.hostname)}"${wc().mutationEnabled?'':' disabled'}>${e.overall_status===4?'Clean up':'Sync'}</button>
+          <button class="row-modify" data-action="row-modify" data-hostname="${esc(e.hostname)}">Modify</button>
+          <button class="row-sync-direct${e.overall_status===4?' row-cleanup':''}" data-action="row-sync-direct" data-hostname="${esc(e.hostname)}"${wc().mutationEnabled?'':' disabled'}>${e.overall_status===4?'Clean up':'Sync'}</button>
         </div>
       </td>
     </tr>`;
@@ -998,39 +998,99 @@ function tRowModal() {
   if (!m.open) return '';
 
   const mut = wc().mutationEnabled;
-  let body = '';
+  const entry = S.entries.find(e => e.hostname === m.hostname);
+  const ub = entry?.unbound_status, ag = entry?.adguard_status, cf = entry?.cloudflare_status;
+  const isStale = entry?.overall_status === 4;
+  const ops = m.svcOps || {};
 
-  if (m.loading) {
-    body = `<div class="row-modal-loading"><div class="wiz-spinner"></div><span>Fetching changes…</span></div>`;
+  // Per-service row (Sync or Remove button depending on configured state)
+  function svcRow(key, label, status) {
+    const op = ops[key] || {};
+    const isConfigured = !!status?.configured;
+    const currentTxt = isConfigured ? esc(svcText(status)) : '—';
+    const toneCls = svcTone(status);
+
+    let actionHtml = '';
+    if (op.loading) {
+      actionHtml = `<span class="svc-op-busy">Applying…</span>`;
+    } else if (op.log) {
+      actionHtml = `<span class="svc-op-done">${esc(op.log.replace(/\n[\s\S]*/,'').slice(0,60))}</span>
+        <button class="svc-op-redo" data-action="modal-svc-redo" data-svc="${key}">↺</button>`;
+    } else if (isConfigured && mut) {
+      actionHtml = `<button class="svc-op-remove" data-action="modal-svc-remove" data-svc="${key}">Remove</button>`;
+    } else if (!isConfigured && entry?.caddy_upstream && mut) {
+      actionHtml = `<button class="svc-op-sync" data-action="modal-svc-sync" data-svc="${key}">Sync ↑</button>`;
+    }
+
+    return `<div class="modal-svc-row">
+      <span class="modal-svc-name">${label}</span>
+      <span class="modal-svc-status ${toneCls}">${currentTxt}</span>
+      <div class="modal-svc-btns">${actionHtml}</div>
+    </div>`;
+  }
+
+  // Host info + per-service rows
+  const headerSection = entry ? `<div class="row-modal-host-info">
+    <div class="row-modal-meta-row">
+      ${entry.caddy_upstream ? `<span class="row-modal-meta-item"><span>Upstream</span><strong>${esc(entry.caddy_upstream)}</strong></span>` : ''}
+      ${entry.dns_resolved ? `<span class="row-modal-meta-item"><span>DNS</span><strong class="dns-result ${dnsCls(entry.dns_resolved)}">${esc(entry.dns_resolved)}</strong></span>` : ''}
+      ${cf?.configured ? `<span class="row-modal-meta-item"><span>CF</span><strong class="violet">${esc(cf.tunnel_name || 'Routed')}</strong></span>` : ''}
+    </div>
+  </div>
+  <div class="modal-svc-section">
+    ${svcRow('unbound', 'Unbound', ub)}
+    ${svcRow('adguard', 'AdGuard', ag)}
+    ${!cf?.configured && S.config?.summary?.cloudflare?.client_ready ? `<div class="modal-svc-row">
+      <span class="modal-svc-name">Cloudflare</span>
+      <span class="modal-svc-status missing">—</span>
+      <div class="modal-svc-btns"><button class="svc-op-cf" data-action="cf-wizard" data-hostname="${esc(m.hostname)}">+ Route</button></div>
+    </div>` : ''}
+    ${cf?.configured ? `<div class="modal-svc-row">
+      <span class="modal-svc-name">Cloudflare</span>
+      <span class="modal-svc-status ok">${esc(cf.service || cf.tunnel_name || 'Routed')}</span>
+      <div class="modal-svc-btns"></div>
+    </div>` : ''}
+  </div>` : '';
+
+  // Stale cleanup or plan section
+  let planHtml = '';
+  if (isStale) {
+    planHtml = `<div class="modal-plan-section">
+      <div class="modal-plan-header">Stale DNS entry — hostname no longer in Caddy</div>
+      ${mut ? `<div class="modal-stale-btns">
+        ${ub?.configured ? `<button class="svc-op-remove" data-action="modal-svc-remove" data-svc="unbound"${(ops.unbound?.loading)?'disabled':''}>Remove from Unbound</button>` : ''}
+        ${ag?.configured ? `<button class="svc-op-remove" data-action="modal-svc-remove" data-svc="adguard"${(ops.adguard?.loading)?'disabled':''}>Remove from AdGuard</button>` : ''}
+      </div>` : ''}
+    </div>`;
+  } else if (m.loading) {
+    planHtml = `<div class="row-modal-loading"><div class="wiz-spinner"></div><span>Fetching plan…</span></div>`;
   } else if (m.applyLog) {
-    body = `<pre class="row-modal-result">${esc(m.applyLog)}</pre>`;
-  } else if (!m.actions.length) {
-    body = `<div class="row-modal-ok">✓ Already in sync — nothing to do.</div>`;
-  } else {
+    planHtml = `<div class="modal-plan-section"><pre class="row-modal-result">${esc(m.applyLog)}</pre></div>`;
+  } else if (m.actions.length) {
     const enabledCount = m.actions.filter((_, i) => !m.disabledIndices.has(i)).length;
     const rows = m.actions.map((a, i) => {
       const enabled = !m.disabledIndices.has(i);
       const typeClass = a.type === 'delete' ? 'plan-del' : a.type === 'add' ? 'plan-add' : 'plan-upd';
-      const verb = a.type === 'delete' ? '−' : a.type === 'add' ? '+' : '~';
       const svc = (a.service || '').toUpperCase();
       const detail = a.new_ip || a.new_service || a.old_ip || a.details || '';
       const badge = a.type === 'delete' ? 'Remove' : a.type === 'add' ? 'Add' : 'Update';
-      return `<label class="row-modal-action ${typeClass}${enabled ? '' : ' plan-row-disabled'}" title="${enabled ? 'Uncheck to skip' : 'Check to include'}">
+      return `<label class="row-modal-action ${typeClass}${enabled ? '' : ' plan-row-disabled'}">
         <input type="checkbox" class="plan-row-check" data-action="toggle-row-modal-action" data-idx="${i}"${enabled ? ' checked' : ''}>
         <span class="row-modal-badge ${a.type}">${badge}</span>
         <span class="row-modal-svc">${esc(svc)}</span>
         <span class="row-modal-detail">${esc(detail)}</span>
       </label>`;
     }).join('');
-
     const applyBtn = mut
       ? `<button class="row-modal-apply-btn" data-action="row-modal-apply"${(m.applying || enabledCount === 0) ? ' disabled' : ''}>
            ${m.applying ? 'Applying…' : `Apply ${enabledCount} change${enabledCount !== 1 ? 's' : ''}`}
          </button>`
-      : `<button class="row-modal-apply-btn" disabled>Apply (read-only session)</button>`;
-
-    body = `<div class="row-modal-actions">${rows}</div>
-      <div class="row-modal-footer">${applyBtn}</div>`;
+      : `<button class="row-modal-apply-btn" disabled>Apply (read-only)</button>`;
+    planHtml = `<div class="modal-plan-section">
+      <div class="modal-plan-header">Pending changes</div>
+      <div class="row-modal-actions">${rows}</div>
+      <div class="row-modal-footer">${applyBtn}</div>
+    </div>`;
   }
 
   return `<div class="row-modal-overlay" data-action="row-modal-close" id="row-modal-overlay">
@@ -1038,11 +1098,14 @@ function tRowModal() {
       <div class="row-modal-header">
         <div>
           <div class="row-modal-title">${esc(m.hostname)}</div>
-          <div class="row-modal-subtitle">${m.loading ? 'Loading…' : m.applyLog ? 'Done' : m.actions.length ? `${m.actions.length} change${m.actions.length !== 1 ? 's' : ''} pending` : 'No changes'}</div>
+          <div class="row-modal-subtitle">${isStale ? 'Stale — clean up DNS records' : m.loading ? 'Loading…' : m.actions.length ? `${m.actions.length} change${m.actions.length!==1?'s':''} pending` : 'Manage services'}</div>
         </div>
         <button class="row-modal-close" data-action="row-modal-close">✕</button>
       </div>
-      <div class="row-modal-body">${body}</div>
+      <div class="row-modal-body">
+        ${headerSection}
+        ${planHtml}
+      </div>
     </div>
   </div>`;
 }
@@ -1083,10 +1146,6 @@ function render() {
           ${tToolbar(entries)}
           ${tTable(entries)}
         </section>
-        <aside class="right-rail">
-          ${tSyncPanel()}
-          ${tInspector()}
-        </aside>
       </section>
     </main>
     ${tConfigModal()}
@@ -1185,13 +1244,13 @@ document.addEventListener('click', async ev => {
     if (h) render();
     return;
   }
-  if (a === 'row-preview' || a === 'row-sync') {
+  if (a === 'row-modify') {
     ev.stopPropagation();
     const hostname = el.dataset.hostname;
-    S.rowModal = { open: true, hostname, loading: true, actions: [], planId: '', actionIds: [], applying: false, applyLog: '', disabledIndices: new Set() };
+    S.rowModal = { open: true, hostname, loading: true, actions: [], planId: '', actionIds: [], applying: false, applyLog: '', disabledIndices: new Set(), autoApply: false, unsyncLoading: '', svcOps: {} };
     render();
     try {
-      const data = await api(`/api/sync/plan?hostname=${encodeURIComponent(hostname)}&service=${encodeURIComponent(S.syncService === 'all' ? '' : S.syncService)}`);
+      const data = await api(`/api/sync/plan?hostname=${encodeURIComponent(hostname)}&service=`);
       const plan = data.plan || data;
       S.rowModal = { ...S.rowModal, loading: false, actions: plan.actions || [], planId: plan.plan_id || data.plan_id || '', actionIds: plan.action_ids || data.action_ids || [], disabledIndices: new Set() };
     } catch (err) {
@@ -1200,9 +1259,73 @@ document.addEventListener('click', async ev => {
     render();
     return;
   }
+  if (a === 'row-sync-direct') {
+    ev.stopPropagation();
+    const hostname = el.dataset.hostname;
+    S.rowModal = { open: true, hostname, loading: true, actions: [], planId: '', actionIds: [], applying: false, applyLog: '', disabledIndices: new Set(), autoApply: true, unsyncLoading: '', svcOps: {} };
+    render();
+    try {
+      const data = await api(`/api/sync/plan?hostname=${encodeURIComponent(hostname)}&service=`);
+      const plan = data.plan || data;
+      const actions = plan.actions || [];
+      const planId = plan.plan_id || data.plan_id || '';
+      const actionIds = plan.action_ids || data.action_ids || [];
+      if (!actions.length) {
+        S.rowModal = { ...S.rowModal, loading: false, actions: [], planId: '', actionIds: [], applyLog: '✓ Already in sync — nothing to do.' };
+      } else {
+        S.rowModal = { ...S.rowModal, loading: false, actions, planId, actionIds, applying: true };
+        render();
+        try {
+          const body = planId
+            ? { dry_run: false, plan_id: planId, action_ids: actionIds }
+            : { dry_run: false, actions };
+          const { result: r } = await api('/api/sync/apply', { method: 'POST', body: JSON.stringify(body) });
+          S.rowModal = { ...S.rowModal, applying: false, applyLog: fmtApplyResult(r, false), actions: [], planId: '', actionIds: [] };
+          await refresh();
+        } catch (err) {
+          S.rowModal = { ...S.rowModal, applying: false, applyLog: `Apply error: ${err.message}` };
+        }
+      }
+    } catch (err) {
+      S.rowModal = { ...S.rowModal, loading: false, applyLog: `Error: ${err.message}` };
+    }
+    render();
+    return;
+  }
+  if (a === 'modal-svc-sync' || a === 'modal-svc-remove' || a === 'modal-svc-redo') {
+    ev.stopPropagation();
+    const svc = el.dataset.svc;
+    const isRemove = a === 'modal-svc-remove';
+    const isRedo   = a === 'modal-svc-redo';
+    // Redo just clears the result so buttons reappear
+    if (isRedo) { S.rowModal.svcOps = { ...S.rowModal.svcOps, [svc]: {} }; render(); return; }
+    S.rowModal.svcOps = { ...(S.rowModal.svcOps||{}), [svc]: { loading: true, log: '' } };
+    render();
+    try {
+      const qs = `hostname=${encodeURIComponent(S.rowModal.hostname)}&service=${encodeURIComponent(svc)}${isRemove ? '&unsync=true' : ''}`;
+      const data = await api(`/api/sync/plan?${qs}`);
+      const plan = data.plan || data;
+      if (!plan.actions?.length) {
+        S.rowModal.svcOps = { ...(S.rowModal.svcOps||{}), [svc]: { loading: false, log: isRemove ? '✓ Already removed' : '✓ Already in sync' } };
+      } else {
+        const body = plan.plan_id
+          ? { dry_run: false, plan_id: plan.plan_id, action_ids: plan.action_ids }
+          : { dry_run: false, actions: plan.actions };
+        const { result: r } = await api('/api/sync/apply', { method: 'POST', body: JSON.stringify(body) });
+        S.rowModal.svcOps = { ...(S.rowModal.svcOps||{}), [svc]: { loading: false, log: fmtApplyResult(r, false) } };
+        await refresh();
+      }
+    } catch (err) {
+      S.rowModal.svcOps = { ...(S.rowModal.svcOps||{}), [svc]: { loading: false, log: `Error: ${err.message}` } };
+    }
+    render();
+    return;
+  }
   if (a === 'row-modal-close') {
-    // Only close if clicking the overlay backdrop, not the modal card itself
-    if (ev.target.id === 'row-modal-inner') return;
+    // Close button click → always close
+    if (el.classList.contains('row-modal-close')) { S.rowModal = { ...S.rowModal, open: false }; render(); return; }
+    // Backdrop click → only close when the actual overlay element was clicked, not a child bubbling up
+    if (ev.target !== el) return;
     S.rowModal = { ...S.rowModal, open: false };
     render();
     return;
@@ -1329,6 +1452,7 @@ document.addEventListener('change', async ev => {
 });
 
 document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && S.rowModal.open) { S.rowModal = { ...S.rowModal, open: false }; render(); return; }
   if (ev.key === 'Escape' && S.cfWizard.open) { S.cfWizard = { ...S.cfWizard, open: false }; render(); return; }
   if (ev.key === 'Escape' && S.configOpen) { S.configOpen = false; render(); return; }
   if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.dataset.action === 'select-row') {
