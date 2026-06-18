@@ -3,16 +3,19 @@ package web
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
@@ -246,7 +249,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/config", s.handleConfig)
 	s.mux.HandleFunc("/api/config/test", s.handleConfigTest)
 	s.mux.HandleFunc("/api/cloudflare/discover", s.handleCloudflareDiscover)
+	s.mux.HandleFunc("/api/cloudflare/tunnels", s.handleCloudflareTunnels)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
+	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
 }
@@ -484,6 +489,131 @@ func (s *Server) handleCloudflareDiscover(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleCloudflareTunnels returns the list of active tunnels from the configured CF client.
+// This lets the web wizard populate its tunnel selector without requiring re-authentication.
+func (s *Server) handleCloudflareTunnels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	runtime := s.runtimeSnapshot()
+	if runtime.Clients.Cloudflare == nil {
+		writeJSON(w, http.StatusOK, []api.CloudflareTunnel{})
+		return
+	}
+	tunnels, err := runtime.Clients.Cloudflare.ListTunnels()
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	active := make([]api.CloudflareTunnel, 0, len(tunnels))
+	for _, t := range tunnels {
+		if t.DeletedAt.IsZero() {
+			active = append(active, t)
+		}
+	}
+	writeJSON(w, http.StatusOK, active)
+}
+
+// ProbeResponse is the result of an HTTP reachability probe.
+type ProbeResponse struct {
+	Reachable  bool   `json:"reachable"`
+	StatusCode int    `json:"status_code,omitempty"`
+	LatencyMS  int64  `json:"latency_ms"`
+	Error      string `json:"error,omitempty"`
+	ProbeURL   string `json:"probe_url"`
+}
+
+// handleProbe does a quick HTTP/HTTPS HEAD probe to an upstream address.
+// GET /api/probe?upstream=10.0.0.15:6868&hostname=foo.example.com
+// The scheme is inferred from the port: 443/8443 → https, everything else → http.
+func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	upstream := strings.TrimSpace(r.URL.Query().Get("upstream"))
+	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
+	if upstream == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("upstream parameter required"))
+		return
+	}
+
+	// Strip any existing scheme so we can determine it ourselves.
+	upstream = strings.TrimPrefix(strings.TrimPrefix(upstream, "https://"), "http://")
+	upstream = strings.TrimSuffix(upstream, "/")
+
+	// Infer scheme from port suffix.
+	scheme := "http"
+	if strings.HasSuffix(upstream, ":443") || strings.HasSuffix(upstream, ":8443") {
+		scheme = "https"
+	}
+
+	probeURL := scheme + "://" + upstream + "/"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodHead, probeURL, nil)
+	if err != nil {
+		writeJSON(w, http.StatusOK, ProbeResponse{Reachable: false, Error: err.Error(), ProbeURL: probeURL})
+		return
+	}
+	if hostname != "" {
+		req.Host = hostname
+	}
+
+	client := &http.Client{
+		Timeout: 4 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			DisableKeepAlives:   true,
+			MaxIdleConnsPerHost: 1,
+		},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse // don't follow redirects
+		},
+	}
+
+	start := time.Now()
+	resp, err := client.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if resp != nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}
+	if err != nil {
+		// Try GET as fallback (some servers reject HEAD)
+		req2, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, probeURL, nil)
+		if req2 != nil {
+			if hostname != "" {
+				req2.Host = hostname
+			}
+			start2 := time.Now()
+			resp2, err2 := client.Do(req2)
+			latency = time.Since(start2).Milliseconds()
+			if resp2 != nil {
+				_, _ = io.Copy(io.Discard, resp2.Body)
+				_ = resp2.Body.Close()
+			}
+			if err2 == nil {
+				writeJSON(w, http.StatusOK, ProbeResponse{
+					Reachable:  true,
+					StatusCode: resp2.StatusCode,
+					LatencyMS:  latency,
+					ProbeURL:   probeURL,
+				})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, ProbeResponse{Reachable: false, Error: err.Error(), LatencyMS: latency, ProbeURL: probeURL})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ProbeResponse{
+		Reachable:  resp.StatusCode < 500,
+		StatusCode: resp.StatusCode,
+		LatencyMS:  latency,
+		ProbeURL:   probeURL,
+	})
+}
+
 func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w)
@@ -580,6 +710,7 @@ func (s *Server) configSummary(runtime *app.Runtime) ConfigSummary {
 			},
 			Details: map[string]string{
 				"caddy_service_url": caddyServiceURL,
+				"tunnel_id":         runtime.CloudflareConfig.TunnelID,
 			},
 			Missing: cloudflareMissing,
 		},
@@ -883,11 +1014,25 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("%s is unavailable in this web session", service))
 		return
 	}
+	// Cloudflare wizard options (only meaningful when service=cloudflare)
+	originMode := strings.TrimSpace(r.URL.Query().Get("origin_mode"))
+	noTLSVerify := r.URL.Query().Get("no_tls_verify") == "true"
+	overrideTunnelID := strings.TrimSpace(r.URL.Query().Get("tunnel_id"))
+	disableChunked := r.URL.Query().Get("disable_chunked_encoding") == "true"
+	// unsync=true generates delete actions for entries currently in the target service,
+	// regardless of whether they appear in Caddy. Used for manual "remove from service" flows.
+	unsync := r.URL.Query().Get("unsync") == "true"
+
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
-		Service:           service,
-		CaddyServerIP:     runtime.CaddyEndpoint.ServerIP,
-		CaddyServiceURL:   runtime.CaddyServiceURL,
-		IncludeCloudflare: runtime.Clients.Cloudflare != nil,
+		Service:                service,
+		CaddyServerIP:          runtime.CaddyEndpoint.ServerIP,
+		CaddyServiceURL:        runtime.CaddyServiceURL,
+		IncludeCloudflare:      runtime.Clients.Cloudflare != nil,
+		OriginMode:             originMode,
+		NoTLSVerify:            noTLSVerify,
+		DisableChunkedEncoding: disableChunked,
+		OverrideTunnelID:       overrideTunnelID,
+		Unsync:                 unsync,
 	})
 	actions := s.webPlanActions(&runtime, service, plan.Actions)
 	if hostname != "" {
