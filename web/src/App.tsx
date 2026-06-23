@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell } from './components/Dashboard';
+import { api } from './api/client';
 import { useConfigForms } from './hooks/useConfigForms';
 import { useEntryFilters } from './hooks/useEntryFilters';
 import { useRuntimeData } from './hooks/useRuntimeData';
@@ -145,6 +146,14 @@ export function App() {
         onPreview={sync.previewSync}
         onDryRun={sync.dryRunSync}
         onSync={sync.syncNow}
+        onRemoveEntry={async (hostname: string, service?: string) => {
+          await api.removeEntry(hostname, (service as 'all' | 'unbound' | 'adguard') ?? 'all');
+          runtime.refreshEntries();
+        }}
+        onSyncAll={async () => {
+          const ok = await sync.previewSync('all', '');
+          if (ok) { await sync.syncNow(); runtime.refreshEntries(); }
+        }}
         configOpen={configOpen}
         setConfigOpen={setConfigOpen}
         forms={configForms.forms}

@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  ShieldCheck,
   Terminal,
   Trash2,
   X,
@@ -18,6 +19,8 @@ import { api } from '../api/client';
 import type { CaddyDeployEvent, CaddyEntry, CaddyEntriesResponse, CaddyValidateResult } from '../types';
 
 // ─── Main CaddyEditor panel ───────────────────────────────────────────────
+
+type GitRemoteStatus = { remote_ahead: number; local_ahead: number; branch: string; remote: string; fetch_error?: string };
 
 export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
   const [data, setData] = useState<CaddyEntriesResponse | null>(null);
@@ -30,6 +33,12 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<CaddyEntry | null>(null);
   const [deployOpen, setDeployOpen] = useState(false);
+
+  // Remote-ahead state — polled every 60s and on load.
+  const [remoteStatus, setRemoteStatus] = useState<GitRemoteStatus | null>(null);
+  const [remoteChecking, setRemoteChecking] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [pullOutput, setPullOutput] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,7 +68,41 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
     }
   }, []);
 
+  const checkRemote = useCallback(async () => {
+    setRemoteChecking(true);
+    try {
+      const st = await api.caddyGitStatus();
+      setRemoteStatus(st);
+    } catch {
+      // non-fatal
+    } finally {
+      setRemoteChecking(false);
+    }
+  }, []);
+
+  const handlePull = useCallback(async () => {
+    setPulling(true);
+    setPullOutput('');
+    try {
+      const res = await api.caddyGitPull();
+      setPullOutput(res.output || 'Already up to date.');
+      // Refresh everything after pull.
+      await Promise.all([load(), loadDiff(), checkRemote()]);
+    } catch (err) {
+      setPullOutput(`Error: ${String(err)}`);
+    } finally {
+      setPulling(false);
+    }
+  }, [load, loadDiff, checkRemote]);
+
   useEffect(() => { void load(); void loadDiff(); }, [load, loadDiff]);
+
+  // Check remote on mount, then every 60s.
+  useEffect(() => {
+    void checkRemote();
+    const id = setInterval(() => { void checkRemote(); }, 60_000);
+    return () => clearInterval(id);
+  }, [checkRemote]);
 
   const handleSaved = useCallback(async () => {
     setModalOpen(false);
@@ -120,6 +163,43 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
       {error && (
         <div className="caddy-error">
           <XCircle size={15} /> {error}
+        </div>
+      )}
+
+      {/* Remote-ahead / local-ahead banner */}
+      {remoteStatus && (remoteStatus.remote_ahead > 0 || remoteStatus.local_ahead > 0 || remoteStatus.fetch_error) && (
+        <div className={`git-remote-banner ${remoteStatus.fetch_error ? 'error' : remoteStatus.remote_ahead > 0 ? 'warn' : 'info'}`}>
+          <GitBranch size={14} />
+          {remoteStatus.fetch_error ? (
+            <span>Could not reach remote: {remoteStatus.fetch_error}</span>
+          ) : remoteStatus.remote_ahead > 0 ? (
+            <span>
+              Remote <strong>{remoteStatus.remote}/{remoteStatus.branch}</strong> is{' '}
+              <strong>{remoteStatus.remote_ahead}</strong> commit{remoteStatus.remote_ahead !== 1 ? 's' : ''} ahead of local
+              {remoteStatus.local_ahead > 0 && ` · ${remoteStatus.local_ahead} local commit${remoteStatus.local_ahead !== 1 ? 's' : ''} not pushed`}
+            </span>
+          ) : (
+            <span>
+              <strong>{remoteStatus.local_ahead}</strong> local commit{remoteStatus.local_ahead !== 1 ? 's' : ''} not yet pushed to {remoteStatus.remote}
+            </span>
+          )}
+          <div className="git-remote-banner-actions">
+            {remoteStatus.remote_ahead > 0 && mutationEnabled && (
+              <button type="button" className="btn-sm btn-warn" onClick={() => void handlePull()} disabled={pulling}>
+                {pulling ? <><Loader2 size={12} className="spin" /> Pulling…</> : '⬇ Pull'}
+              </button>
+            )}
+            <button type="button" className="btn-sm" onClick={() => void checkRemote()} disabled={remoteChecking}>
+              {remoteChecking ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pullOutput && (
+        <div className="git-pull-output">
+          <pre>{pullOutput}</pre>
+          <button type="button" className="git-pull-dismiss" onClick={() => setPullOutput('')}><X size={13} /></button>
         </div>
       )}
 
@@ -245,7 +325,12 @@ function EntryModal({
   const [preview, setPreview] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [validateResult, setValidateResult] = useState<CaddyValidateResult | null>(null);
   const [error, setError] = useState('');
+
+  // Reset validation whenever inputs change.
+  useEffect(() => { setValidateResult(null); }, [hostname, upstream, template]);
 
   const updatePreview = useCallback(async (h: string, u: string, t: string) => {
     if (!h || !u) { setPreview(''); return; }
@@ -270,11 +355,25 @@ function EntryModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSave = async () => {
+  const handleValidate = async () => {
     if (!hostname.trim() || !upstream.trim()) {
       setError('Hostname and upstream are required.');
       return;
     }
+    setValidating(true);
+    setError('');
+    setValidateResult(null);
+    try {
+      const res = await api.caddyValidateDraft({ hostname, upstream, template });
+      setValidateResult(res);
+    } catch (err) {
+      setValidateResult({ ok: false, output: String(err) });
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const handleSave = async () => {
     setSaving(true);
     setError('');
     try {
@@ -290,6 +389,8 @@ function EntryModal({
       setSaving(false);
     }
   };
+
+  const canSave = validateResult?.ok === true;
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -339,11 +440,22 @@ function EntryModal({
             </div>
           )}
 
+          {validateResult && (
+            <div className={`validate-result ${validateResult.ok ? 'ok' : 'error'}`}>
+              {validateResult.ok
+                ? <><CheckCircle2 size={14} /> Config valid — ready to write</>
+                : <><XCircle size={14} /> {validateResult.output || 'Validation failed'}</>}
+            </div>
+          )}
+
           {error && <div className="caddy-error"><XCircle size={14} /> {error}</div>}
         </div>
         <div className="modal-footer">
           <button type="button" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" onClick={() => void handleSave()} disabled={saving}>
+          <button type="button" onClick={() => void handleValidate()} disabled={validating || saving}>
+            {validating ? <><Loader2 size={14} className="spin" /> Validating...</> : <><ShieldCheck size={14} /> Validate</>}
+          </button>
+          <button type="button" className="btn-primary" onClick={() => void handleSave()} disabled={saving || !canSave}>
             {saving ? <><Loader2 size={14} className="spin" /> Saving...</> : 'Write to file'}
           </button>
         </div>

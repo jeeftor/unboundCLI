@@ -30,14 +30,16 @@ export function useEntryFilters(entries: Entry[]) {
     [entries, selectedHostname]
   );
 
+  // Summary always reflects ALL entries, not the filtered subset.
+  // The metric cards are global counters — filters affect the table, not the cards.
   const summary = useMemo(() => ({
-    entries: filteredEntries.length,
-    inSync: filteredEntries.filter((entry) => entry.overall_status === 0 || entry.overall_status === 1).length,
-    out: filteredEntries.filter((entry) => entry.overall_status === 2).length,
-    caddyOnly: filteredEntries.filter((entry) => entry.overall_status === 3).length,
-    stale: filteredEntries.filter((entry) => entry.overall_status === 4).length,
-    cloudflare: filteredEntries.filter((entry) => entry.cloudflare_status?.configured).length
-  }), [filteredEntries]);
+    entries: entries.length,
+    inSync: entries.filter((entry) => entry.overall_status === 0 || entry.overall_status === 1).length,
+    out: entries.filter((entry) => entry.overall_status === 2).length,
+    caddyOnly: entries.filter((entry) => entry.overall_status === 3).length,
+    stale: entries.filter((entry) => entry.overall_status === 4).length,
+    cloudflare: entries.filter((entry) => entry.cloudflare_status?.configured).length
+  }), [entries]);
 
   return {
     statusFilter,

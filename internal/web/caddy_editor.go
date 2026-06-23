@@ -272,6 +272,46 @@ func (s *Server) handleCaddyDiff(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, CaddyDiffResponse{Diff: diff, Status: status})
 }
 
+// handleCaddyGitStatus runs git fetch and returns remote-ahead/local-ahead counts.
+// GET /api/caddy/git/status
+func (s *Server) handleCaddyGitStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	cfg, err := s.caddyEditorConfig()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	st := caddyeditor.GitFetchRemoteStatus(cfg)
+	writeJSON(w, http.StatusOK, st)
+}
+
+// handleCaddyGitPull runs git pull and returns the output.
+// POST /api/caddy/git/pull  (requires mutation token)
+func (s *Server) handleCaddyGitPull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	cfg, err := s.caddyEditorConfig()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	out, err := caddyeditor.GitPull(cfg)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"output": out, "status": "ok"})
+}
+
 func (s *Server) handleCaddyValidate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
@@ -283,6 +323,32 @@ func (s *Server) handleCaddyValidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := caddyeditor.Validate(cfg)
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleCaddyValidateDraft validates a draft entry without writing to disk.
+func (s *Server) handleCaddyValidateDraft(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req CaddyEntryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid request: %w", err))
+		return
+	}
+	if req.Hostname == "" || req.Upstream == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname and upstream are required"))
+		return
+	}
+	cfg, err := s.caddyEditorConfig()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	block := caddyeditor.SiteBlock{Hostname: req.Hostname, Upstream: req.Upstream}
+	result := caddyeditor.ValidateDraft(cfg, block, req.Template)
 	writeJSON(w, http.StatusOK, result)
 }
 

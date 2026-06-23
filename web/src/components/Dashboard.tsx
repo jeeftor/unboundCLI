@@ -1,24 +1,25 @@
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   CircleAlert,
   Cloud,
   FileCode2,
   FileSliders,
-  Gauge,
   ListFilter,
-  Play,
   RefreshCw,
   Search,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
-  TerminalSquare,
-  WifiOff,
+  Terminal,
+  Trash2,
+  X,
   Zap
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, ReactNode, SetStateAction } from 'react';
+import { api } from '../api/client';
 import { CaddyEditor } from './CaddyEditor';
 import type { CaddyEditorForm, ConfigForms, TestResults } from '../hooks/useConfigForms';
 import {
@@ -71,6 +72,8 @@ export function AppShell({
   onPreview,
   onDryRun,
   onSync,
+  onRemoveEntry,
+  onSyncAll,
   configOpen,
   setConfigOpen,
   forms,
@@ -112,6 +115,8 @@ export function AppShell({
   onPreview: (service?: string, hostname?: string) => Promise<boolean>;
   onDryRun: () => Promise<void>;
   onSync: () => Promise<void>;
+  onRemoveEntry: (hostname: string, service?: string) => Promise<void>;
+  onSyncAll: () => Promise<void>;
   configOpen: boolean;
   setConfigOpen: (value: boolean) => void;
   forms: ConfigForms;
@@ -124,77 +129,95 @@ export function AppShell({
   onTestConfig: (service: ServiceKey) => Promise<void>;
 }) {
   const enabledServices = config?.enabled || {};
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalHostname, setModalHostname] = useState('');
+  const [modalAutoSync, setModalAutoSync] = useState(false);
+  const [logBarOpen, setLogBarOpen] = useState(false);
+
+  const modalEntry = entries.find(e => e.hostname === modalHostname);
+
+  const openModify = (hostname: string) => {
+    setModalHostname(hostname);
+    setSelectedHostname(hostname);
+    setModalAutoSync(false);
+    setModalOpen(true);
+  };
+
+  const openQuickSync = (hostname: string) => {
+    setModalHostname(hostname);
+    setSelectedHostname(hostname);
+    setModalAutoSync(true);
+    setModalOpen(true);
+  };
+
+  // (log bar opens itself when it sees activity)
+
   return (
     <div className="console-layout">
-      <Sidebar config={config} report={report} view={view} setView={setView} onOpenConfig={() => setConfigOpen(true)} />
       <div className="console-main">
-        <Topbar config={config} loading={loading} onRefresh={onRefresh} onOpenConfig={() => setConfigOpen(true)} />
-        {view === 'caddy-editor' ? (
-          <main className="dashboard-shell caddy-editor-shell">
-            <CaddyEditor mutationEnabled={mutationEnabled} />
-          </main>
-        ) : (
-          <main className="dashboard-shell">
-            <OperationsHeader
-              loading={loading}
-              message={message}
-              messageKind={messageKind}
-              summary={summary}
-            />
-            <section className="workspace-grid">
-              <section className="content-stack">
-                <MetricGrid summary={summary} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
-                <EntriesToolbar
-                  entriesCount={entries.length}
-                  statusFilter={statusFilter}
-                  setStatusFilter={setStatusFilter}
-                  serviceFilter={serviceFilter}
-                  setServiceFilter={setServiceFilter}
-                  search={search}
-                  setSearch={setSearch}
-                  enabledServices={enabledServices}
-                />
-                <EntriesTable
-                  entries={entries}
-                  selectedHostname={selectedHostname}
-                  mutationEnabled={mutationEnabled}
-                  enabledServices={enabledServices}
-                  onSelect={setSelectedHostname}
-                  onPreview={onPreview}
-                  onSync={async (service, hostname) => {
-                    setSelectedHostname(hostname);
-                    if (await onPreview(service, hostname)) await onSync();
-                  }}
-                />
-              </section>
-              <aside className="right-rail">
-                <SyncPanel
-                  enabledServices={enabledServices}
-                  syncService={syncService}
-                  setSyncService={setSyncService}
-                  syncLoading={syncLoading}
-                  syncProgress={syncProgress}
-                  syncLog={syncLog}
-                  plannedActions={plannedActions}
-                  canSyncNow={canSyncNow}
-                  mutationEnabled={mutationEnabled}
-                  onPreview={() => onPreview()}
-                  onDryRun={onDryRun}
-                  onSync={onSync}
-                />
-                <HostInspector
-                  entry={selectedEntry}
-                  mutationEnabled={mutationEnabled}
-                  onPreview={(hostname) => onPreview(syncService, hostname)}
-                  onSync={async (hostname) => {
-                    if (await onPreview(syncService, hostname)) await onSync();
-                  }}
-                />
-              </aside>
-            </section>
-          </main>
-        )}
+        <Topbar config={config} loading={loading} view={view} setView={setView} onRefresh={onRefresh} onOpenConfig={() => setConfigOpen(true)} />
+        <div className="console-scroll">
+          {view === 'caddy-editor' ? (
+            <main className="dashboard-shell caddy-editor-shell">
+              <CaddyEditor mutationEnabled={mutationEnabled} />
+            </main>
+          ) : (
+            <main className="dashboard-shell">
+              <OperationsHeader
+                loading={loading}
+                message={message}
+                messageKind={messageKind}
+                summary={summary}
+              />
+              <MetricGrid summary={summary} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
+              <EntriesToolbar
+                entriesCount={entries.length}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                serviceFilter={serviceFilter}
+                setServiceFilter={setServiceFilter}
+                search={search}
+                setSearch={setSearch}
+                enabledServices={enabledServices}
+                mutationEnabled={mutationEnabled}
+                onSyncAll={onSyncAll}
+              />
+              <EntriesTable
+                entries={entries}
+                selectedHostname={selectedHostname}
+                mutationEnabled={mutationEnabled}
+                enabledServices={enabledServices}
+                onSelect={setSelectedHostname}
+                onQuickSync={openQuickSync}
+                onOpenModify={openModify}
+                onRemove={onRemoveEntry}
+              />
+            </main>
+          )}
+        </div>
+        <LogBar open={logBarOpen} onToggle={() => setLogBarOpen(o => !o)} />
       </div>
+      <SyncModal
+        open={modalOpen}
+        autoSync={modalAutoSync}
+        onClose={() => setModalOpen(false)}
+        hostname={modalHostname}
+        entry={modalEntry}
+        enabledServices={enabledServices}
+        syncService={syncService}
+        setSyncService={setSyncService}
+        syncLoading={syncLoading}
+        syncProgress={syncProgress}
+        syncLog={syncLog}
+        plannedActions={plannedActions}
+        canSyncNow={canSyncNow}
+        mutationEnabled={mutationEnabled}
+        onPreviewFor={(service, hostname) => onPreview(service, hostname)}
+        onDryRun={onDryRun}
+        onSync={onSync}
+        onRefresh={onRefresh}
+        onRemoveEntry={onRemoveEntry}
+      />
       <ConfigModal
         open={configOpen}
         onClose={() => setConfigOpen(false)}
@@ -249,15 +272,25 @@ function Sidebar({ config, report, view, setView, onOpenConfig }: { config: Conf
   );
 }
 
-function Topbar({ config, loading, onRefresh, onOpenConfig }: { config: ConfigResponse | null; loading: boolean; onRefresh: () => void; onOpenConfig: () => void }) {
+function Topbar({ config, loading, view, setView, onRefresh, onOpenConfig }: { config: ConfigResponse | null; loading: boolean; view: AppView; setView: (v: AppView) => void; onRefresh: () => void; onOpenConfig: () => void }) {
   return (
     <header className="topbar">
+      <div className="brand-lockup">
+        <div className="brand-mark"><Zap size={18} /></div>
+        <div>
+          <h1>Caddy DNS Sync</h1>
+          <span>Local dashboard</span>
+        </div>
+      </div>
       <div className="runtime-card" id="runtime">
         <span>Caddy runtime</span>
         <strong>{config ? `${config.caddy.server_ip}:${config.caddy.server_port}` : 'Loading...'}</strong>
         <em className={config?.enabled?.caddy === false ? 'down' : ''}>{config?.enabled?.caddy === false ? 'Offline' : 'Running'}</em>
       </div>
       <div className="top-actions">
+        <button type="button" className={view === 'caddy-editor' ? 'active' : ''} onClick={() => setView(view === 'caddy-editor' ? 'dashboard' : 'caddy-editor')}>
+          <FileCode2 size={16} /> Caddy Editor
+        </button>
         <button id="refresh" type="button" onClick={onRefresh} disabled={loading}>
           <RefreshCw size={16} /> Refresh
         </button>
@@ -370,7 +403,9 @@ function EntriesToolbar({
   setServiceFilter,
   search,
   setSearch,
-  enabledServices
+  enabledServices,
+  mutationEnabled,
+  onSyncAll,
 }: {
   entriesCount: number;
   statusFilter: string;
@@ -380,6 +415,8 @@ function EntriesToolbar({
   search: string;
   setSearch: (value: string) => void;
   enabledServices: Partial<Record<ServiceKey, boolean>>;
+  mutationEnabled: boolean;
+  onSyncAll: () => Promise<void>;
 }) {
   const disabledServices = new Set(serviceOrder.filter((service) => service !== 'caddy' && enabledServices[service] === false));
   return (
@@ -391,6 +428,11 @@ function EntriesToolbar({
       <Select value={serviceFilter} onChange={setServiceFilter} ariaLabel="Service filter" options={serviceFilterOptions} disabledValues={disabledServices} />
       <Select value={statusFilter} onChange={setStatusFilter} ariaLabel="Status filter" options={statusFilterOptions} />
       <span className="entry-count">{entriesCount} entries</span>
+      {mutationEnabled && (
+        <button type="button" className="btn-primary btn-sm toolbar-sync-all" onClick={() => void onSyncAll()}>
+          <Zap size={13} /> Sync All
+        </button>
+      )}
     </section>
   );
 }
@@ -401,18 +443,19 @@ function EntriesTable({
   mutationEnabled,
   enabledServices,
   onSelect,
-  onPreview,
-  onSync
+  onQuickSync,
+  onOpenModify,
+  onRemove,
 }: {
   entries: Entry[];
   selectedHostname: string;
   mutationEnabled: boolean;
   enabledServices: Partial<Record<ServiceKey, boolean>>;
   onSelect: (hostname: string) => void;
-  onPreview: (service: string, hostname: string) => Promise<boolean>;
-  onSync: (service: string, hostname: string) => Promise<void>;
+  onQuickSync: (hostname: string) => void;
+  onOpenModify: (hostname: string) => void;
+  onRemove: (hostname: string, service?: string) => Promise<void>;
 }) {
-  const disabledValues = disabledSyncValues(enabledServices);
   return (
     <section id="entries-panel" className="panel entries-panel">
       <table>
@@ -428,10 +471,10 @@ function EntriesTable({
               entry={entry}
               selected={entry.hostname === selectedHostname}
               mutationEnabled={mutationEnabled}
-              disabledValues={disabledValues}
               onSelect={onSelect}
-              onPreview={onPreview}
-              onSync={onSync}
+              onQuickSync={onQuickSync}
+              onOpenModify={onOpenModify}
+              onRemove={onRemove}
             />
           ))}
         </tbody>
@@ -444,21 +487,20 @@ function EntryRow({
   entry,
   selected,
   mutationEnabled,
-  disabledValues,
   onSelect,
-  onPreview,
-  onSync
+  onQuickSync,
+  onOpenModify,
+  onRemove,
 }: {
   entry: Entry;
   selected: boolean;
   mutationEnabled: boolean;
-  disabledValues: Set<string>;
   onSelect: (hostname: string) => void;
-  onPreview: (service: string, hostname: string) => Promise<boolean>;
-  onSync: (service: string, hostname: string) => Promise<void>;
+  onQuickSync: (hostname: string) => void;
+  onOpenModify: (hostname: string) => void;
+  onRemove: (hostname: string, service?: string) => Promise<void>;
 }) {
-  const [rowService, setRowService] = useState('all');
-  const safeRowService = disabledValues.has(rowService) ? 'all' : rowService;
+  const isStale = entry.overall_status === 4;
   const dnsOK = dnsResultClass(entry.dns_resolved) === 'ok';
   const statusDetail = entry.overall_status === 3
     ? 'Not in DNS'
@@ -486,9 +528,18 @@ function EntryRow({
       <td data-label="Cloudflare route"><CloudflareDetails status={entry.cloudflare_status} /></td>
       <td data-label="Actions">
         <div className="row-actions">
-          <Select value={safeRowService} onChange={setRowService} ariaLabel={`Sync target for ${entry.hostname}`} options={syncOptions({})} disabledValues={disabledValues} className="row-sync-service" />
-          <button className="row-preview" type="button" data-hostname={entry.hostname} onClick={(event) => { event.stopPropagation(); onSelect(entry.hostname); void onPreview(safeRowService, entry.hostname); }}>Preview</button>
-          <button className="row-sync" type="button" data-hostname={entry.hostname} disabled={!mutationEnabled} title={mutationEnabled ? 'Apply the selected server-issued sync plan' : 'Real sync is unavailable for this web session'} onClick={(event) => { event.stopPropagation(); onSelect(entry.hostname); void onSync(safeRowService, entry.hostname); }}>Sync</button>
+          {isStale ? (
+            <button className="row-remove-btn" type="button" disabled={!mutationEnabled} onClick={(e) => { e.stopPropagation(); void onRemove(entry.hostname); }}>
+              Remove
+            </button>
+          ) : (
+            <button className="row-sync-btn" type="button" onClick={(e) => { e.stopPropagation(); onQuickSync(entry.hostname); }}>
+              Sync
+            </button>
+          )}
+          <button className="row-modify-btn" type="button" onClick={(e) => { e.stopPropagation(); onOpenModify(entry.hostname); }}>
+            Modify
+          </button>
         </div>
       </td>
     </tr>
@@ -590,6 +641,323 @@ function SyncPanel({
       <div className="log-header"><strong>Plan log</strong><button type="button" disabled>Clear</button></div>
       <div id="sync-log" className="log" role="status" aria-live="polite">{syncLog}</div>
     </section>
+  );
+}
+
+function SyncModal({
+  open,
+  autoSync,
+  onClose,
+  hostname,
+  entry,
+  enabledServices,
+  syncService,
+  setSyncService,
+  syncLoading,
+  syncProgress,
+  syncLog,
+  plannedActions,
+  canSyncNow,
+  mutationEnabled,
+  onPreviewFor,
+  onDryRun,
+  onSync,
+  onRefresh,
+  onRemoveEntry,
+}: {
+  open: boolean;
+  autoSync: boolean;
+  onClose: () => void;
+  hostname: string;
+  entry?: import('../types').Entry;
+  enabledServices: Partial<Record<ServiceKey, boolean>>;
+  syncService: string;
+  setSyncService: (value: string) => void;
+  syncLoading: boolean;
+  syncProgress: { title: string; detail: string };
+  syncLog: string;
+  plannedActions: SyncAction[];
+  canSyncNow: boolean;
+  mutationEnabled: boolean;
+  onPreviewFor: (service: string, hostname: string) => Promise<boolean>;
+  onDryRun: () => Promise<void>;
+  onSync: () => Promise<void>;
+  onRefresh: () => void;
+  onRemoveEntry: (hostname: string, service?: string) => Promise<void>;
+}) {
+  const isStale = entry?.overall_status === 4;
+  const [caddyRaw, setCaddyRaw] = useState('');
+  const [caddyOpen, setCaddyOpen] = useState(false);
+  const hasAutoSynced = useRef(false);
+
+  // Track which services have been removed in this modal session so buttons
+  // flip immediately without waiting for the next data refresh.
+  const [removingService, setRemovingService] = useState<string | null>(null);
+  const [localRemoved, setLocalRemoved] = useState<Set<string>>(new Set());
+
+  // Live server log streaming — poll /api/logs while an operation is in progress.
+  const [liveLog, setLiveLog] = useState<string>('');
+  const logCursorRef = useRef(0);
+
+  // Reset local remove state and log whenever the modal opens for a new hostname.
+  useEffect(() => {
+    if (open) {
+      setLocalRemoved(new Set());
+      setRemovingService(null);
+      setLiveLog('');
+      logCursorRef.current = 0;
+    }
+  }, [open, hostname]);
+
+  const busy = syncLoading || removingService !== null;
+
+  // Poll server logs while busy.
+  useEffect(() => {
+    if (!busy) return;
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        try {
+          const data = await api.logs(logCursorRef.current);
+          if (data.lines.length > 0) {
+            logCursorRef.current = data.cursor;
+            setLiveLog(prev => {
+              const newLines = data.lines.map(l => `[${l.level}] ${l.message}`).join('\n');
+              return prev ? prev + '\n' + newLines : newLines;
+            });
+          }
+        } catch { /* ignore */ }
+        await new Promise(r => setTimeout(r, 400));
+      }
+    };
+    void poll();
+    return () => { cancelled = true; };
+  }, [busy]);
+
+  useEffect(() => {
+    if (!open || !hostname) { setCaddyRaw(''); return; }
+    api.caddyEntries().then(res => {
+      const found = res.entries.find(e => e.hostname === hostname);
+      setCaddyRaw(found?.raw ?? '');
+    }).catch(() => {});
+  }, [open, hostname]);
+
+  useEffect(() => {
+    if (open && autoSync && !hasAutoSynced.current) {
+      hasAutoSynced.current = true;
+      void (async () => {
+        const ok = await onPreviewFor('all', hostname);
+        if (ok) { await onSync(); onRefresh(); }
+      })();
+    }
+    if (!open) hasAutoSynced.current = false;
+  }, [open, autoSync, hostname, onPreviewFor, onSync, onRefresh]);
+
+  if (!open) return null;
+
+  const serviceRows: Array<{ key: string; label: string; status?: { configured: boolean; in_sync: boolean; ip: string } }> = [
+    { key: 'unbound', label: 'Unbound DNS', status: entry?.unbound_status },
+    { key: 'adguard', label: 'AdGuard Home', status: entry?.adguard_status },
+  ].filter(s => enabledServices[s.key as ServiceKey]);
+
+  const handleServiceRemove = async (key: string) => {
+    setRemovingService(key);
+    try {
+      await onRemoveEntry(hostname, key);
+      setLocalRemoved(prev => new Set([...prev, key]));
+      onRefresh();
+    } finally {
+      setRemovingService(null);
+    }
+  };
+
+  const handleRemoveAll = async () => {
+    setRemovingService('all');
+    try {
+      await onRemoveEntry(hostname, 'all');
+      onRefresh();
+      onClose();
+    } finally {
+      setRemovingService(null);
+    }
+  };
+
+  const runServiceSync = async (serviceKey: string) => {
+    setSyncService(serviceKey);
+    const ok = await onPreviewFor(serviceKey, hostname);
+    if (ok) { await onSync(); onRefresh(); }
+  };
+
+  const runSyncAll = async () => {
+    setSyncService('all');
+    const ok = await onPreviewFor('all', hostname);
+    if (ok) { await onSync(); onRefresh(); }
+  };
+
+  // Any service with a real entry that can be removed.
+  const canRemoveAll = serviceRows.some(({ key, status }) => !localRemoved.has(key) && status?.configured === true);
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div className="modal sync-modal">
+        <div className="modal-header">
+          <h3><Zap size={15} />{hostname || 'Sync'}</h3>
+          <div className="modal-header-actions">
+            <button type="button" className="btn-primary" onClick={() => void runSyncAll()} disabled={busy}>
+              <Zap size={13} /> Sync all
+            </button>
+            <button type="button" className="btn-danger" onClick={() => void handleRemoveAll()} disabled={busy || !mutationEnabled || !canRemoveAll}>
+              <Trash2 size={13} /> {removingService === 'all' ? 'Removing…' : 'Remove all'}
+            </button>
+            <button type="button" className="modal-close" onClick={onClose} disabled={busy}><X size={16} /></button>
+          </div>
+        </div>
+        <div className="modal-body sync-modal-body">
+
+          {/* Per-service rows */}
+          <div className="service-sync-rows">
+            {serviceRows.map(({ key, label, status }) => {
+              const isLocallyRemoved = localRemoved.has(key);
+              const isRemoving = removingService === key;
+              const configured = status?.configured ?? false;
+              const inSync = status?.in_sync ?? false;
+
+              // Badge reflects actual service state.
+              let statusText = 'Not present';
+              let tone = 'missing';
+              if (isLocallyRemoved) { statusText = 'Removed'; tone = 'missing'; }
+              else if (configured && inSync) { statusText = status?.ip || 'In sync'; tone = 'ok'; }
+              else if (configured && !inSync) { statusText = status?.ip || 'Needs update'; tone = 'warn'; }
+
+              // Button driven purely by per-service state:
+              //   stale + configured + not locally removed → Remove
+              //   in sync (not stale) → disabled "In sync" (nothing to do)
+              //   anything else (out of sync, missing, or locally removed after remove) → Sync
+              let actionBtn: ReactNode;
+              if (isStale && configured && !isLocallyRemoved) {
+                actionBtn = (
+                  <button type="button" className="btn-sm btn-danger-sm" onClick={() => void handleServiceRemove(key)} disabled={busy || !mutationEnabled}>
+                    <Trash2 size={12} /> {isRemoving ? 'Removing…' : 'Remove'}
+                  </button>
+                );
+              } else if (!isStale && configured && inSync) {
+                actionBtn = (
+                  <button type="button" className="btn-sm btn-synced" disabled>
+                    ✓ In sync
+                  </button>
+                );
+              } else {
+                actionBtn = (
+                  <button type="button" className="btn-sm" onClick={() => void runServiceSync(key)} disabled={busy}>
+                    <Zap size={12} /> Sync
+                  </button>
+                );
+              }
+
+              return (
+                <div key={key} className="service-sync-row">
+                  <div className="service-sync-info">
+                    <span className="service-sync-name">{label}</span>
+                    <span className={`service-sync-badge ${tone}`}>{statusText}</span>
+                  </div>
+                  {actionBtn}
+                </div>
+              );
+            })}
+            {serviceRows.length === 0 && (
+              <div className="service-sync-empty">No DNS services configured</div>
+            )}
+          </div>
+
+          <InlineProgress loading={busy} title={syncProgress.title} detail={syncProgress.detail} />
+
+          {(liveLog || syncLog) && (
+            <div className="sync-modal-log">
+              <div className="sync-modal-log-label">Log</div>
+              <pre>{liveLog || syncLog}</pre>
+            </div>
+          )}
+
+          {caddyRaw && (
+            <div className="sync-modal-caddy">
+              <button type="button" className="sync-caddy-toggle" onClick={() => setCaddyOpen(o => !o)}>
+                <FileCode2 size={13} /> Caddy config
+                {caddyOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+              {caddyOpen && <pre>{caddyRaw}</pre>}
+            </div>
+          )}
+        </div>
+        {!mutationEnabled && (
+          <div className="modal-footer">
+            <span className="muted" style={{ fontSize: 12 }}>Read-only session — sync actions are disabled</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MAX_LOG_LINES = 300;
+
+function LogBar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const preRef = useRef<HTMLPreElement>(null);
+  const cursorRef = useRef(0);
+  const [lines, setLines] = useState<string[]>([]);
+  const [active, setActive] = useState(false);
+
+  // Continuously poll /api/logs regardless of open state so the count stays current.
+  useEffect(() => {
+    let cancelled = false;
+    let activityTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      while (!cancelled) {
+        try {
+          const data = await api.logs(cursorRef.current);
+          if (data.lines.length > 0) {
+            cursorRef.current = data.cursor;
+            setActive(true);
+            if (activityTimer) clearTimeout(activityTimer);
+            activityTimer = setTimeout(() => setActive(false), 2000);
+            setLines(prev => {
+              const next = [...prev, ...data.lines.map(l => `[${l.level}] ${l.message}`)];
+              return next.length > MAX_LOG_LINES ? next.slice(next.length - MAX_LOG_LINES) : next;
+            });
+          }
+        } catch { /* ignore */ }
+        await new Promise(r => setTimeout(r, 600));
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (activityTimer) clearTimeout(activityTimer);
+    };
+  }, []);
+
+  // Auto-scroll to bottom when new lines arrive and bar is open.
+  useEffect(() => {
+    if (open && preRef.current) {
+      preRef.current.scrollTop = preRef.current.scrollHeight;
+    }
+  }, [lines, open]);
+
+  return (
+    <div className={`log-bar${open ? ' open' : ''}`}>
+      <button type="button" className="log-bar-toggle" onClick={onToggle}>
+        <Terminal size={13} />
+        <span>Server log</span>
+        {active && <span className="log-bar-pill working">Live</span>}
+        {!active && lines.length > 0 && <span className="log-bar-pill">{lines.length} line{lines.length !== 1 ? 's' : ''}</span>}
+        {open ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+      </button>
+      {open && (
+        <pre ref={preRef} className="log-bar-content">
+          {lines.length ? lines.join('\n') : 'Waiting for server log output...'}
+        </pre>
+      )}
+    </div>
   );
 }
 
@@ -767,8 +1135,13 @@ function CaddyEditorSetupPanel({
   mutationEnabled: boolean;
   onSave: () => Promise<void>;
 }) {
+  const [availableTemplates, setAvailableTemplates] = useState<string[]>([]);
   const set = <K extends keyof CaddyEditorForm>(key: K, value: CaddyEditorForm[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  useEffect(() => {
+    api.caddyTemplates().then((res) => setAvailableTemplates(res.templates)).catch(() => {});
+  }, []);
   return (
     <section className="caddy-editor-setup">
       <header className="caddy-editor-setup-header">
@@ -782,6 +1155,9 @@ function CaddyEditorSetupPanel({
           <input id="ce-enabled" type="checkbox" checked={form.enabled} onChange={(e) => set('enabled', e.target.checked)} />
           Enabled
         </label>
+
+        {/* Paths */}
+        <div className="ce-section-label">Paths</div>
         <div className="caddy-editor-setup-grid">
           <Field label="Repo path">
             <input id="ce-repo-path" type="text" value={form.repo_path} placeholder="/etc/caddy" onChange={(e) => set('repo_path', e.target.value)} />
@@ -790,18 +1166,37 @@ function CaddyEditorSetupPanel({
             <input id="ce-caddyfile" type="text" value={form.caddyfile} placeholder="Caddyfile" onChange={(e) => set('caddyfile', e.target.value)} />
           </Field>
           <Field label="Entry template">
-            <input id="ce-entry-template" type="text" value={form.entry_template} placeholder="default" onChange={(e) => set('entry_template', e.target.value)} />
+            {availableTemplates.length > 0 ? (
+              <div className="select-wrapper">
+                <select id="ce-entry-template" value={form.entry_template} onChange={(e) => set('entry_template', e.target.value)}>
+                  {availableTemplates.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <ChevronDown size={14} />
+              </div>
+            ) : (
+              <input id="ce-entry-template" type="text" value={form.entry_template} placeholder="default" onChange={(e) => set('entry_template', e.target.value)} />
+            )}
           </Field>
+        </div>
+
+        {/* Commands — textarea so the full string is visible */}
+        <div className="ce-section-label">Commands</div>
+        <div className="caddy-editor-setup-grid">
           <Field label="Deploy command">
-            <input id="ce-deploy-command" type="text" value={form.deploy_command} placeholder="make deploy" onChange={(e) => set('deploy_command', e.target.value)} />
+            <textarea id="ce-deploy-command" rows={2} value={form.deploy_command} placeholder="make deploy" onChange={(e) => set('deploy_command', e.target.value)} />
           </Field>
           <Field label="Validate command">
-            <input id="ce-validate-command" type="text" value={form.validate_command} placeholder="caddy validate --config Caddyfile" onChange={(e) => set('validate_command', e.target.value)} />
+            <textarea id="ce-validate-command" rows={2} value={form.validate_command} placeholder="caddy validate --config Caddyfile" onChange={(e) => set('validate_command', e.target.value)} />
           </Field>
-          <Field label="Git remote">
+        </div>
+
+        {/* Git */}
+        <div className="ce-section-label">Git</div>
+        <div className="caddy-editor-setup-grid ce-grid-2col">
+          <Field label="Remote">
             <input id="ce-git-remote" type="text" value={form.git_remote} placeholder="origin" onChange={(e) => set('git_remote', e.target.value)} />
           </Field>
-          <Field label="Git branch">
+          <Field label="Branch">
             <input id="ce-git-branch" type="text" value={form.git_branch} placeholder="main" onChange={(e) => set('git_branch', e.target.value)} />
           </Field>
         </div>
@@ -815,6 +1210,7 @@ function CaddyEditorSetupPanel({
             Auto-push on save
           </label>
         </div>
+
         <div className="config-actions">
           <button type="button" id="ce-save" disabled={!mutationEnabled} onClick={() => void onSave()}>Save Caddy Editor Config</button>
         </div>

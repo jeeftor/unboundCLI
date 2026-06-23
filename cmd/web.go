@@ -18,6 +18,7 @@ import (
 var (
 	webHost            string
 	webPort            int
+	webOrigin          string
 	webCaddyServerIP   string
 	webCaddyServerPort int
 )
@@ -35,6 +36,7 @@ func init() {
 
 	webCmd.Flags().StringVar(&webHost, "host", "127.0.0.1", "host interface for the web server")
 	webCmd.Flags().IntVar(&webPort, "port", 8080, "port for the web server")
+	webCmd.Flags().StringVar(&webOrigin, "origin", "", "allowed Origin header for browser mutations (e.g. https://caddy-sync.example.com); empty = no origin check")
 	webCmd.Flags().StringVar(&webCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "Caddy server IP")
 	webCmd.Flags().IntVar(&webCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Caddy admin API port")
 }
@@ -62,27 +64,27 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return serveWeb(listener, runtime, token, webHost, cmd.OutOrStdout())
+	return serveWeb(listener, runtime, token, webHost, webOrigin, cmd.OutOrStdout())
 }
 
 func serveWebForTest(listener net.Listener, token string, out io.Writer) error {
-	return serveWeb(listener, &runtimeapp.Runtime{}, token, "127.0.0.1", out)
+	return serveWeb(listener, &runtimeapp.Runtime{}, token, "127.0.0.1", "", out)
 }
 
-func serveWeb(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHost string, out io.Writer) error {
-	actualAddr := listener.Addr().String()
+func serveWeb(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHost, allowedOrigin string, out io.Writer) error {
+	addr := listener.Addr().String()
 	server := &http.Server{
 		Handler: webui.NewServerWithOptions(runtime, webui.Options{
 			ApplyToken:     token,
 			AllowMutations: true,
-			AllowedOrigin:  "http://" + actualAddr,
+			AllowedOrigin:  allowedOrigin,
 			BoundHost:      boundHost,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	logging.Info("Starting web GUI", "addr", actualAddr)
-	fmt.Fprintf(out, "Web GUI listening on http://%s\n", actualAddr)
+	logging.Info("Starting web GUI", "addr", addr)
+	fmt.Fprintf(out, "Web GUI listening on http://%s\n", addr)
 	return server.Serve(listener)
 }
 

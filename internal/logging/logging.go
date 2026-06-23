@@ -5,7 +5,9 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
+	"time"
 )
 
 // LogLevel represents the logging level
@@ -217,4 +219,91 @@ func ResetToStderr() {
 	})
 	logger = slog.New(handler)
 	slog.SetDefault(logger)
+}
+
+// ── Ring buffer for web UI log streaming ────────────────────────────────────
+
+// LogLine is a single buffered log entry returned by GetLogLinesSince.
+type LogLine struct {
+	Index   int    `json:"index"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
+	Time    string `json:"time"`
+}
+
+const ringBufferMax = 500
+
+var (
+	ringBuf    []LogLine
+	ringMu     sync.Mutex
+	ringCursor int
+)
+
+func appendToRing(level, message string) {
+	ringMu.Lock()
+	defer ringMu.Unlock()
+	ringCursor++
+	entry := LogLine{
+		Index:   ringCursor,
+		Level:   level,
+		Message: message,
+		Time:    time.Now().Format(time.RFC3339),
+	}
+	if len(ringBuf) >= ringBufferMax {
+		ringBuf = ringBuf[1:]
+	}
+	ringBuf = append(ringBuf, entry)
+}
+
+// GetLogLinesSince returns buffered lines with index > since and the current cursor.
+func GetLogLinesSince(since int) ([]LogLine, int) {
+	ringMu.Lock()
+	defer ringMu.Unlock()
+	var result []LogLine
+	for _, line := range ringBuf {
+		if line.Index > since {
+			result = append(result, line)
+		}
+	}
+	return result, ringCursor
+}
+
+// EnableBuffer installs a handler that writes to both stderr and the ring buffer.
+// Call this once when starting the web server.
+func EnableBuffer() {
+	stderrH := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: currentLevel})
+	logger = slog.New(&multiHandler{primary: stderrH})
+	slog.SetDefault(logger)
+}
+
+// multiHandler writes to a primary slog.Handler AND appends to the ring buffer.
+type multiHandler struct {
+	primary slog.Handler
+}
+
+func (h *multiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.primary.Enabled(ctx, level)
+}
+
+func (h *multiHandler) Handle(ctx context.Context, record slog.Record) error {
+	// Build human-readable message with key=value attrs for the ring buffer.
+	var attrs []string
+	record.Attrs(func(a slog.Attr) bool {
+		attrs = append(attrs, a.Key+"="+a.Value.String())
+		return true
+	})
+	msg := record.Message
+	if len(attrs) > 0 {
+		msg = msg + " [" + strings.Join(attrs, ", ") + "]"
+	}
+	appendToRing(record.Level.String(), msg)
+	return h.primary.Handle(ctx, record)
+}
+
+func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &multiHandler{primary: h.primary.WithAttrs(attrs)}
+}
+
+func (h *multiHandler) WithGroup(name string) slog.Handler {
+	return &multiHandler{primary: h.primary.WithGroup(name)}
 }
