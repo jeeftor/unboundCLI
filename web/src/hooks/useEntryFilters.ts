@@ -8,6 +8,7 @@ export function useEntryFilters(entries: Entry[]) {
   const [selectedHostname, setSelectedHostname] = useState('');
 
   const filteredEntries = useMemo(() => entries.filter((entry) => {
+    if (statusFilter === 'synced' && entry.overall_status !== 0 && entry.overall_status !== 1) return false;
     if (statusFilter === 'out_of_sync' && entry.overall_status !== 2) return false;
     if (statusFilter === 'caddy_only' && entry.overall_status !== 3) return false;
     if (statusFilter === 'stale' && entry.overall_status !== 4) return false;

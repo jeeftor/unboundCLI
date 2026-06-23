@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/caddyeditor"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
 	"github.com/jeeftor/caddy-dns-sync/internal/status"
@@ -58,11 +60,12 @@ type CaddyConfigResponse struct {
 }
 
 type ConfigResponse struct {
-	Caddy           CaddyConfigResponse `json:"caddy"`
-	Enabled         map[string]bool     `json:"enabled"`
-	MutationEnabled bool                `json:"mutation_enabled"`
-	SaveTarget      string              `json:"save_target"`
-	Summary         ConfigSummary       `json:"summary"`
+	Caddy           CaddyConfigResponse      `json:"caddy"`
+	Enabled         map[string]bool          `json:"enabled"`
+	MutationEnabled bool                     `json:"mutation_enabled"`
+	SaveTarget      string                   `json:"save_target"`
+	Summary         ConfigSummary            `json:"summary"`
+	CaddyEditor     caddyeditor.EditorConfig `json:"caddy_editor"`
 }
 
 type ConfigSummary struct {
@@ -92,9 +95,23 @@ type ConfigSource struct {
 }
 
 type ConfigUpdateRequest struct {
-	Unbound    *UnboundConfigUpdate    `json:"unbound,omitempty"`
-	Adguard    *AdguardConfigUpdate    `json:"adguard,omitempty"`
-	Cloudflare *CloudflareConfigUpdate `json:"cloudflare,omitempty"`
+	Unbound     *UnboundConfigUpdate     `json:"unbound,omitempty"`
+	Adguard     *AdguardConfigUpdate     `json:"adguard,omitempty"`
+	Cloudflare  *CloudflareConfigUpdate  `json:"cloudflare,omitempty"`
+	CaddyEditor *CaddyEditorConfigUpdate `json:"caddy_editor,omitempty"`
+}
+
+type CaddyEditorConfigUpdate struct {
+	Enabled         *bool   `json:"enabled,omitempty"`
+	RepoPath        *string `json:"repo_path,omitempty"`
+	CaddyfilePath   *string `json:"caddyfile,omitempty"`
+	DeployCommand   *string `json:"deploy_command,omitempty"`
+	ValidateCommand *string `json:"validate_command,omitempty"`
+	GitAutoCommit   *bool   `json:"git_auto_commit,omitempty"`
+	GitAutoPush     *bool   `json:"git_auto_push,omitempty"`
+	GitRemote       *string `json:"git_remote,omitempty"`
+	GitBranch       *string `json:"git_branch,omitempty"`
+	EntryTemplate   *string `json:"entry_template,omitempty"`
 }
 
 type ConfigTestRequest struct {
@@ -247,6 +264,7 @@ func (s *Server) routes() {
 	}
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler(http.FileServer(http.FS(staticRoot)))))
 	s.mux.HandleFunc("/api/config", s.handleConfig)
+	s.mux.HandleFunc("/api/config/raw", s.handleConfigRaw)
 	s.mux.HandleFunc("/api/config/test", s.handleConfigTest)
 	s.mux.HandleFunc("/api/cloudflare/discover", s.handleCloudflareDiscover)
 	s.mux.HandleFunc("/api/cloudflare/tunnels", s.handleCloudflareTunnels)
@@ -254,6 +272,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
+	// Caddy Editor routes
+	s.mux.HandleFunc("/api/caddy/entries", s.handleCaddyEntries)
+	s.mux.HandleFunc("/api/caddy/entries/", s.handleCaddyEntry)
+	s.mux.HandleFunc("/api/caddy/diff", s.handleCaddyDiff)
+	s.mux.HandleFunc("/api/caddy/validate", s.handleCaddyValidate)
+	s.mux.HandleFunc("/api/caddy/deploy", s.handleCaddyDeploy)
+	s.mux.HandleFunc("/api/caddy/templates", s.handleCaddyTemplates)
+	s.mux.HandleFunc("/api/caddy/preview", s.handleCaddyPreview)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -306,6 +332,72 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleConfigRaw serves GET /api/config/raw (read) and POST /api/config/raw (write).
+// The raw JSON of the config file is returned/accepted as a string field so the caller
+// can display and edit it verbatim without any schema translation.
+func (s *Server) handleConfigRaw(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		path, err := s.configPath()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			data = []byte("{}")
+		} else if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("read config: %w", err))
+			return
+		}
+		// Pretty-print so the editor shows indented JSON
+		var pretty bytes.Buffer
+		if err := json.Indent(&pretty, data, "", "  "); err != nil {
+			pretty.Write(data) // fall back to raw
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"raw": pretty.String(), "path": path})
+
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
+		if err := s.allowMutation(r); err != nil {
+			writeError(w, http.StatusForbidden, err)
+			return
+		}
+		var req struct {
+			Raw string `json:"raw"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+			return
+		}
+		// Validate: must be parseable as ExtendedConfig
+		var cfg config.ExtendedConfig
+		if err := json.Unmarshal([]byte(req.Raw), &cfg); err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid JSON: %w", err))
+			return
+		}
+		path, err := s.configPath()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		// Write pretty-printed
+		var pretty bytes.Buffer
+		if err := json.Indent(&pretty, []byte(req.Raw), "", "  "); err != nil {
+			pretty.WriteString(req.Raw)
+		}
+		if err := os.WriteFile(path, pretty.Bytes(), 0600); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Errorf("write config: %w", err))
+			return
+		}
+		_ = s.reloadRuntimeFromConfig(cfg)
+		writeJSON(w, http.StatusOK, map[string]string{"path": path, "status": "saved"})
+
+	default:
+		writeMethodNotAllowed(w)
+	}
+}
+
 func (s *Server) handleConfigTest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
@@ -346,7 +438,26 @@ func (s *Server) configResponse() (ConfigResponse, error) {
 		MutationEnabled: s.mutationsEnabled(),
 		SaveTarget:      saveTarget,
 		Summary:         s.configSummary(&runtime),
+		CaddyEditor:     s.loadCaddyEditorConfig(),
 	}, nil
+}
+
+func (s *Server) loadCaddyEditorConfig() caddyeditor.EditorConfig {
+	path, err := s.configPath()
+	if err != nil {
+		return caddyeditor.DefaultEditorConfig()
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return caddyeditor.DefaultEditorConfig()
+	}
+	var wrapper struct {
+		CaddyEditor caddyeditor.EditorConfig `json:"caddy_editor"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err != nil {
+		return caddyeditor.DefaultEditorConfig()
+	}
+	return wrapper.CaddyEditor
 }
 
 func (s *Server) testConfigService(service string) ConfigTestResponse {
@@ -810,6 +921,9 @@ func (s *Server) applyConfigUpdate(request ConfigUpdateRequest) (ConfigResponse,
 	if request.Cloudflare != nil {
 		applyCloudflareConfigUpdate(&cfg.Cloudflare, request.Cloudflare)
 	}
+	if request.CaddyEditor != nil {
+		applyCaddyEditorConfigUpdate(&cfg.CaddyEditor, request.CaddyEditor)
+	}
 	if err := config.SaveExtendedConfig(cfg, configPath); err != nil {
 		return ConfigResponse{}, err
 	}
@@ -902,6 +1016,39 @@ func applyCloudflareConfigUpdate(cfg *config.CloudflareConfig, update *Cloudflar
 	}
 	if update.CaddyServiceURL != nil {
 		cfg.CaddyServiceURL = strings.TrimSpace(*update.CaddyServiceURL)
+	}
+}
+
+func applyCaddyEditorConfigUpdate(cfg *caddyeditor.EditorConfig, update *CaddyEditorConfigUpdate) {
+	if update.Enabled != nil {
+		cfg.Enabled = *update.Enabled
+	}
+	if update.RepoPath != nil {
+		cfg.RepoPath = strings.TrimSpace(*update.RepoPath)
+	}
+	if update.CaddyfilePath != nil {
+		cfg.CaddyfilePath = strings.TrimSpace(*update.CaddyfilePath)
+	}
+	if update.DeployCommand != nil {
+		cfg.DeployCommand = strings.TrimSpace(*update.DeployCommand)
+	}
+	if update.ValidateCommand != nil {
+		cfg.ValidateCommand = strings.TrimSpace(*update.ValidateCommand)
+	}
+	if update.GitAutoCommit != nil {
+		cfg.GitAutoCommit = *update.GitAutoCommit
+	}
+	if update.GitAutoPush != nil {
+		cfg.GitAutoPush = *update.GitAutoPush
+	}
+	if update.GitRemote != nil {
+		cfg.GitRemote = strings.TrimSpace(*update.GitRemote)
+	}
+	if update.GitBranch != nil {
+		cfg.GitBranch = strings.TrimSpace(*update.GitBranch)
+	}
+	if update.EntryTemplate != nil {
+		cfg.EntryTemplate = strings.TrimSpace(*update.EntryTemplate)
 	}
 }
 

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "vite build",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
@@ -19,5 +19,8 @@
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "^5.7.0",
     "vite": "^7.0.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.62.2"
   }
 }

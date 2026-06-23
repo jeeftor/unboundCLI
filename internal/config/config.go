@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/caddyeditor"
 	"github.com/spf13/viper"
 )
 
@@ -77,10 +78,11 @@ func (c CloudflareConfig) GetCloudflareAPIConfig() api.CloudflareConfig {
 
 // ExtendedConfig represents the full application configuration including AdguardHome and Caddy
 type ExtendedConfig struct {
-	api.Config `json:",inline" mapstructure:",squash"`
-	Caddy      CaddyConfig      `json:"caddy" mapstructure:"caddy"`
-	Adguard    AdguardConfig    `json:"adguard" mapstructure:"adguard"`
-	Cloudflare CloudflareConfig `json:"cloudflare" mapstructure:"cloudflare"`
+	api.Config  `json:",inline" mapstructure:",squash"`
+	Caddy       CaddyConfig              `json:"caddy" mapstructure:"caddy"`
+	Adguard     AdguardConfig            `json:"adguard" mapstructure:"adguard"`
+	Cloudflare  CloudflareConfig         `json:"cloudflare" mapstructure:"cloudflare"`
+	CaddyEditor caddyeditor.EditorConfig `json:"caddy_editor" mapstructure:"caddy_editor"`
 }
 
 // GetDefaultConfigPath returns the default path for the config file

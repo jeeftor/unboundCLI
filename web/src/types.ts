@@ -27,6 +27,7 @@ export type ConfigResponse = {
   mutation_enabled: boolean;
   save_target: string;
   summary: Record<ServiceKey, ConfigServiceSummary>;
+  caddy_editor?: CaddyEditorConfig;
 };
 
 export type ServiceStatus = {
@@ -121,3 +122,54 @@ declare global {
     UNBOUNDCLI_TEST_HOOKS?: boolean;
   }
 }
+
+// ─── Caddy Editor types ────────────────────────────────────────────────────
+
+export type CaddyEditorConfig = {
+  enabled: boolean;
+  repo_path: string;
+  caddyfile: string;
+  deploy_command: string;
+  validate_command: string;
+  git_auto_commit: boolean;
+  git_auto_push: boolean;
+  git_remote: string;
+  git_branch: string;
+  entry_template: string;
+};
+
+export type CaddyEntry = {
+  hostname: string;
+  upstream: string;
+  directives: string[];
+  source_file: string;
+  raw: string;
+};
+
+export type CaddyEntriesResponse = {
+  entries: CaddyEntry[];
+  editor: CaddyEditorConfig;
+};
+
+export type CaddyDiffResponse = {
+  diff: string;
+  status: string;
+};
+
+export type CaddyTemplatesResponse = {
+  templates: string[];
+  default: string;
+};
+
+export type CaddyPreviewResponse = {
+  content: string;
+};
+
+export type CaddyValidateResult = {
+  ok: boolean;
+  output: string;
+};
+
+export type CaddyDeployEvent =
+  | { line: string; done?: undefined }
+  | { done: true; status: 'ok' | 'error' };

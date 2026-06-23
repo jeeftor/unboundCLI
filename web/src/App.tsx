@@ -6,7 +6,10 @@ import { useRuntimeData } from './hooks/useRuntimeData';
 import { useSyncPlan } from './hooks/useSyncPlan';
 import type { ServiceKey } from './types';
 
+type AppView = 'dashboard' | 'caddy-editor';
+
 export function App() {
+  const [view, setView] = useState<AppView>('dashboard');
   const [configOpen, setConfigOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [tableScrolls, setTableScrolls] = useState(false);
@@ -112,6 +115,8 @@ export function App() {
       data-table-scrolls={String(tableScrolls)}
     >
       <AppShell
+        view={view}
+        setView={setView}
         config={runtime.config}
         loading={runtime.loading}
         message={runtime.message}
@@ -148,6 +153,7 @@ export function App() {
         configStatusKind={configForms.configStatusKind}
         testResults={configForms.testResults}
         onSaveConfig={configForms.saveConfig}
+        onSaveCaddyEditor={configForms.saveCaddyEditor}
         onTestConfig={configForms.testConfig}
       />
     </div>

@@ -3,6 +3,7 @@ import {
   ChevronDown,
   CircleAlert,
   Cloud,
+  FileCode2,
   FileSliders,
   Gauge,
   ListFilter,
@@ -18,7 +19,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { Dispatch, KeyboardEvent, ReactNode, SetStateAction } from 'react';
-import type { ConfigForms, TestResults } from '../hooks/useConfigForms';
+import { CaddyEditor } from './CaddyEditor';
+import type { CaddyEditorForm, ConfigForms, TestResults } from '../hooks/useConfigForms';
 import {
   cloudflareStateText,
   compactSourceKind,
@@ -36,7 +38,11 @@ import {
 } from '../lib/services';
 import type { ConfigResponse, ConfigServiceSummary, EntriesResponse, Entry, ServiceKey, SyncAction } from '../types';
 
+type AppView = 'dashboard' | 'caddy-editor';
+
 export function AppShell({
+  view,
+  setView,
   config,
   loading,
   message,
@@ -73,8 +79,11 @@ export function AppShell({
   configStatusKind,
   testResults,
   onSaveConfig,
+  onSaveCaddyEditor,
   onTestConfig
 }: {
+  view: AppView;
+  setView: (v: AppView) => void;
   config: ConfigResponse | null;
   loading: boolean;
   message: string;
@@ -111,73 +120,80 @@ export function AppShell({
   configStatusKind: 'info' | 'error' | 'ok';
   testResults: TestResults;
   onSaveConfig: (service: 'unbound' | 'adguard' | 'cloudflare') => Promise<void>;
+  onSaveCaddyEditor: () => Promise<void>;
   onTestConfig: (service: ServiceKey) => Promise<void>;
 }) {
   const enabledServices = config?.enabled || {};
   return (
     <div className="console-layout">
-      <Sidebar config={config} report={report} onOpenConfig={() => setConfigOpen(true)} />
+      <Sidebar config={config} report={report} view={view} setView={setView} onOpenConfig={() => setConfigOpen(true)} />
       <div className="console-main">
         <Topbar config={config} loading={loading} onRefresh={onRefresh} onOpenConfig={() => setConfigOpen(true)} />
-        <main className="dashboard-shell">
-          <OperationsHeader
-            loading={loading}
-            message={message}
-            messageKind={messageKind}
-            summary={summary}
-          />
-          <section className="workspace-grid">
-            <section className="content-stack">
-              <MetricGrid summary={summary} />
-              <EntriesToolbar
-                entriesCount={entries.length}
-                statusFilter={statusFilter}
-                setStatusFilter={setStatusFilter}
-                serviceFilter={serviceFilter}
-                setServiceFilter={setServiceFilter}
-                search={search}
-                setSearch={setSearch}
-                enabledServices={enabledServices}
-              />
-              <EntriesTable
-                entries={entries}
-                selectedHostname={selectedHostname}
-                mutationEnabled={mutationEnabled}
-                enabledServices={enabledServices}
-                onSelect={setSelectedHostname}
-                onPreview={onPreview}
-                onSync={async (service, hostname) => {
-                  setSelectedHostname(hostname);
-                  if (await onPreview(service, hostname)) await onSync();
-                }}
-              />
+        {view === 'caddy-editor' ? (
+          <main className="dashboard-shell caddy-editor-shell">
+            <CaddyEditor mutationEnabled={mutationEnabled} />
+          </main>
+        ) : (
+          <main className="dashboard-shell">
+            <OperationsHeader
+              loading={loading}
+              message={message}
+              messageKind={messageKind}
+              summary={summary}
+            />
+            <section className="workspace-grid">
+              <section className="content-stack">
+                <MetricGrid summary={summary} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
+                <EntriesToolbar
+                  entriesCount={entries.length}
+                  statusFilter={statusFilter}
+                  setStatusFilter={setStatusFilter}
+                  serviceFilter={serviceFilter}
+                  setServiceFilter={setServiceFilter}
+                  search={search}
+                  setSearch={setSearch}
+                  enabledServices={enabledServices}
+                />
+                <EntriesTable
+                  entries={entries}
+                  selectedHostname={selectedHostname}
+                  mutationEnabled={mutationEnabled}
+                  enabledServices={enabledServices}
+                  onSelect={setSelectedHostname}
+                  onPreview={onPreview}
+                  onSync={async (service, hostname) => {
+                    setSelectedHostname(hostname);
+                    if (await onPreview(service, hostname)) await onSync();
+                  }}
+                />
+              </section>
+              <aside className="right-rail">
+                <SyncPanel
+                  enabledServices={enabledServices}
+                  syncService={syncService}
+                  setSyncService={setSyncService}
+                  syncLoading={syncLoading}
+                  syncProgress={syncProgress}
+                  syncLog={syncLog}
+                  plannedActions={plannedActions}
+                  canSyncNow={canSyncNow}
+                  mutationEnabled={mutationEnabled}
+                  onPreview={() => onPreview()}
+                  onDryRun={onDryRun}
+                  onSync={onSync}
+                />
+                <HostInspector
+                  entry={selectedEntry}
+                  mutationEnabled={mutationEnabled}
+                  onPreview={(hostname) => onPreview(syncService, hostname)}
+                  onSync={async (hostname) => {
+                    if (await onPreview(syncService, hostname)) await onSync();
+                  }}
+                />
+              </aside>
             </section>
-            <aside className="right-rail">
-              <SyncPanel
-                enabledServices={enabledServices}
-                syncService={syncService}
-                setSyncService={setSyncService}
-                syncLoading={syncLoading}
-                syncProgress={syncProgress}
-                syncLog={syncLog}
-                plannedActions={plannedActions}
-                canSyncNow={canSyncNow}
-                mutationEnabled={mutationEnabled}
-                onPreview={() => onPreview()}
-                onDryRun={onDryRun}
-                onSync={onSync}
-              />
-              <HostInspector
-                entry={selectedEntry}
-                mutationEnabled={mutationEnabled}
-                onPreview={(hostname) => onPreview(syncService, hostname)}
-                onSync={async (hostname) => {
-                  if (await onPreview(syncService, hostname)) await onSync();
-                }}
-              />
-            </aside>
-          </section>
-        </main>
+          </main>
+        )}
       </div>
       <ConfigModal
         open={configOpen}
@@ -190,13 +206,14 @@ export function AppShell({
         statusKind={configStatusKind}
         testResults={testResults}
         onSave={onSaveConfig}
+        onSaveCaddyEditor={onSaveCaddyEditor}
         onTest={onTestConfig}
       />
     </div>
   );
 }
 
-function Sidebar({ config, report, onOpenConfig }: { config: ConfigResponse | null; report: EntriesResponse['report']; onOpenConfig: () => void }) {
+function Sidebar({ config, report, view, setView, onOpenConfig }: { config: ConfigResponse | null; report: EntriesResponse['report']; view: AppView; setView: (v: AppView) => void; onOpenConfig: () => void }) {
   return (
     <aside className="sidebar">
       <div className="brand-lockup">
@@ -208,7 +225,8 @@ function Sidebar({ config, report, onOpenConfig }: { config: ConfigResponse | nu
       </div>
       <nav className="nav-stack" aria-label="Primary">
         <span className="nav-section">Overview</span>
-        <a className="nav-item active" href="#entries-panel"><Gauge size={15} /> Dashboard</a>
+        <button type="button" className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}><Gauge size={15} /> Dashboard</button>
+        <button type="button" className={`nav-item ${view === 'caddy-editor' ? 'active' : ''}`} onClick={() => setView('caddy-editor')}><FileCode2 size={15} /> Caddy Editor</button>
         <a className="nav-item" href="#sync-panel"><SlidersHorizontal size={15} /> Sync plan</a>
         <a className="nav-item" href="#sync-log"><TerminalSquare size={15} /> Logs</a>
         <span className="nav-section">Services</span>
@@ -295,21 +313,45 @@ function OperationsHeader({
   );
 }
 
-function MetricGrid({ summary }: { summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number } }) {
+function MetricGrid({
+  summary,
+  statusFilter,
+  setStatusFilter,
+}: {
+  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number };
+  statusFilter: string;
+  setStatusFilter: (value: string) => void;
+}) {
+  function toggle(status: string) {
+    setStatusFilter(statusFilter === status ? 'all' : status);
+  }
   return (
     <section id="summary" className="metric-grid" aria-live="polite">
-      <Metric label="Total entries" value={summary.entries} sublabel="hostnames" icon={<ListFilter size={20} />} tone="neutral" />
-      <Metric label="In sync" value={summary.inSync} sublabel="perfect" icon={<CheckCircle2 size={20} />} tone="ok" />
-      <Metric label="Caddy only" value={summary.caddyOnly} sublabel="not in DNS" icon={<CircleAlert size={20} />} tone="warn" />
-      <Metric label="Stale DNS" value={summary.stale} sublabel="needs cleanup" icon={<SlidersHorizontal size={20} />} tone="bad" />
-      <Metric label="Cloudflare routed" value={summary.cloudflare} sublabel="via tunnel" icon={<Cloud size={20} />} tone="violet" />
+      <Metric label="Total entries" value={summary.entries} sublabel="hostnames" icon={<ListFilter size={20} />} tone="neutral" status="all" activeFilter={statusFilter} onFilter={toggle} />
+      <Metric label="In sync" value={summary.inSync} sublabel="perfect" icon={<CheckCircle2 size={20} />} tone="ok" status="synced" activeFilter={statusFilter} onFilter={toggle} />
+      <Metric label="Caddy only" value={summary.caddyOnly} sublabel="not in DNS" icon={<CircleAlert size={20} />} tone="warn" status="caddy_only" activeFilter={statusFilter} onFilter={toggle} />
+      <Metric label="Stale DNS" value={summary.stale} sublabel="needs cleanup" icon={<SlidersHorizontal size={20} />} tone="bad" status="stale" activeFilter={statusFilter} onFilter={toggle} />
+      <Metric label="Cloudflare routed" value={summary.cloudflare} sublabel="via tunnel" icon={<Cloud size={20} />} tone="violet" status="cloudflare" activeFilter={statusFilter} onFilter={toggle} />
     </section>
   );
 }
 
-function Metric({ label, value, sublabel, icon, tone }: { label: string; value: number; sublabel: string; icon: ReactNode; tone: string }) {
+function Metric({
+  label, value, sublabel, icon, tone, status, activeFilter, onFilter,
+}: {
+  label: string; value: number; sublabel: string; icon: ReactNode; tone: string;
+  status: string; activeFilter: string; onFilter: (status: string) => void;
+}) {
+  const isActive = activeFilter === status && status !== 'all';
   return (
-    <article className={`metric-card ${tone}`}>
+    <article
+      className={`metric-card ${tone}${isActive ? ' metric-active' : ''}`}
+      role="button"
+      tabIndex={0}
+      title={isActive ? `Clear filter: ${label}` : `Filter: ${label}`}
+      onClick={() => onFilter(status)}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onFilter(status)}
+    >
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
@@ -610,6 +652,7 @@ function ConfigModal({
   statusKind,
   testResults,
   onSave,
+  onSaveCaddyEditor,
   onTest
 }: {
   open: boolean;
@@ -622,6 +665,7 @@ function ConfigModal({
   statusKind: 'info' | 'error' | 'ok';
   testResults: TestResults;
   onSave: (service: 'unbound' | 'adguard' | 'cloudflare') => Promise<void>;
+  onSaveCaddyEditor: () => Promise<void>;
   onTest: (service: ServiceKey) => Promise<void>;
 }) {
   return (
@@ -645,6 +689,7 @@ function ConfigModal({
             statusKind={statusKind}
             testResults={testResults}
             onSave={onSave}
+            onSaveCaddyEditor={onSaveCaddyEditor}
             onTest={onTest}
           />
         )}
@@ -652,6 +697,19 @@ function ConfigModal({
     </div>
   );
 }
+
+type ConfigTab = ServiceKey | 'caddy-editor';
+
+const configTabLabels: Record<ConfigTab, string> = {
+  caddy:        'Caddy',
+  unbound:      'Unbound',
+  adguard:      'AdGuard',
+  dhcp:         'DHCP',
+  cloudflare:   'Cloudflare',
+  'caddy-editor': 'File Editor',
+};
+
+const configTabOrder: ConfigTab[] = ['caddy', 'unbound', 'adguard', 'dhcp', 'cloudflare', 'caddy-editor'];
 
 function ConfigWorkspace(props: {
   config: ConfigResponse;
@@ -662,24 +720,106 @@ function ConfigWorkspace(props: {
   statusKind: 'info' | 'error' | 'ok';
   testResults: TestResults;
   onSave: (service: 'unbound' | 'adguard' | 'cloudflare') => Promise<void>;
+  onSaveCaddyEditor: () => Promise<void>;
   onTest: (service: ServiceKey) => Promise<void>;
 }) {
+  const [activeTab, setActiveTab] = useState<ConfigTab>('caddy');
   return (
     <div id="config-summary" className="config-workspace">
-      <div className="config-overview">
-        <div>
-          <strong>Runtime sources</strong>
-          <span>Save target and active input source are shown per service.</span>
-        </div>
-        <span className="save-target">Save target: {props.config.save_target || '-'}</span>
-      </div>
       <div id="config-status" className={`config-status ${props.statusKind}`} role="status" aria-live="polite">{props.status}</div>
-      <div id="service-health" className="config-grid" aria-label="Service health">
-        {serviceOrder.map((service) => (
-          <ConfigCard key={service} service={service} {...props} />
+      <div className="cfg-tab-bar" role="tablist">
+        {configTabOrder.map((tab) => (
+          <button
+            key={tab}
+            role="tab"
+            aria-selected={activeTab === tab}
+            className={`cfg-tab ${activeTab === tab ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {configTabLabels[tab]}
+          </button>
         ))}
       </div>
+      <div className="cfg-tab-content">
+        {activeTab === 'caddy-editor' ? (
+          <CaddyEditorSetupPanel
+            form={props.forms.caddyEditor}
+            setForm={(updater) => props.setForms((current) => ({ ...current, caddyEditor: typeof updater === 'function' ? updater(current.caddyEditor) : updater }))}
+            mutationEnabled={props.mutationEnabled}
+            onSave={props.onSaveCaddyEditor}
+          />
+        ) : (
+          <ConfigCard service={activeTab} {...props} />
+        )}
+      </div>
     </div>
+  );
+}
+
+function CaddyEditorSetupPanel({
+  form,
+  setForm,
+  mutationEnabled,
+  onSave
+}: {
+  form: CaddyEditorForm;
+  setForm: (updater: CaddyEditorForm | ((prev: CaddyEditorForm) => CaddyEditorForm)) => void;
+  mutationEnabled: boolean;
+  onSave: () => Promise<void>;
+}) {
+  const set = <K extends keyof CaddyEditorForm>(key: K, value: CaddyEditorForm[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+  return (
+    <section className="caddy-editor-setup">
+      <header className="caddy-editor-setup-header">
+        <div>
+          <strong><FileCode2 size={15} /> Caddy File Editor</strong>
+          <span>Configure the Caddyfile editor — repo path, deploy command, and git settings.</span>
+        </div>
+      </header>
+      <div className="caddy-editor-setup-body">
+        <label className="checkbox-row">
+          <input id="ce-enabled" type="checkbox" checked={form.enabled} onChange={(e) => set('enabled', e.target.checked)} />
+          Enabled
+        </label>
+        <div className="caddy-editor-setup-grid">
+          <Field label="Repo path">
+            <input id="ce-repo-path" type="text" value={form.repo_path} placeholder="/etc/caddy" onChange={(e) => set('repo_path', e.target.value)} />
+          </Field>
+          <Field label="Caddyfile (relative to repo path)">
+            <input id="ce-caddyfile" type="text" value={form.caddyfile} placeholder="Caddyfile" onChange={(e) => set('caddyfile', e.target.value)} />
+          </Field>
+          <Field label="Entry template">
+            <input id="ce-entry-template" type="text" value={form.entry_template} placeholder="default" onChange={(e) => set('entry_template', e.target.value)} />
+          </Field>
+          <Field label="Deploy command">
+            <input id="ce-deploy-command" type="text" value={form.deploy_command} placeholder="make deploy" onChange={(e) => set('deploy_command', e.target.value)} />
+          </Field>
+          <Field label="Validate command">
+            <input id="ce-validate-command" type="text" value={form.validate_command} placeholder="caddy validate --config Caddyfile" onChange={(e) => set('validate_command', e.target.value)} />
+          </Field>
+          <Field label="Git remote">
+            <input id="ce-git-remote" type="text" value={form.git_remote} placeholder="origin" onChange={(e) => set('git_remote', e.target.value)} />
+          </Field>
+          <Field label="Git branch">
+            <input id="ce-git-branch" type="text" value={form.git_branch} placeholder="main" onChange={(e) => set('git_branch', e.target.value)} />
+          </Field>
+        </div>
+        <div className="caddy-editor-setup-checks">
+          <label className="checkbox-row">
+            <input id="ce-git-auto-commit" type="checkbox" checked={form.git_auto_commit} onChange={(e) => set('git_auto_commit', e.target.checked)} />
+            Auto-commit on save
+          </label>
+          <label className="checkbox-row">
+            <input id="ce-git-auto-push" type="checkbox" checked={form.git_auto_push} onChange={(e) => set('git_auto_push', e.target.checked)} />
+            Auto-push on save
+          </label>
+        </div>
+        <div className="config-actions">
+          <button type="button" id="ce-save" disabled={!mutationEnabled} onClick={() => void onSave()}>Save Caddy Editor Config</button>
+        </div>
+      </div>
+    </section>
   );
 }
 
