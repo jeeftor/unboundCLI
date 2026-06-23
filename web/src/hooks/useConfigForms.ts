@@ -3,6 +3,19 @@ import { api } from '../api/client';
 import { formatTestDetails } from '../lib/services';
 import type { ConfigResponse, ServiceKey } from '../types';
 
+export type CaddyEditorForm = {
+  enabled: boolean;
+  repo_path: string;
+  caddyfile: string;
+  deploy_command: string;
+  validate_command: string;
+  git_auto_commit: boolean;
+  git_auto_push: boolean;
+  git_remote: string;
+  git_branch: string;
+  entry_template: string;
+};
+
 export type ConfigForms = {
   unbound: { base_url: string; api_key: string; api_secret: string; insecure: boolean };
   adguard: { enabled: boolean; base_url: string; username: string; password: string; insecure: boolean };
@@ -15,6 +28,7 @@ export type ConfigForms = {
     caddy_service_url: string;
     insecure: boolean;
   };
+  caddyEditor: CaddyEditorForm;
 };
 
 export type TestResults = Partial<Record<ServiceKey, { text: string; kind: 'info' | 'ok' | 'error' }>>;
@@ -30,6 +44,18 @@ export const emptyForms: ConfigForms = {
     tunnel_id: '',
     caddy_service_url: '',
     insecure: false
+  },
+  caddyEditor: {
+    enabled: false,
+    repo_path: '',
+    caddyfile: 'caddy/Caddyfile',
+    deploy_command: '',
+    validate_command: '',
+    git_auto_commit: false,
+    git_auto_push: false,
+    git_remote: 'origin',
+    git_branch: '',
+    entry_template: 'default'
   }
 };
 
@@ -52,6 +78,7 @@ export function useConfigForms(args: {
   useEffect(() => {
     const nextConfig = args.config;
     if (!nextConfig) return;
+    const ce = nextConfig.caddy_editor;
     setForms((current) => ({
       unbound: {
         ...current.unbound,
@@ -69,9 +96,56 @@ export function useConfigForms(args: {
         enabled: Boolean(nextConfig.summary.cloudflare?.enabled),
         caddy_service_url: nextConfig.summary.cloudflare?.details?.caddy_service_url || '',
         insecure: Boolean(nextConfig.summary.cloudflare?.insecure)
-      }
+      },
+      caddyEditor: ce ? {
+        enabled: ce.enabled,
+        repo_path: ce.repo_path || '',
+        caddyfile: ce.caddyfile || 'caddy/Caddyfile',
+        deploy_command: ce.deploy_command || '',
+        validate_command: ce.validate_command || '',
+        git_auto_commit: ce.git_auto_commit,
+        git_auto_push: ce.git_auto_push,
+        git_remote: ce.git_remote || 'origin',
+        git_branch: ce.git_branch || '',
+        entry_template: ce.entry_template || 'default'
+      } : current.caddyEditor
     }));
   }, [args.config]);
+
+  const saveCaddyEditor = useCallback(async (nextForms = formsRef.current) => {
+    if (!args.mutationEnabled) {
+      setConfigStatus('Config changes are unavailable for this web session.');
+      setConfigStatusKind('error');
+      return;
+    }
+    setConfigStatus('Saving Caddy editor config...');
+    setConfigStatusKind('info');
+    try {
+      const ce = nextForms.caddyEditor;
+      const payload = {
+        caddy_editor: {
+          enabled: ce.enabled,
+          repo_path: ce.repo_path,
+          caddyfile: ce.caddyfile,
+          deploy_command: ce.deploy_command,
+          validate_command: ce.validate_command,
+          git_auto_commit: ce.git_auto_commit,
+          git_auto_push: ce.git_auto_push,
+          git_remote: ce.git_remote,
+          git_branch: ce.git_branch,
+          entry_template: ce.entry_template
+        }
+      };
+      const nextConfig = await api.saveConfig(payload);
+      args.applyConfig(nextConfig);
+      args.onConfigChanged();
+      setConfigStatus('Saved Caddy editor config.');
+      setConfigStatusKind('ok');
+    } catch (err) {
+      setConfigStatus(err instanceof Error ? err.message : String(err));
+      setConfigStatusKind('error');
+    }
+  }, [args]);
 
   const saveConfig = useCallback(async (service: 'unbound' | 'adguard' | 'cloudflare', nextForms = formsRef.current) => {
     if (!args.mutationEnabled) {
@@ -126,6 +200,7 @@ export function useConfigForms(args: {
     configStatusKind,
     testResults,
     saveConfig,
+    saveCaddyEditor,
     testConfig
   };
 }
