@@ -1,6 +1,20 @@
 package cmd
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"os"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+)
+
+func init() {
+	// When invoked over SSH without a TTY (e.g. `ssh host caddy-dns-sync doctor`)
+	// termenv detects no color support and lipgloss strips all ANSI codes.
+	// Force ANSI256 unless the caller explicitly opts out with NO_COLOR.
+	if os.Getenv("NO_COLOR") == "" {
+		lipgloss.SetColorProfile(termenv.ANSI256)
+	}
+}
 
 // ── Shared CLI colour palette ─────────────────────────────────────────────────
 // Use these styles consistently across all commands so the output feels cohesive.

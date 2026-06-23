@@ -9,13 +9,13 @@ import (
 
 // DNSMasqLease represents a DHCP lease entry from DNSMasq
 type DNSMasqLease struct {
-	Hostname   string `json:"hostname"`
-	IPAddress  string `json:"address"`
-	MACAddress string `json:"hwaddr"`      // API returns "hwaddr"
-	Expires    int64  `json:"expire"`      // API returns "expire" as Unix timestamp
-	IsReserved string `json:"is_reserved"` // "1" = static, "0" = dynamic
-	MACInfo    string `json:"mac_info"`    // Manufacturer info
-	Type       string `json:"-"`           // Computed field (not from API)
+	Hostname   string   `json:"hostname"`
+	IPAddress  string   `json:"address"`
+	MACAddress string   `json:"hwaddr"`      // API returns "hwaddr"
+	Expires    int64    `json:"expire"`      // API returns "expire" as Unix timestamp
+	IsReserved []string `json:"is_reserved"` // non-empty = static (reserved by hwaddr), empty = dynamic
+	MACInfo    string   `json:"mac_info"`    // Manufacturer info
+	Type       string   `json:"-"`           // Computed field (not from API)
 }
 
 // DNSMasqClient handles DNSMasq DHCP lease queries via OPNSense API
@@ -52,7 +52,7 @@ func (c *DNSMasqClient) GetLeases() ([]DNSMasqLease, error) {
 
 		// Populate Type field from IsReserved
 		for i := range rows {
-			if rows[i].IsReserved == "1" {
+			if len(rows[i].IsReserved) > 0 {
 				rows[i].Type = "static"
 			} else {
 				rows[i].Type = "dynamic"

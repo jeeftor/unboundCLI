@@ -67,6 +67,7 @@ export async function deleteJSON<T>(path: string): Promise<T> {
 export const api = {
   config: () => getJSON<ConfigResponse>('/api/config'),
   entries: () => getJSON<EntriesResponse>('/api/entries'),
+  logs: (since: number) => getJSON<{ lines: Array<{ index: number; level: string; message: string; time: string }>; cursor: number }>(`/api/logs?since=${since}`),
   planSync: (service: string, hostname = '') => {
     const query = new URLSearchParams();
     query.set('service', service);
@@ -75,6 +76,8 @@ export const api = {
   },
   applySync: (payload: { dry_run: boolean; actions?: SyncAction[]; plan_id?: string; action_ids?: string[] }) =>
     postJSON<ApplyResponse>('/api/sync/apply', payload),
+  removeEntry: (hostname: string, service: 'all' | 'unbound' | 'adguard' = 'all') =>
+    postJSON<{ removed: number; message: string }>('/api/sync/remove', { hostname, service }),
   saveConfig: (payload: unknown) => postJSON<ConfigResponse>('/api/config', payload),
   testConfig: (service: ServiceKey) => postJSON<ConfigTestResponse>('/api/config/test', { service }),
 
@@ -87,7 +90,11 @@ export const api = {
   caddyDeleteEntry: (hostname: string) =>
     deleteJSON<{ status: string }>(`/api/caddy/entries/${encodeURIComponent(hostname)}`),
   caddyDiff: () => getJSON<CaddyDiffResponse>('/api/caddy/diff'),
+  caddyGitStatus: () => getJSON<{ remote_ahead: number; local_ahead: number; branch: string; remote: string; fetch_error?: string }>('/api/caddy/git/status'),
+  caddyGitPull: () => postJSON<{ output: string; status: string }>('/api/caddy/git/pull', {}),
   caddyValidate: () => postJSON<CaddyValidateResult>('/api/caddy/validate', {}),
+  caddyValidateDraft: (payload: { hostname: string; upstream: string; template: string }) =>
+    postJSON<CaddyValidateResult>('/api/caddy/validate-draft', payload),
   caddyTemplates: () => getJSON<CaddyTemplatesResponse>('/api/caddy/templates'),
   caddyPreview: (hostname: string, upstream: string, template: string) => {
     const q = new URLSearchParams({ hostname, upstream, template });

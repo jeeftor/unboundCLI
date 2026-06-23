@@ -18,7 +18,7 @@ After=network.target
 [Service]
 Type=simple
 Environment=HOME={{.HomeDir}}
-ExecStart={{.BinPath}} web --host {{.Host}} --port {{.Port}}
+ExecStart={{.BinPath}} web --host {{.Host}} --port {{.Port}}{{if .Origin}} --origin {{.Origin}}{{end}}
 Restart=on-failure
 RestartSec=5
 
@@ -29,9 +29,10 @@ WantedBy=multi-user.target
 const unitPath = "/etc/systemd/system/caddy-sync.service"
 
 var (
-	installHost  string
-	installPort  int
-	installStart bool
+	installHost   string
+	installPort   int
+	installOrigin string
+	installStart  bool
 )
 
 var installServiceCmd = &cobra.Command{
@@ -54,6 +55,7 @@ func init() {
 
 	installServiceCmd.Flags().StringVar(&installHost, "host", "127.0.0.1", "host interface for the web server")
 	installServiceCmd.Flags().IntVar(&installPort, "port", 8080, "port for the web server")
+	installServiceCmd.Flags().StringVar(&installOrigin, "origin", "", "allowed Origin for browser mutations (e.g. https://caddy-sync.example.com)")
 	installServiceCmd.Flags().BoolVar(&installStart, "start", false, "start the service immediately after installing")
 }
 
@@ -83,8 +85,9 @@ func runInstallService(cmd *cobra.Command, args []string) error {
 		BinPath string
 		Host    string
 		Port    int
+		Origin  string
 		HomeDir string
-	}{binPath, installHost, installPort, homeDir}); err != nil {
+	}{binPath, installHost, installPort, installOrigin, homeDir}); err != nil {
 		return fmt.Errorf("render unit file: %w", err)
 	}
 	o := cmd.OutOrStdout()

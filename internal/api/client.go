@@ -547,5 +547,37 @@ func (c *Client) ApplyChanges() error {
 	}
 
 	logging.Debug("Successfully applied changes to Unbound service")
+
+	// Best-effort: ask OPNSense to persist its config to disk.
+	// This is a no-op on standard disk installs but prevents data loss on
+	// embedded (NanoBSD/RAM-disk) setups where config lives in a tmpfs.
+	// Failure is logged but not fatal — reconfigure already succeeded.
+	if err := c.persistConfig(); err != nil {
+		logging.Warn("Config persist after reconfigure failed (non-fatal)", "error", err)
+	}
+
+	return nil
+}
+
+// persistConfig asks OPNSense to write its running config to persistent storage.
+// OPNSense exposes this via POST /api/core/firmware/backup (standard) and via
+// the writeact console action on embedded installs. We attempt the firmware
+// backup endpoint; if the instance doesn't support it we get a 404 which we
+// treat as a no-op.
+func (c *Client) persistConfig() error {
+	logging.Debug("Requesting OPNSense config persist")
+	emptyJSON := bytes.NewBufferString("{}")
+	resp, err := c.makeRequest("POST", "/api/core/firmware/backup", emptyJSON)
+	if err != nil {
+		// 404 = endpoint not present on this OPNSense version; not an error.
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "unexpected status code: 404") {
+			logging.Debug("Config persist endpoint not available (older OPNSense)")
+			return nil
+		}
+		return err
+	}
+	if resp != nil {
+		logging.Debug("Config persist response", "status", resp.Status, "result", resp.Result)
+	}
 	return nil
 }

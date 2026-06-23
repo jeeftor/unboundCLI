@@ -10,6 +10,7 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
 	statussvc "github.com/jeeftor/caddy-dns-sync/internal/status"
+	"github.com/jeeftor/caddy-dns-sync/internal/tables"
 )
 
 // OverallSyncStatus represents the overall sync state
@@ -400,23 +401,130 @@ func (r *SyncStatusRenderer) RenderCompactSummary() string {
 	)
 }
 
-// RenderDashboard renders the full dashboard.
+// RenderDashboard renders the full dashboard as a rich colour-coded table.
 func (r *SyncStatusRenderer) RenderDashboard() string {
 	if r.dashboard == nil {
 		return "No data loaded"
 	}
 	statuses := r.dashboard.GetFilteredStatuses()
-	lines := []string{"Sync Status Dashboard"}
 	if len(statuses) == 0 {
-		lines = append(lines, "No matching services")
-		return strings.Join(lines, "\n")
+		return "No matching services found."
 	}
-	for _, status := range statuses {
-		line := fmt.Sprintf("%s %s [%s]", GetOverallStatusIcon(status.Overall), status.Hostname, status.DataSource)
-		if r.showIPs {
-			line += fmt.Sprintf(" caddy=%s dns=%s", status.CaddyIP, status.DNSResolvedIP)
+
+	// Colours (Tokyo Night palette)
+	syncColor := lipgloss.Color("#9ece6a")
+	partialColor := lipgloss.Color("#e0af68")
+	outColor := lipgloss.Color("#f7768e")
+	caddyColor := lipgloss.Color("#7aa2f7")
+	dimColor := lipgloss.Color("#565f89")
+
+	syncStyle := lipgloss.NewStyle().Foreground(syncColor)
+	partialStyle := lipgloss.NewStyle().Foreground(partialColor)
+	outStyle := lipgloss.NewStyle().Foreground(outColor)
+	caddyStyle := lipgloss.NewStyle().Foreground(caddyColor)
+	dimStyle := lipgloss.NewStyle().Foreground(dimColor)
+
+	headers := []string{"HOSTNAME", "DNS", "UPSTREAM", "UNBOUND", "ADGUARD", "OVERALL"}
+	if r.showIPs {
+		headers = []string{"HOSTNAME", "CADDY IP", "DNS", "UPSTREAM", "DHCP", "UNBOUND", "ADGUARD", "OVERALL"}
+	}
+
+	rows := make([][]string, 0, len(statuses))
+	for _, s := range statuses {
+		// DNS resolved IP
+		dnsText := dimStyle.Render("—")
+		if s.DNSResolvedIP != "" && s.DNSResolvedIP != "FAIL" && s.DNSResolvedIP != "NONE" {
+			if s.DNSResolvedIP == s.CaddyIP {
+				dnsText = syncStyle.Render(s.DNSResolvedIP)
+			} else {
+				dnsText = partialStyle.Render(s.DNSResolvedIP)
+			}
+		} else if s.DNSResolvedIP == "FAIL" || s.DNSResolvedIP == "NONE" {
+			dnsText = outStyle.Render(s.DNSResolvedIP)
 		}
-		lines = append(lines, line)
+
+		// Upstream
+		upstream := dimStyle.Render("—")
+		if s.UpstreamIP != "" {
+			upstream = s.UpstreamIP
+		}
+
+		// Unbound
+		unboundText := renderServiceCell(s.UnboundStatus, s.CaddyIP != "", syncStyle, partialStyle, outStyle, dimStyle)
+		// Adguard
+		adguardText := renderServiceCell(s.AdguardStatus, s.CaddyIP != "", syncStyle, partialStyle, outStyle, dimStyle)
+
+		// Overall
+		var overallText string
+		switch s.Overall {
+		case FullyInSync:
+			overallText = syncStyle.Render("✓ Synced")
+		case PartiallyInSync:
+			overallText = partialStyle.Render("⚠ Partial")
+		case OutOfSync:
+			overallText = outStyle.Render("✗ Out of Sync")
+		case CaddyOnly:
+			overallText = caddyStyle.Render("◆ Caddy Only")
+		case Stale:
+			overallText = dimStyle.Render("~ Stale")
+		default:
+			overallText = "?"
+		}
+
+		if r.showIPs {
+			caddyIP := dimStyle.Render("—")
+			if s.CaddyIP != "" {
+				caddyIP = s.CaddyIP
+			}
+			dhcp := dimStyle.Render("—")
+			if s.DHCPLeaseIP != "" {
+				t := "D"
+				if s.DHCPLeaseType == "static" {
+					t = "S"
+				}
+				if s.DHCPMismatch {
+					dhcp = partialStyle.Render(fmt.Sprintf("⚠ %s(%s)", s.DHCPLeaseIP, t))
+				} else {
+					dhcp = fmt.Sprintf("%s(%s)", s.DHCPLeaseIP, t)
+				}
+			}
+			rows = append(rows, []string{s.Hostname, caddyIP, dnsText, upstream, dhcp, unboundText, adguardText, overallText})
+		} else {
+			rows = append(rows, []string{s.Hostname, dnsText, upstream, unboundText, adguardText, overallText})
+		}
 	}
-	return strings.Join(lines, "\n")
+
+	summary := r.dashboard.GetSummary()
+	summaryLine := fmt.Sprintf("Total: %d  │  %s  │  %s  │  %s  │  %s",
+		summary.Total,
+		syncStyle.Render(fmt.Sprintf("%d Synced", summary.FullyInSync)),
+		partialStyle.Render(fmt.Sprintf("%d Partial", summary.PartiallyInSync)),
+		outStyle.Render(fmt.Sprintf("%d Out of Sync", summary.OutOfSync)),
+		caddyStyle.Render(fmt.Sprintf("%d Caddy Only", summary.CaddyOnly)),
+	)
+
+	renderer := tables.NewTableRenderer()
+	return renderer.Render(tables.TableConfig{
+		Title:   "DNS SYNC STATUS",
+		Headers: headers,
+		Rows:    rows,
+		Summary: summaryLine,
+	})
+}
+
+// renderServiceCell formats a single Unbound/Adguard cell with colour.
+func renderServiceCell(status ServiceStatus, hasInCaddy bool, syncStyle, partialStyle, outStyle, dimStyle lipgloss.Style) string {
+	if !hasInCaddy {
+		if !status.Present {
+			return syncStyle.Render("OK")
+		}
+		return partialStyle.Render("EXTRA")
+	}
+	if !status.Present {
+		return outStyle.Render("MISSING")
+	}
+	if status.InSync {
+		return syncStyle.Render("✓ " + status.IP)
+	}
+	return partialStyle.Render("⚠ " + status.IP)
 }

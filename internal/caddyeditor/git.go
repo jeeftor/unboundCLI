@@ -7,6 +7,63 @@ import (
 	"strings"
 )
 
+// RemoteStatus describes how many commits the remote is ahead/behind local HEAD.
+type RemoteStatus struct {
+	RemoteAhead int    `json:"remote_ahead"` // commits in remote not yet in local
+	LocalAhead  int    `json:"local_ahead"`  // local commits not yet pushed
+	Branch      string `json:"branch"`
+	Remote      string `json:"remote"`
+	FetchError  string `json:"fetch_error,omitempty"`
+}
+
+// GitFetchRemoteStatus fetches from remote and returns the commit delta.
+func GitFetchRemoteStatus(cfg EditorConfig) RemoteStatus {
+	remote := cfg.GitRemote
+	if remote == "" {
+		remote = "origin"
+	}
+	branch := cfg.GitBranch
+	if branch == "" {
+		if out, err := runGit(cfg.RepoPath, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
+			branch = strings.TrimSpace(out)
+		}
+	}
+	if branch == "" {
+		branch = "main"
+	}
+
+	st := RemoteStatus{Remote: remote, Branch: branch}
+
+	// Fetch quietly — this is the network call.
+	if _, err := runGit(cfg.RepoPath, "fetch", "--quiet", remote); err != nil {
+		st.FetchError = err.Error()
+		return st
+	}
+
+	upstream := remote + "/" + branch
+
+	// Commits in remote not yet in local (remote ahead).
+	if out, err := runGit(cfg.RepoPath, "rev-list", "--count", "HEAD.."+upstream); err == nil {
+		fmt.Sscanf(strings.TrimSpace(out), "%d", &st.RemoteAhead)
+	}
+	// Local commits not yet pushed (local ahead).
+	if out, err := runGit(cfg.RepoPath, "rev-list", "--count", upstream+"..HEAD"); err == nil {
+		fmt.Sscanf(strings.TrimSpace(out), "%d", &st.LocalAhead)
+	}
+
+	return st
+}
+
+// GitPull pulls from the configured remote.
+func GitPull(cfg EditorConfig) (string, error) {
+	remote := cfg.GitRemote
+	if remote == "" {
+		remote = "origin"
+	}
+	out, err := runGit(cfg.RepoPath, "pull", remote)
+	return out, err
+}
+
 // GitDiff returns the git diff output for the repo.
 func GitDiff(cfg EditorConfig) (string, error) {
 	out, err := runGit(cfg.RepoPath, "diff", "HEAD")

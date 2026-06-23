@@ -22,6 +22,7 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/caddyeditor"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
 	"github.com/jeeftor/caddy-dns-sync/internal/status"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
@@ -238,6 +239,8 @@ func NewServerWithOptions(runtime *app.Runtime, options Options) *Server {
 	if runtime == nil {
 		runtime = &app.Runtime{}
 	}
+	// Capture log lines into the ring buffer so the web UI can stream them.
+	logging.EnableBuffer()
 	server := &Server{runtime: runtime, options: options, mux: http.NewServeMux(), plans: make(map[string]storedPlan)}
 	server.routes()
 	return server
@@ -270,13 +273,18 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/cloudflare/tunnels", s.handleCloudflareTunnels)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
+	s.mux.HandleFunc("/api/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
+	s.mux.HandleFunc("/api/sync/remove", s.handleSyncRemove)
 	// Caddy Editor routes
 	s.mux.HandleFunc("/api/caddy/entries", s.handleCaddyEntries)
 	s.mux.HandleFunc("/api/caddy/entries/", s.handleCaddyEntry)
 	s.mux.HandleFunc("/api/caddy/diff", s.handleCaddyDiff)
+	s.mux.HandleFunc("/api/caddy/git/status", s.handleCaddyGitStatus)
+	s.mux.HandleFunc("/api/caddy/git/pull", s.handleCaddyGitPull)
 	s.mux.HandleFunc("/api/caddy/validate", s.handleCaddyValidate)
+	s.mux.HandleFunc("/api/caddy/validate-draft", s.handleCaddyValidateDraft)
 	s.mux.HandleFunc("/api/caddy/deploy", s.handleCaddyDeploy)
 	s.mux.HandleFunc("/api/caddy/templates", s.handleCaddyTemplates)
 	s.mux.HandleFunc("/api/caddy/preview", s.handleCaddyPreview)
@@ -633,6 +641,27 @@ type ProbeResponse struct {
 	LatencyMS  int64  `json:"latency_ms"`
 	Error      string `json:"error,omitempty"`
 	ProbeURL   string `json:"probe_url"`
+}
+
+// handleLogs returns buffered log lines since a given cursor index.
+// GET /api/logs?since=N  →  { lines: [...], cursor: N }
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	since := 0
+	if v := r.URL.Query().Get("since"); v != "" {
+		fmt.Sscanf(v, "%d", &since)
+	}
+	lines, cursor := logging.GetLogLinesSince(since)
+	if lines == nil {
+		lines = []logging.LogLine{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"lines":  lines,
+		"cursor": cursor,
+	})
 }
 
 // handleProbe does a quick HTTP/HTTPS HEAD probe to an upstream address.
@@ -1250,6 +1279,87 @@ func (s *Server) applyActions(ctx context.Context, actions []syncplan.Action, dr
 	}, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{DryRun: dryRun})
 }
 
+// handleSyncRemove deletes DNS entries for a specific hostname.
+// Body: {"hostname":"foo.example.com","service":"all"|"unbound"|"adguard"}
+// service defaults to "all" when omitted.
+func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req struct {
+		Hostname string `json:"hostname"`
+		Service  string `json:"service"` // "all", "unbound", "adguard" — defaults to "all"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Hostname == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname required"))
+		return
+	}
+	if req.Service == "" {
+		req.Service = "all"
+	}
+
+	runtime := s.runtimeSnapshot()
+	removed := 0
+	var msgs []string
+
+	// Remove from Unbound
+	if (req.Service == "all" || req.Service == "unbound") && runtime.Clients.Unbound != nil {
+		parts := strings.SplitN(req.Hostname, ".", 2)
+		if len(parts) == 2 {
+			overrides, err := runtime.Clients.Unbound.GetOverrides()
+			if err == nil {
+				unboundRemoved := 0
+				for _, o := range overrides {
+					if strings.EqualFold(o.Host, parts[0]) && strings.EqualFold(o.Domain, parts[1]) {
+						if delErr := runtime.Clients.Unbound.DeleteOverride(o.UUID); delErr == nil {
+							unboundRemoved++
+							removed++
+						}
+					}
+				}
+				if unboundRemoved > 0 {
+					_ = runtime.Clients.Unbound.ApplyChanges()
+					msgs = append(msgs, fmt.Sprintf("removed %d Unbound override(s)", unboundRemoved))
+				}
+			}
+		}
+	}
+
+	// Remove from AdGuard
+	if (req.Service == "all" || req.Service == "adguard") && runtime.Clients.Adguard != nil {
+		rewrites, err := runtime.Clients.Adguard.GetRewritesForDomain(req.Hostname)
+		if err == nil {
+			n := 0
+			for _, rw := range rewrites {
+				if delErr := runtime.Clients.Adguard.DeleteRewrite(rw.Domain, rw.Answer); delErr == nil {
+					n++
+					removed++
+				}
+			}
+			if n > 0 {
+				msgs = append(msgs, fmt.Sprintf("removed %d AdGuard rewrite(s)", n))
+			}
+		}
+	}
+
+	msg := fmt.Sprintf("Removed DNS entries for %s", req.Hostname)
+	if len(msgs) > 0 {
+		msg = strings.Join(msgs, "; ")
+	} else if removed == 0 {
+		msg = fmt.Sprintf("No DNS entries found for %s", req.Hostname)
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"removed": removed,
+		"message": msg,
+	})
+}
+
 func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
 	runtime := s.runtimeSnapshot()
 	return status.LoadEntries(ctx, runtime.Clients, status.Options{
@@ -1378,8 +1488,10 @@ func (s *Server) allowMutation(r *http.Request) error {
 	if s.options.ApplyToken == "" || r.Header.Get("X-UnboundCLI-Token") != s.options.ApplyToken {
 		return fmt.Errorf("web apply requires a valid local session token")
 	}
-	if origin := r.Header.Get("Origin"); origin != "" && origin != s.options.AllowedOrigin {
-		return fmt.Errorf("web apply rejected origin %q", origin)
+	if s.options.AllowedOrigin != "" {
+		if origin := r.Header.Get("Origin"); origin != "" && origin != s.options.AllowedOrigin {
+			return fmt.Errorf("web apply rejected origin %q", origin)
+		}
 	}
 	return nil
 }

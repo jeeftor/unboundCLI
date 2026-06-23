@@ -83,6 +83,79 @@ func renderMatcherBlock(matcherName, hostname, upstream, templateName string, re
 	return content, nil
 }
 
+// ValidateDraft renders the entry (add or update) into a temp copy of the Caddyfile
+// and runs caddy adapt to check syntax — without touching the real file.
+func ValidateDraft(cfg EditorConfig, block SiteBlock, templateName string) ValidationResult {
+	if templateName == "" {
+		templateName = cfg.EntryTemplate
+	}
+	if templateName == "" {
+		templateName = "default"
+	}
+
+	path := AbsCaddyfilePath(cfg)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ValidationResult{OK: false, Output: fmt.Sprintf("reading caddyfile: %s", err)}
+	}
+
+	matcherName := matcherNameFromHostname(block.Hostname)
+	snippet, err := renderMatcherBlock(matcherName, block.Hostname, block.Upstream, templateName, cfg.RepoPath)
+	if err != nil {
+		return ValidationResult{OK: false, Output: fmt.Sprintf("rendering template: %s", err)}
+	}
+
+	// For updates, remove the existing entry first.
+	content := string(raw)
+	existing, _ := ParseCaddyfile(path)
+	for _, b := range existing {
+		if b.Hostname == block.Hostname {
+			content = deleteEntry(content, b.MatcherName, b.Hostname)
+			break
+		}
+	}
+
+	draft, err := insertEntry(content, matcherName, block.Hostname, snippet)
+	if err != nil {
+		return ValidationResult{OK: false, Output: err.Error()}
+	}
+
+	// Write draft to a temp file and validate syntax only.
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".caddyfile-draft-*")
+	if err != nil {
+		return ValidationResult{OK: false, Output: fmt.Sprintf("creating temp file: %s", err)}
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := tmp.WriteString(draft); err != nil {
+		tmp.Close()
+		return ValidationResult{OK: false, Output: fmt.Sprintf("writing temp file: %s", err)}
+	}
+	tmp.Close()
+
+	var buf bytes.Buffer
+	cmd := exec.Command("caddy", "adapt", "--config", tmpPath, "--adapter", "caddyfile") //nolint:gosec
+	cmd.Dir = cfg.RepoPath
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		output := strings.TrimSpace(buf.String())
+		for _, line := range strings.Split(output, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.Contains(strings.ToLower(line), "error") || strings.Contains(line, "malformed") {
+				return ValidationResult{OK: false, Output: "caddyfile syntax error: " + line}
+			}
+		}
+		if output != "" {
+			return ValidationResult{OK: false, Output: "caddyfile validation failed: " + output}
+		}
+		return ValidationResult{OK: false, Output: "caddyfile validation failed: " + err.Error()}
+	}
+	return ValidationResult{OK: true, Output: ""}
+}
+
 // AddEntry inserts a new @matcher + handle block into the Caddyfile.
 // It inserts just before the fallback "handle {" block (if present), or at the
 // end of the outermost wildcard block.
