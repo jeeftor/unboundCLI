@@ -179,11 +179,12 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 		Type:                 "add",
 		Service:              "cloudflare",
 		Hostname:             "missing.example.com",
-		NewService:           "http://10.0.0.15:80",
+		NewService:           "https://10.0.0.15",
 		NewHTTPHostHeader:    "missing.example.com",
+		OriginServerName:     "missing.example.com",
 		Details:              "missing in default Cloudflare tunnel",
 		Enabled:              true,
-		ManagedFields:        "service,http_host_header",
+		ManagedFields:        "service,http_host_header,origin_server_name",
 		OriginRequestSummary: "preserve optional origin request fields",
 	})
 	assertAction(t, actions[1], Action{
@@ -191,17 +192,18 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 		Service:              "cloudflare",
 		Hostname:             "wrong.example.com",
 		OldService:           "http://old-caddy:80",
-		NewService:           "http://10.0.0.15:80",
+		NewService:           "https://10.0.0.15",
 		OldHTTPHostHeader:    "",
 		NewHTTPHostHeader:    "wrong.example.com",
 		TunnelID:             "tunnel-default",
 		TunnelName:           "default",
 		Path:                 "/api/*",
-		NoTLSVerify:          true,
+		NoTLSVerify:          false,
+		OriginServerName:     "wrong.example.com",
 		HasAccessPolicy:      true,
 		Details:              "service and host header differ from Caddy",
 		Enabled:              true,
-		ManagedFields:        "service,http_host_header",
+		ManagedFields:        "service,http_host_header,origin_server_name",
 		OriginRequestSummary: "preserve optional origin request fields",
 	})
 	assertAction(t, actions[2], Action{
@@ -214,7 +216,7 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 		TunnelName:           "default",
 		Details:              "no longer in Caddy",
 		Enabled:              true,
-		ManagedFields:        "service,http_host_header",
+		ManagedFields:        "service,http_host_header,origin_server_name",
 		OriginRequestSummary: "preserve optional origin request fields",
 	})
 }

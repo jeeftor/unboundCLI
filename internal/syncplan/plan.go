@@ -212,11 +212,15 @@ func buildAction(
 
 func buildCloudflareAction(entry *models.Entry, options Options) Action {
 	// Determine the desired origin service URL based on OriginMode.
-	viaCaddy := options.OriginMode != "direct"
+	originMode := options.OriginMode
+	if entry.CloudflareOriginMode != "" {
+		originMode = entry.CloudflareOriginMode
+	}
+	viaCaddy := originMode != "direct"
 	var desiredService string
 	if !viaCaddy && entry.CaddyUpstream != "" {
 		// Direct-to-service: connect straight to the backend (bypass Caddy).
-		desiredService = "http://" + entry.CaddyUpstream
+		desiredService = withDefaultScheme(entry.CaddyUpstream)
 	} else {
 		// Via Caddy: connect to Caddy. Caddy speaks HTTPS, so ensure https://.
 		desiredService = options.CaddyServiceURL
@@ -240,10 +244,9 @@ func buildCloudflareAction(entry *models.Entry, options Options) Action {
 		NoTLSVerify:            options.NoTLSVerify,
 		DisableChunkedEncoding: options.DisableChunkedEncoding,
 	}
-	// For via-caddy mode, set OriginServerName so cloudflared presents the
-	// correct SNI during its TLS handshake with Caddy.
-	if viaCaddy {
-		base.OriginServerName = entry.Hostname
+	desiredHostHeader := entry.Hostname
+	if entry.CloudflareHTTPHostHeader != "" {
+		desiredHostHeader = entry.CloudflareHTTPHostHeader
 	}
 
 	// Apply tunnel override: if OverrideTunnelID is set, this action targets that
@@ -254,6 +257,11 @@ func buildCloudflareAction(entry *models.Entry, options Options) Action {
 
 	cf := entry.CloudflareStatus
 	if entry.IsConfiguredInCaddy() {
+		// For via-caddy mode, set OriginServerName so cloudflared presents the
+		// correct SNI during its TLS handshake with Caddy.
+		if viaCaddy {
+			base.OriginServerName = entry.Hostname
+		}
 		// If in a non-default tunnel and no override is set, skip (read-only tunnel).
 		if cf.Configured && !cf.IsDefaultTunnel && options.OverrideTunnelID == "" {
 			return Action{}
@@ -261,19 +269,19 @@ func buildCloudflareAction(entry *models.Entry, options Options) Action {
 		if !cf.Configured {
 			base.Type = "add"
 			base.NewService = desiredService
-			base.NewHTTPHostHeader = entry.Hostname
+			base.NewHTTPHostHeader = desiredHostHeader
 			base.Details = "missing in default Cloudflare tunnel"
 			return base
 		}
 		serviceWrong := desiredService != "" && cf.Service != desiredService
-		headerWrong := cf.HTTPHostHeader != entry.Hostname
+		headerWrong := cf.HTTPHostHeader != desiredHostHeader
 		tlsWrong := options.NoTLSVerify != cf.NoTLSVerify
 		if serviceWrong || headerWrong || tlsWrong {
 			base.Type = "update"
 			base.OldService = cf.Service
 			base.NewService = desiredService
 			base.OldHTTPHostHeader = cf.HTTPHostHeader
-			base.NewHTTPHostHeader = entry.Hostname
+			base.NewHTTPHostHeader = desiredHostHeader
 			if base.TunnelID == "" {
 				base.TunnelID = cf.TunnelID
 			}
@@ -312,4 +320,11 @@ func buildCloudflareAction(entry *models.Entry, options Options) Action {
 	}
 
 	return Action{}
+}
+
+func withDefaultScheme(service string) string {
+	if strings.Contains(service, "://") {
+		return service
+	}
+	return "http://" + service
 }

@@ -17,6 +17,7 @@ type CaddyToCloudflareSyncOptions struct {
 	CaddyServiceURL  string   // target service URL for new ingress rules, e.g. "https://10.0.0.15"
 	HostFilter       []string // optional: only sync hostnames matching these domain suffixes
 	ExcludeHostnames []string // hostnames to skip entirely; their CF rules are left untouched
+	DirectHostSuffix string   // optional: add sibling direct hosts, e.g. "-direct" creates app-direct.example.com
 	Verbose          bool
 }
 
@@ -96,7 +97,7 @@ func SyncCaddyToCloudflare(
 		delete(allCFHosts, h)
 	}
 
-	entries := cloudflareSyncEntries(caddyHosts, allCFHosts)
+	entries := cloudflareSyncEntries(caddyHosts, allCFHosts, options.DirectHostSuffix)
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
 		Service:           "cloudflare",
 		CaddyServiceURL:   options.CaddyServiceURL,
@@ -156,6 +157,7 @@ func SyncCaddyToCloudflare(
 func cloudflareSyncEntries(
 	caddyHosts map[string]string,
 	cfHosts map[string]api.CloudflareIngressEntry,
+	directHostSuffix string,
 ) []*models.Entry {
 	entries := make([]*models.Entry, 0, len(caddyHosts)+len(cfHosts))
 	seen := make(map[string]bool, len(caddyHosts)+len(cfHosts))
@@ -170,6 +172,21 @@ func cloudflareSyncEntries(
 		}
 		entries = append(entries, entry)
 		seen[hostname] = true
+
+		if directHostSuffix != "" {
+			directHostname := directHostnameFor(hostname, directHostSuffix)
+			directEntry := &models.Entry{
+				Hostname:                 directHostname,
+				CaddyUpstream:            upstream,
+				CloudflareOriginMode:     "direct",
+				CloudflareHTTPHostHeader: hostname,
+			}
+			if cfEntry, ok := cfHosts[directHostname]; ok {
+				directEntry.CloudflareStatus = cloudflareStatusFromIngress(cfEntry)
+			}
+			entries = append(entries, directEntry)
+			seen[directHostname] = true
+		}
 	}
 
 	for hostname, cfEntry := range cfHosts {
@@ -183,6 +200,14 @@ func cloudflareSyncEntries(
 	}
 
 	return entries
+}
+
+func directHostnameFor(hostname, suffix string) string {
+	label, domain, ok := strings.Cut(hostname, ".")
+	if !ok {
+		return hostname + suffix
+	}
+	return label + suffix + "." + domain
 }
 
 func cloudflareStatusFromIngress(cfEntry api.CloudflareIngressEntry) models.CloudflareStatus {
