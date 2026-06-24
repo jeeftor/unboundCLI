@@ -22,7 +22,21 @@ import type { CaddyDeployEvent, CaddyEntry, CaddyEntriesResponse, CaddyValidateR
 
 type GitRemoteStatus = { remote_ahead: number; local_ahead: number; branch: string; remote: string; fetch_error?: string };
 
-export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
+export function CaddyEditor({
+  mutationEnabled,
+  remoteStatus,
+  remoteChecking,
+  pulling,
+  onPull,
+  onCheckRemote
+}: {
+  mutationEnabled: boolean;
+  remoteStatus: GitRemoteStatus | null;
+  remoteChecking: boolean;
+  pulling: boolean;
+  onPull: () => Promise<void>;
+  onCheckRemote: () => Promise<void>;
+}) {
   const [data, setData] = useState<CaddyEntriesResponse | null>(null);
   const [templates, setTemplates] = useState<string[]>([]);
   const [defaultTemplate, setDefaultTemplate] = useState('default');
@@ -33,11 +47,6 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<CaddyEntry | null>(null);
   const [deployOpen, setDeployOpen] = useState(false);
-
-  // Remote-ahead state — polled every 60s and on load.
-  const [remoteStatus, setRemoteStatus] = useState<GitRemoteStatus | null>(null);
-  const [remoteChecking, setRemoteChecking] = useState(false);
-  const [pulling, setPulling] = useState(false);
   const [pullOutput, setPullOutput] = useState('');
 
   const load = useCallback(async () => {
@@ -68,59 +77,23 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
     }
   }, []);
 
-  const checkRemote = useCallback(async () => {
-    setRemoteChecking(true);
-    try {
-      const st = await api.caddyGitStatus();
-      setRemoteStatus(st);
-    } catch {
-      // non-fatal
-    } finally {
-      setRemoteChecking(false);
-    }
-  }, []);
-
-  const handlePull = useCallback(async () => {
-    setPulling(true);
-    setPullOutput('');
-    try {
-      const res = await api.caddyGitPull();
-      setPullOutput(res.output || 'Already up to date.');
-      // Refresh everything after pull.
-      await Promise.all([load(), loadDiff(), checkRemote()]);
-    } catch (err) {
-      setPullOutput(`Error: ${String(err)}`);
-    } finally {
-      setPulling(false);
-    }
-  }, [load, loadDiff, checkRemote]);
-
   useEffect(() => { void load(); void loadDiff(); }, [load, loadDiff]);
-
-  // Check remote on mount, then every 60s.
-  useEffect(() => {
-    void checkRemote();
-    const id = setInterval(() => { void checkRemote(); }, 60_000);
-    return () => clearInterval(id);
-  }, [checkRemote]);
 
   const handleSaved = useCallback(async () => {
     setModalOpen(false);
     setEditTarget(null);
-    await load();
-    await loadDiff();
-  }, [load, loadDiff]);
+    await Promise.all([load(), loadDiff(), onCheckRemote()]);
+  }, [load, loadDiff, onCheckRemote]);
 
   const handleDelete = useCallback(async (hostname: string) => {
     if (!confirm(`Remove ${hostname} from Caddyfile?`)) return;
     try {
       await api.caddyDeleteEntry(hostname);
-      await load();
-      await loadDiff();
+      await Promise.all([load(), loadDiff(), onCheckRemote()]);
     } catch (err) {
       setError(String(err));
     }
-  }, [load, loadDiff]);
+  }, [load, loadDiff, onCheckRemote]);
 
   if (!data?.editor.enabled && !loading) {
     return (
@@ -144,7 +117,7 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
           <p>Add, edit, and remove reverse-proxy entries from your Caddyfile.</p>
         </div>
         <div className="caddy-editor-actions">
-          <button type="button" onClick={() => { void load(); void loadDiff(); }} disabled={loading}>
+          <button type="button" onClick={() => { void load(); void loadDiff(); void onCheckRemote(); }} disabled={loading}>
             <RefreshCw size={15} /> Refresh
           </button>
           {mutationEnabled && (
@@ -163,36 +136,6 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
       {error && (
         <div className="caddy-error">
           <XCircle size={15} /> {error}
-        </div>
-      )}
-
-      {/* Remote-ahead / local-ahead banner */}
-      {remoteStatus && (remoteStatus.remote_ahead > 0 || remoteStatus.local_ahead > 0 || remoteStatus.fetch_error) && (
-        <div className={`git-remote-banner ${remoteStatus.fetch_error ? 'error' : remoteStatus.remote_ahead > 0 ? 'warn' : 'info'}`}>
-          <GitBranch size={14} />
-          {remoteStatus.fetch_error ? (
-            <span>Could not reach remote: {remoteStatus.fetch_error}</span>
-          ) : remoteStatus.remote_ahead > 0 ? (
-            <span>
-              Remote <strong>{remoteStatus.remote}/{remoteStatus.branch}</strong> is{' '}
-              <strong>{remoteStatus.remote_ahead}</strong> commit{remoteStatus.remote_ahead !== 1 ? 's' : ''} ahead of local
-              {remoteStatus.local_ahead > 0 && ` · ${remoteStatus.local_ahead} local commit${remoteStatus.local_ahead !== 1 ? 's' : ''} not pushed`}
-            </span>
-          ) : (
-            <span>
-              <strong>{remoteStatus.local_ahead}</strong> local commit{remoteStatus.local_ahead !== 1 ? 's' : ''} not yet pushed to {remoteStatus.remote}
-            </span>
-          )}
-          <div className="git-remote-banner-actions">
-            {remoteStatus.remote_ahead > 0 && mutationEnabled && (
-              <button type="button" className="btn-sm btn-warn" onClick={() => void handlePull()} disabled={pulling}>
-                {pulling ? <><Loader2 size={12} className="spin" /> Pulling…</> : '⬇ Pull'}
-              </button>
-            )}
-            <button type="button" className="btn-sm" onClick={() => void checkRemote()} disabled={remoteChecking}>
-              {remoteChecking ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
-            </button>
-          </div>
         </div>
       )}
 
@@ -231,7 +174,7 @@ export function CaddyEditor({ mutationEnabled }: { mutationEnabled: boolean }) {
 
       {deployOpen && (
         <DeployPanel
-          onClose={() => { setDeployOpen(false); void loadDiff(); }}
+          onClose={() => { setDeployOpen(false); void loadDiff(); void onCheckRemote(); }}
         />
       )}
     </div>
