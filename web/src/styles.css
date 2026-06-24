@@ -457,7 +457,7 @@ input::placeholder { color: var(--text-muted); }
    ============================================================ */
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -721,6 +721,75 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   color: var(--amber);
   font-size: 10.5px;
   font-weight: 800;
+}
+
+.decision-row-alert.mismatch {
+  border-color: rgba(247, 112, 112, .28);
+  background: rgba(247, 112, 112, .08);
+  color: var(--red);
+}
+
+.alert-badge-wrap {
+  cursor: default;
+}
+
+.alert-tooltip {
+  z-index: 9999;
+  min-width: 280px;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--surface-2, #1e2030);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  color: var(--text-1);
+  font-size: 11.5px;
+  font-weight: 400;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.alert-tooltip strong {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--amber);
+  display: block;
+}
+
+.alert-tooltip.mismatch strong { color: var(--red); }
+
+.alert-tooltip span {
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.alert-tooltip ul {
+  margin: 2px 0 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-2);
+}
+
+.alert-tooltip ul li { line-height: 1.45; }
+
+.alert-tooltip-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+}
+
+.alert-tooltip-actions em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text-1);
 }
 
 /* ============================================================

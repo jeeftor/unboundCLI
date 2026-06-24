@@ -23,7 +23,7 @@ export function App() {
 
   const runtime = useRuntimeData(clearPlanForDataChange);
   const mutationEnabled = Boolean(runtime.config?.mutation_enabled && window.UNBOUNDCLI_WEB_CONFIG?.mutationEnabled);
-  const filters = useEntryFilters(runtime.entries);
+  const filters = useEntryFilters(runtime.entries, runtime.config?.caddy?.server_ip ?? '');
   const sync = useSyncPlan({
     config: runtime.config,
     mutationEnabled,
