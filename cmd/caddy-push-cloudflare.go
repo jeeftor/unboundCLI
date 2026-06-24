@@ -19,6 +19,7 @@ var (
 	cpCFCaddyServiceURL  string
 	cpCFHostFilter       []string
 	cpCFExcludeHostnames []string
+	cpCFDirectHostSuffix string
 	cpCFVerbose          bool
 )
 
@@ -87,6 +88,7 @@ func runCaddyPushCloudflare(cmd *cobra.Command, args []string) error {
 		CaddyServiceURL:  serviceURL,
 		HostFilter:       cpCFHostFilter,
 		ExcludeHostnames: cpCFExcludeHostnames,
+		DirectHostSuffix: cpCFDirectHostSuffix,
 		Verbose:          cpCFVerbose,
 	}
 
@@ -199,6 +201,9 @@ func init() {
 	caddyPushCloudflareCmd.Flags().
 		StringSliceVar(&cpCFExcludeHostnames, "exclude-hostnames", nil,
 			"Hostnames to skip entirely (comma-separated or repeatable); their CF rules are left untouched")
+	caddyPushCloudflareCmd.Flags().
+		StringVar(&cpCFDirectHostSuffix, "direct-host-suffix", "-direct",
+			"Suffix for direct-to-service sibling Cloudflare hosts; set empty to disable")
 	caddyPushCloudflareCmd.Flags().
 		BoolVar(&cpCFVerbose, "verbose", false, "Show additional detail including skipped hostnames")
 }

@@ -708,6 +708,21 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   vertical-align: middle;
 }
 
+.decision-row-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 2px 7px;
+  border: 1px solid rgba(251, 191, 36, .28);
+  border-radius: 5px;
+  background: rgba(251, 191, 36, .08);
+  color: var(--amber);
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
 /* ============================================================
    Row Actions
    ============================================================ */
@@ -793,6 +808,97 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.hostname-decision {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+}
+
+.hostname-decision.warning {
+  border-color: rgba(251, 191, 36, .26);
+  background: rgba(251, 191, 36, .055);
+}
+
+.hostname-decision.info,
+.hostname-decision.ok {
+  border-color: rgba(79, 168, 255, .18);
+  background: rgba(79, 168, 255, .045);
+}
+
+.hostname-decision-header {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.hostname-decision-header svg { color: var(--amber); margin-top: 2px; }
+.hostname-decision.info .hostname-decision-header svg,
+.hostname-decision.ok .hostname-decision-header svg { color: var(--blue); }
+
+.hostname-decision-header strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.hostname-decision-header span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.hostname-decision-facts {
+  display: grid;
+  gap: 5px;
+  padding-left: 26px;
+}
+
+.hostname-decision-facts span {
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.hostname-decision-note {
+  display: block;
+  padding-left: 26px;
+  color: var(--amber);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.hostname-decision-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.hostname-decision-action {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .12);
+}
+
+.hostname-decision-action strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.hostname-decision-action span {
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.35;
 }
 
 /* Per-service sync rows */

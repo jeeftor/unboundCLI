@@ -22,7 +22,9 @@ type Entry struct {
 	DNSResolved string // Current DNS resolution result
 
 	// Cloudflare
-	CloudflareStatus CloudflareStatus
+	CloudflareStatus         CloudflareStatus
+	CloudflareOriginMode     string
+	CloudflareHTTPHostHeader string
 
 	// Computed Status
 	OverallStatus SyncStatus // Overall sync state
