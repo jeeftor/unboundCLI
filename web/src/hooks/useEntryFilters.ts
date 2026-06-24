@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Entry } from '../types';
+import { isIssue } from '../lib/hostnameDecision';
 
-export function useEntryFilters(entries: Entry[]) {
+export function useEntryFilters(entries: Entry[], caddyServerIP = '') {
   const [statusFilter, setStatusFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -13,6 +14,7 @@ export function useEntryFilters(entries: Entry[]) {
     if (statusFilter === 'caddy_only' && entry.overall_status !== 3) return false;
     if (statusFilter === 'stale' && entry.overall_status !== 4) return false;
     if (statusFilter === 'cloudflare' && !entry.cloudflare_status?.configured) return false;
+    if (statusFilter === 'issues' && !isIssue(entry, caddyServerIP)) return false;
     if (serviceFilter === 'unbound' && !entry.unbound_status?.configured) return false;
     if (serviceFilter === 'adguard' && !entry.adguard_status?.configured) return false;
     if (serviceFilter === 'dhcp' && !entry.dhcp_status?.configured) return false;
@@ -38,8 +40,9 @@ export function useEntryFilters(entries: Entry[]) {
     out: entries.filter((entry) => entry.overall_status === 2).length,
     caddyOnly: entries.filter((entry) => entry.overall_status === 3).length,
     stale: entries.filter((entry) => entry.overall_status === 4).length,
-    cloudflare: entries.filter((entry) => entry.cloudflare_status?.configured).length
-  }), [entries]);
+    cloudflare: entries.filter((entry) => entry.cloudflare_status?.configured).length,
+    issues: entries.filter((entry) => isIssue(entry, caddyServerIP)).length
+  }), [entries, caddyServerIP]);
 
   return {
     statusFilter,

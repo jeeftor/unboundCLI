@@ -24,6 +24,7 @@ import {
   Zap
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Dispatch, KeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { api } from '../api/client';
 import { CaddyEditor } from './CaddyEditor';
@@ -99,7 +100,7 @@ export function AppShell({
   message: string;
   messageKind: 'info' | 'error' | 'ok';
   report: EntriesResponse['report'];
-  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number };
+  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number; issues: number };
   statusFilter: string;
   setStatusFilter: (value: string) => void;
   serviceFilter: string;
@@ -385,7 +386,7 @@ function OperationsHeader({
   loading: boolean;
   message: string;
   messageKind: 'info' | 'error' | 'ok';
-  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number };
+  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number; issues: number };
 }) {
   const totalSignals = Math.max(1, summary.entries + summary.cloudflare + summary.out + summary.stale);
   const progress = loading ? 72 : 100;
@@ -425,7 +426,7 @@ function MetricGrid({
   statusFilter,
   setStatusFilter,
 }: {
-  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number };
+  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number; issues: number };
   statusFilter: string;
   setStatusFilter: (value: string) => void;
 }) {
@@ -438,6 +439,7 @@ function MetricGrid({
       <Metric label="In sync" value={summary.inSync} sublabel="perfect" icon={<CheckCircle2 size={20} />} tone="ok" status="synced" activeFilter={statusFilter} onFilter={toggle} />
       <Metric label="Caddy only" value={summary.caddyOnly} sublabel="not in DNS" icon={<CircleAlert size={20} />} tone="warn" status="caddy_only" activeFilter={statusFilter} onFilter={toggle} />
       <Metric label="Stale DNS" value={summary.stale} sublabel="needs cleanup" icon={<SlidersHorizontal size={20} />} tone="bad" status="stale" activeFilter={statusFilter} onFilter={toggle} />
+      <Metric label="Issues" value={summary.issues} sublabel="need review" icon={<ShieldCheck size={20} />} tone={summary.issues > 0 ? 'bad' : 'ok'} status="issues" activeFilter={statusFilter} onFilter={toggle} />
       <Metric label="Cloudflare routed" value={summary.cloudflare} sublabel="via tunnel" icon={<Cloud size={20} />} tone="violet" status="cloudflare" activeFilter={statusFilter} onFilter={toggle} />
     </section>
   );
@@ -508,6 +510,51 @@ function EntriesToolbar({
         </button>
       )}
     </section>
+  );
+}
+
+function AlertBadge({ title, summary, facts, actions, variant }: {
+  title: string;
+  summary: string;
+  facts: string[];
+  actions: { label: string; description: string }[];
+  variant: 'collision' | 'mismatch';
+}) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  const handleMouseEnter = () => {
+    if (ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, left: r.left });
+    }
+  };
+
+  return (
+    <span
+      ref={ref}
+      className={`decision-row-alert alert-badge-wrap${variant === 'mismatch' ? ' mismatch' : ''}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setPos(null)}
+    >
+      <CircleAlert size={11} /> {title}
+      {pos && createPortal(
+        <div
+          className={`alert-tooltip${variant === 'mismatch' ? ' mismatch' : ''}`}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+        >
+          <strong>{title}</strong>
+          <span>{summary}</span>
+          {facts.length > 0 && <ul>{facts.map((f) => <li key={f}>{f}</li>)}</ul>}
+          {actions.length > 0 && (
+            <div className="alert-tooltip-actions">
+              {actions.map((a) => <span key={a.label}><em>{a.label}:</em> {a.description}</span>)}
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </span>
   );
 }
 
@@ -600,9 +647,12 @@ function EntryRow({
       <td data-label="Hostname">
         <strong>{entry.hostname}</strong>
         <span className="subtle">{entry.data_source || 'Caddy route'} <i /></span>
-        {decision.kind === 'collision' && (
-          <span className="decision-row-alert"><CircleAlert size={11} /> {decision.title}</span>
+        {(decision.kind === 'collision' || decision.kind === 'mismatch') && (
+          <AlertBadge title={decision.title} summary={decision.summary} facts={decision.facts} actions={decision.actions} variant="collision" />
         )}
+        {decision.warnings.map((w) => (
+          <AlertBadge key={w.kind} title={w.title} summary={w.summary} facts={w.facts} actions={w.actions} variant="mismatch" />
+        ))}
       </td>
       <td data-label="Status"><StatusChip entry={entry} /><span className="status-subtext">{statusDetail}</span></td>
       <td data-label="Services"><ServiceBadges entry={entry} /></td>
@@ -989,24 +1039,27 @@ function SyncModal({
   );
 }
 
-function HostnameDecisionPanel({ decision }: { decision: ReturnType<typeof getHostnameDecision> }) {
+function DecisionBlock({ kind, severity, title, summary, facts, actions }: {
+  kind: string; severity: string; title: string; summary: string;
+  facts: string[]; actions: { label: string; description: string }[];
+}) {
   return (
-    <section className={`hostname-decision ${decision.severity}`}>
+    <section className={`hostname-decision ${severity}`}>
       <div className="hostname-decision-header">
-        {decision.severity === 'warning' ? <CircleAlert size={15} /> : <ShieldCheck size={15} />}
+        {severity === 'warning' ? <CircleAlert size={15} /> : <ShieldCheck size={15} />}
         <div>
-          <strong>{decision.title}</strong>
-          <span>{decision.summary}</span>
+          <strong>{title}</strong>
+          <span>{summary}</span>
         </div>
       </div>
       <div className="hostname-decision-facts">
-        {decision.facts.map((fact) => <span key={fact}>{fact}</span>)}
+        {facts.map((fact) => <span key={fact}>{fact}</span>)}
       </div>
-      {decision.kind === 'collision' && (
-        <span className="hostname-decision-note">This is a warning only. Pick a naming path when you change DNS or Caddy.</span>
+      {(kind === 'collision' || kind === 'mismatch') && (
+        <span className="hostname-decision-note">This is a warning only — pick a path when you next change DNS or Caddy config.</span>
       )}
       <div className="hostname-decision-actions">
-        {decision.actions.map((action) => (
+        {actions.map((action) => (
           <div key={action.label} className="hostname-decision-action">
             <strong>{action.label}</strong>
             <span>{action.description}</span>
@@ -1014,6 +1067,17 @@ function HostnameDecisionPanel({ decision }: { decision: ReturnType<typeof getHo
         ))}
       </div>
     </section>
+  );
+}
+
+function HostnameDecisionPanel({ decision }: { decision: ReturnType<typeof getHostnameDecision> }) {
+  return (
+    <>
+      <DecisionBlock {...decision} />
+      {decision.warnings.map((w) => (
+        <DecisionBlock key={w.kind} {...w} severity="warning" />
+      ))}
+    </>
   );
 }
 
