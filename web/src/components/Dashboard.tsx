@@ -6,16 +6,20 @@ import {
   Cloud,
   FileCode2,
   FileSliders,
+  Gauge,
   GitBranch,
   ListFilter,
   Loader2,
+  Play,
   RefreshCw,
   Search,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Terminal,
+  TerminalSquare,
   Trash2,
+  WifiOff,
   X,
   Zap
 } from 'lucide-react';
@@ -39,6 +43,7 @@ import {
   statusFilterOptions,
   syncOptions
 } from '../lib/services';
+import { getHostnameDecision } from '../lib/hostnameDecision';
 import type { ConfigResponse, ConfigServiceSummary, EntriesResponse, Entry, ServiceKey, SyncAction } from '../types';
 
 type AppView = 'dashboard' | 'caddy-editor';
@@ -252,6 +257,7 @@ export function AppShell({
                 selectedHostname={selectedHostname}
                 mutationEnabled={mutationEnabled}
                 enabledServices={enabledServices}
+                caddyServerIP={config?.caddy.server_ip || ''}
                 onSelect={setSelectedHostname}
                 onQuickSync={openQuickSync}
                 onOpenModify={openModify}
@@ -269,6 +275,7 @@ export function AppShell({
         hostname={modalHostname}
         entry={modalEntry}
         enabledServices={enabledServices}
+        caddyServerIP={config?.caddy.server_ip || ''}
         syncService={syncService}
         setSyncService={setSyncService}
         syncLoading={syncLoading}
@@ -509,6 +516,7 @@ function EntriesTable({
   selectedHostname,
   mutationEnabled,
   enabledServices,
+  caddyServerIP,
   onSelect,
   onQuickSync,
   onOpenModify,
@@ -518,6 +526,7 @@ function EntriesTable({
   selectedHostname: string;
   mutationEnabled: boolean;
   enabledServices: Partial<Record<ServiceKey, boolean>>;
+  caddyServerIP: string;
   onSelect: (hostname: string) => void;
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
@@ -538,6 +547,7 @@ function EntriesTable({
               entry={entry}
               selected={entry.hostname === selectedHostname}
               mutationEnabled={mutationEnabled}
+              caddyServerIP={caddyServerIP}
               onSelect={onSelect}
               onQuickSync={onQuickSync}
               onOpenModify={onOpenModify}
@@ -554,6 +564,7 @@ function EntryRow({
   entry,
   selected,
   mutationEnabled,
+  caddyServerIP,
   onSelect,
   onQuickSync,
   onOpenModify,
@@ -562,12 +573,14 @@ function EntryRow({
   entry: Entry;
   selected: boolean;
   mutationEnabled: boolean;
+  caddyServerIP: string;
   onSelect: (hostname: string) => void;
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
   onRemove: (hostname: string, service?: string) => Promise<void>;
 }) {
   const isStale = entry.overall_status === 4;
+  const decision = getHostnameDecision(entry, caddyServerIP);
   const dnsOK = dnsResultClass(entry.dns_resolved) === 'ok';
   const statusDetail = entry.overall_status === 3
     ? 'Not in DNS'
@@ -587,6 +600,9 @@ function EntryRow({
       <td data-label="Hostname">
         <strong>{entry.hostname}</strong>
         <span className="subtle">{entry.data_source || 'Caddy route'} <i /></span>
+        {decision.kind === 'collision' && (
+          <span className="decision-row-alert"><CircleAlert size={11} /> {decision.title}</span>
+        )}
       </td>
       <td data-label="Status"><StatusChip entry={entry} /><span className="status-subtext">{statusDetail}</span></td>
       <td data-label="Services"><ServiceBadges entry={entry} /></td>
@@ -654,6 +670,7 @@ function CloudflareDetails({ status }: { status: Entry['cloudflare_status'] }) {
 
 function SyncPanel({
   enabledServices,
+  caddyServerIP,
   syncService,
   setSyncService,
   syncLoading,
@@ -667,6 +684,7 @@ function SyncPanel({
   onSync
 }: {
   enabledServices: Partial<Record<ServiceKey, boolean>>;
+  caddyServerIP: string;
   syncService: string;
   setSyncService: (value: string) => void;
   syncLoading: boolean;
@@ -718,6 +736,7 @@ function SyncModal({
   hostname,
   entry,
   enabledServices,
+  caddyServerIP,
   syncService,
   setSyncService,
   syncLoading,
@@ -738,6 +757,7 @@ function SyncModal({
   hostname: string;
   entry?: import('../types').Entry;
   enabledServices: Partial<Record<ServiceKey, boolean>>;
+  caddyServerIP: string;
   syncService: string;
   setSyncService: (value: string) => void;
   syncLoading: boolean;
@@ -753,6 +773,7 @@ function SyncModal({
   onRemoveEntry: (hostname: string, service?: string) => Promise<void>;
 }) {
   const isStale = entry?.overall_status === 4;
+  const hostnameDecision = entry ? getHostnameDecision(entry, caddyServerIP) : null;
   const [caddyRaw, setCaddyRaw] = useState('');
   const [caddyOpen, setCaddyOpen] = useState(false);
   const hasAutoSynced = useRef(false);
@@ -880,6 +901,9 @@ function SyncModal({
           </div>
         </div>
         <div className="modal-body sync-modal-body">
+          {hostnameDecision && (
+            <HostnameDecisionPanel decision={hostnameDecision} />
+          )}
 
           {/* Per-service rows */}
           <div className="service-sync-rows">
@@ -962,6 +986,34 @@ function SyncModal({
         )}
       </div>
     </div>
+  );
+}
+
+function HostnameDecisionPanel({ decision }: { decision: ReturnType<typeof getHostnameDecision> }) {
+  return (
+    <section className={`hostname-decision ${decision.severity}`}>
+      <div className="hostname-decision-header">
+        {decision.severity === 'warning' ? <CircleAlert size={15} /> : <ShieldCheck size={15} />}
+        <div>
+          <strong>{decision.title}</strong>
+          <span>{decision.summary}</span>
+        </div>
+      </div>
+      <div className="hostname-decision-facts">
+        {decision.facts.map((fact) => <span key={fact}>{fact}</span>)}
+      </div>
+      {decision.kind === 'collision' && (
+        <span className="hostname-decision-note">This is a warning only. Pick a naming path when you change DNS or Caddy.</span>
+      )}
+      <div className="hostname-decision-actions">
+        {decision.actions.map((action) => (
+          <div key={action.label} className="hostname-decision-action">
+            <strong>{action.label}</strong>
+            <span>{action.description}</span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
