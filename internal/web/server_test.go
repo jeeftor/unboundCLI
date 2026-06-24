@@ -595,7 +595,9 @@ func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
 	if action.Service != "cloudflare" || action.Type != "add" {
 		t.Fatalf("expected Cloudflare add action, got %#v", action)
 	}
-	if action.NewService != "http://192.168.1.15:80" || action.NewHTTPHostHeader != "cf-plan.example.test" {
+	if action.NewService != "https://192.168.1.15" ||
+		action.NewHTTPHostHeader != "cf-plan.example.test" ||
+		action.OriginServerName != "cf-plan.example.test" {
 		t.Fatalf("unexpected Cloudflare action details: %#v", action)
 	}
 }
