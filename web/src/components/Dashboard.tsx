@@ -6,7 +6,9 @@ import {
   Cloud,
   FileCode2,
   FileSliders,
+  GitBranch,
   ListFilter,
+  Loader2,
   RefreshCw,
   Search,
   Settings,
@@ -17,7 +19,7 @@ import {
   X,
   Zap
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { api } from '../api/client';
 import { CaddyEditor } from './CaddyEditor';
@@ -134,6 +136,35 @@ export function AppShell({
   const [modalAutoSync, setModalAutoSync] = useState(false);
   const [logBarOpen, setLogBarOpen] = useState(false);
 
+  // Global remote-ahead status — polled every 60s regardless of active tab.
+  type GitRemoteStatus = { remote_ahead: number; local_ahead: number; branch: string; remote: string; fetch_error?: string };
+  const [remoteStatus, setRemoteStatus] = useState<GitRemoteStatus | null>(null);
+  const [remoteChecking, setRemoteChecking] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [pullOutput, setPullOutput] = useState('');
+
+  const checkRemote = useCallback(async () => {
+    setRemoteChecking(true);
+    try { setRemoteStatus(await api.caddyGitStatus()); } catch { /* non-fatal */ } finally { setRemoteChecking(false); }
+  }, []);
+
+  const handlePull = useCallback(async () => {
+    setPulling(true); setPullOutput('');
+    try {
+      const res = await api.caddyGitPull();
+      setPullOutput(res.output || 'Already up to date.');
+      await checkRemote();
+      onRefresh();
+    } catch (err) { setPullOutput(`Error: ${String(err)}`); }
+    finally { setPulling(false); }
+  }, [checkRemote, onRefresh]);
+
+  useEffect(() => {
+    void checkRemote();
+    const id = setInterval(() => { void checkRemote(); }, 60_000);
+    return () => clearInterval(id);
+  }, [checkRemote]);
+
   const modalEntry = entries.find(e => e.hostname === modalHostname);
 
   const openModify = (hostname: string) => {
@@ -152,14 +183,48 @@ export function AppShell({
 
   // (log bar opens itself when it sees activity)
 
+  const showRemoteBanner = remoteStatus && (remoteStatus.remote_ahead > 0 || remoteStatus.fetch_error);
+
   return (
     <div className="console-layout">
       <div className="console-main">
         <Topbar config={config} loading={loading} view={view} setView={setView} onRefresh={onRefresh} onOpenConfig={() => setConfigOpen(true)} />
+
+        {showRemoteBanner && (
+          <div className={`git-remote-banner global ${remoteStatus!.fetch_error ? 'error' : 'warn'}`}>
+            <GitBranch size={14} />
+            {remoteStatus!.fetch_error ? (
+              <span>Caddy repo: could not reach remote — {remoteStatus!.fetch_error}</span>
+            ) : (
+              <span>
+                Caddy repo: remote <strong>{remoteStatus!.remote}/{remoteStatus!.branch}</strong> is{' '}
+                <strong>{remoteStatus!.remote_ahead}</strong> commit{remoteStatus!.remote_ahead !== 1 ? 's' : ''} ahead — pull before deploying
+              </span>
+            )}
+            <div className="git-remote-banner-actions">
+              {remoteStatus!.remote_ahead > 0 && mutationEnabled && (
+                <button type="button" className="btn-sm btn-warn" onClick={() => void handlePull()} disabled={pulling}>
+                  {pulling ? <><Loader2 size={12} className="spin" /> Pulling…</> : '⬇ Pull'}
+                </button>
+              )}
+              <button type="button" className="btn-sm" onClick={() => void checkRemote()} disabled={remoteChecking}>
+                {remoteChecking ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {pullOutput && (
+          <div className="git-pull-output global">
+            <pre>{pullOutput}</pre>
+            <button type="button" className="git-pull-dismiss" onClick={() => setPullOutput('')}><X size={13} /></button>
+          </div>
+        )}
+
         <div className="console-scroll">
           {view === 'caddy-editor' ? (
             <main className="dashboard-shell caddy-editor-shell">
-              <CaddyEditor mutationEnabled={mutationEnabled} />
+              <CaddyEditor mutationEnabled={mutationEnabled} remoteStatus={remoteStatus} remoteChecking={remoteChecking} pulling={pulling} onPull={handlePull} onCheckRemote={checkRemote} />
             </main>
           ) : (
             <main className="dashboard-shell">
@@ -289,7 +354,9 @@ function Topbar({ config, loading, view, setView, onRefresh, onOpenConfig }: { c
       </div>
       <div className="top-actions">
         <button type="button" className={view === 'caddy-editor' ? 'active' : ''} onClick={() => setView(view === 'caddy-editor' ? 'dashboard' : 'caddy-editor')}>
-          <FileCode2 size={16} /> Caddy Editor
+          {view === 'caddy-editor'
+            ? <><ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} /> Dashboard</>
+            : <><FileCode2 size={16} /> Caddy Editor</>}
         </button>
         <button id="refresh" type="button" onClick={onRefresh} disabled={loading}>
           <RefreshCw size={16} /> Refresh
