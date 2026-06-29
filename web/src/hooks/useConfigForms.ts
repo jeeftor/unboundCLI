@@ -66,6 +66,7 @@ export function useConfigForms(args: {
   onConfigChanged: () => void;
 }) {
   const [forms, setForms] = useState<ConfigForms>(emptyForms);
+  const [savedForms, setSavedForms] = useState<ConfigForms>(emptyForms);
   const [configStatus, setConfigStatus] = useState('');
   const [configStatusKind, setConfigStatusKind] = useState<'info' | 'error' | 'ok'>('info');
   const [testResults, setTestResults] = useState<TestResults>({});
@@ -79,37 +80,41 @@ export function useConfigForms(args: {
     const nextConfig = args.config;
     if (!nextConfig) return;
     const ce = nextConfig.caddy_editor;
-    setForms((current) => ({
-      unbound: {
-        ...current.unbound,
-        base_url: nextConfig.summary.unbound?.endpoint || '',
-        insecure: Boolean(nextConfig.summary.unbound?.insecure)
-      },
-      adguard: {
-        ...current.adguard,
-        enabled: Boolean(nextConfig.summary.adguard?.enabled),
-        base_url: nextConfig.summary.adguard?.endpoint || '',
-        insecure: Boolean(nextConfig.summary.adguard?.insecure)
-      },
-      cloudflare: {
-        ...current.cloudflare,
-        enabled: Boolean(nextConfig.summary.cloudflare?.enabled),
-        caddy_service_url: nextConfig.summary.cloudflare?.details?.caddy_service_url || '',
-        insecure: Boolean(nextConfig.summary.cloudflare?.insecure)
-      },
-      caddyEditor: ce ? {
-        enabled: ce.enabled,
-        repo_path: ce.repo_path || '',
-        caddyfile: ce.caddyfile || 'caddy/Caddyfile',
-        deploy_command: ce.deploy_command || '',
-        validate_command: ce.validate_command || '',
-        git_auto_commit: ce.git_auto_commit,
-        git_auto_push: ce.git_auto_push,
-        git_remote: ce.git_remote || 'origin',
-        git_branch: ce.git_branch || '',
-        entry_template: ce.entry_template || 'default'
-      } : current.caddyEditor
-    }));
+    setForms((current) => {
+      const next: ConfigForms = {
+        unbound: {
+          ...current.unbound,
+          base_url: nextConfig.summary.unbound?.endpoint || '',
+          insecure: Boolean(nextConfig.summary.unbound?.insecure)
+        },
+        adguard: {
+          ...current.adguard,
+          enabled: Boolean(nextConfig.summary.adguard?.enabled),
+          base_url: nextConfig.summary.adguard?.endpoint || '',
+          insecure: Boolean(nextConfig.summary.adguard?.insecure)
+        },
+        cloudflare: {
+          ...current.cloudflare,
+          enabled: Boolean(nextConfig.summary.cloudflare?.enabled),
+          caddy_service_url: nextConfig.summary.cloudflare?.details?.caddy_service_url || '',
+          insecure: Boolean(nextConfig.summary.cloudflare?.insecure)
+        },
+        caddyEditor: ce ? {
+          enabled: ce.enabled,
+          repo_path: ce.repo_path || '',
+          caddyfile: ce.caddyfile || 'caddy/Caddyfile',
+          deploy_command: ce.deploy_command || '',
+          validate_command: ce.validate_command || '',
+          git_auto_commit: ce.git_auto_commit,
+          git_auto_push: ce.git_auto_push,
+          git_remote: ce.git_remote || 'origin',
+          git_branch: ce.git_branch || '',
+          entry_template: ce.entry_template || 'default'
+        } : current.caddyEditor
+      };
+      setSavedForms(next);
+      return next;
+    });
   }, [args.config]);
 
   const saveCaddyEditor = useCallback(async (nextForms = formsRef.current) => {
@@ -139,6 +144,7 @@ export function useConfigForms(args: {
       const nextConfig = await api.saveConfig(payload);
       args.applyConfig(nextConfig);
       args.onConfigChanged();
+      setSavedForms((s) => ({ ...s, caddyEditor: nextForms.caddyEditor }));
       setConfigStatus('Saved Caddy editor config.');
       setConfigStatusKind('ok');
     } catch (err) {
@@ -160,6 +166,7 @@ export function useConfigForms(args: {
       const nextConfig = await api.saveConfig(payload);
       args.applyConfig(nextConfig);
       args.onConfigChanged();
+      setSavedForms((s) => ({ ...s, [service]: nextForms[service] }));
       setConfigStatus(`Saved ${service} config.`);
       setConfigStatusKind('ok');
     } catch (err) {
@@ -196,6 +203,7 @@ export function useConfigForms(args: {
   return {
     forms,
     setForms,
+    savedForms,
     configStatus,
     configStatusKind,
     testResults,

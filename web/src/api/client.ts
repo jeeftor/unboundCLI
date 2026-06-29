@@ -99,5 +99,11 @@ export const api = {
   caddyPreview: (hostname: string, upstream: string, template: string) => {
     const q = new URLSearchParams({ hostname, upstream, template });
     return getJSON<CaddyPreviewResponse>(`/api/caddy/preview?${q.toString()}`);
-  }
+  },
+
+  // Cloudflare
+  cfSetRoute: (payload: { hostname: string; service: string; http_host_header?: string; no_tls_verify?: boolean }) =>
+    postJSON<{ status: string }>('/api/cloudflare/set-route', payload),
+  cfRemoveRoute: (hostname: string) =>
+    postJSON<{ status: string }>('/api/cloudflare/remove-route', { hostname }),
 };

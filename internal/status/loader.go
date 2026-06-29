@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
@@ -651,10 +652,12 @@ func (d *DataLoader) buildEntry(
 
 // resolveDNS performs a DNS lookup for the hostname and returns the first IP address
 func (d *DataLoader) resolveDNS(hostname string) string {
-	ctx := d.ctx
-	if ctx == nil {
-		ctx = context.Background()
+	parent := d.ctx
+	if parent == nil {
+		parent = context.Background()
 	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
 
 	addrs, err := net.DefaultResolver.LookupHost(ctx, hostname)
 	if err != nil {
