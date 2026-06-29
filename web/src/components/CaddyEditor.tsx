@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
   Terminal,
   Trash2,
@@ -194,6 +195,17 @@ function EntriesTable({
   onEdit: (entry: CaddyEntry) => void;
   onDelete: (hostname: string) => void;
 }) {
+  const [search, setSearch] = useState('');
+
+  const q = search.trim().toLowerCase();
+  const visible = q
+    ? entries.filter((e) =>
+        e.hostname.toLowerCase().includes(q) ||
+        e.upstream.toLowerCase().includes(q) ||
+        (e.source_file ?? '').toLowerCase().includes(q)
+      )
+    : entries;
+
   if (entries.length === 0) {
     return (
       <div className="caddy-empty">
@@ -205,6 +217,21 @@ function EntriesTable({
 
   return (
     <section className="panel caddy-entries-panel">
+      <div className="caddy-search-bar">
+        <Search size={14} />
+        <input
+          type="text"
+          placeholder="Search hostname, upstream, or file…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button type="button" className="caddy-search-clear" onClick={() => setSearch('')}>
+            <X size={13} />
+          </button>
+        )}
+        {q && <span className="caddy-search-count">{visible.length} / {entries.length}</span>}
+      </div>
       <table>
         <thead>
           <tr>
@@ -216,7 +243,7 @@ function EntriesTable({
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => (
+          {visible.map((entry) => (
             <tr key={entry.hostname}>
               <td><code>{entry.hostname}</code></td>
               <td><code>{entry.upstream}</code></td>
@@ -238,6 +265,9 @@ function EntriesTable({
               )}
             </tr>
           ))}
+          {q && visible.length === 0 && (
+            <tr><td colSpan={mutationEnabled ? 5 : 4} className="caddy-no-results">No entries match "{search}"</td></tr>
+          )}
         </tbody>
       </table>
     </section>
@@ -246,7 +276,7 @@ function EntriesTable({
 
 // ─── Add / Edit modal ─────────────────────────────────────────────────────
 
-function EntryModal({
+export function EntryModal({
   entry,
   templates,
   defaultTemplate,
@@ -355,12 +385,26 @@ function EntryModal({
           </label>
           <label>
             Upstream
-            <input
-              type="text"
-              value={upstream}
-              onChange={(e) => setUpstream(e.target.value)}
-              placeholder="192.168.1.100:3000"
-            />
+            <div className="upstream-field">
+              <button
+                type="button"
+                className="upstream-scheme-toggle"
+                onClick={() => setUpstream(u => {
+                  if (u.startsWith('https://')) return u.replace('https://', 'http://');
+                  if (u.startsWith('http://')) return u.replace('http://', 'https://');
+                  return 'http://' + u;
+                })}
+                title="Toggle http/https"
+              >
+                {upstream.startsWith('https://') ? 'https' : 'http'}
+              </button>
+              <input
+                type="text"
+                value={upstream}
+                onChange={(e) => setUpstream(e.target.value)}
+                placeholder="192.168.1.100:3000"
+              />
+            </div>
           </label>
           <label>
             Template

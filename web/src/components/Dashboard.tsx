@@ -4,6 +4,7 @@ import {
   ChevronUp,
   CircleAlert,
   Cloud,
+  Edit3,
   FileCode2,
   FileSliders,
   Gauge,
@@ -27,7 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Dispatch, KeyboardEvent, ReactNode, SetStateAction } from 'react';
 import { api } from '../api/client';
-import { CaddyEditor } from './CaddyEditor';
+import { CaddyEditor, EntryModal } from './CaddyEditor';
 import type { CaddyEditorForm, ConfigForms, TestResults } from '../hooks/useConfigForms';
 import {
   cloudflareStateText,
@@ -86,6 +87,7 @@ export function AppShell({
   setConfigOpen,
   forms,
   setForms,
+  savedForms,
   configStatus,
   configStatusKind,
   testResults,
@@ -129,6 +131,7 @@ export function AppShell({
   setConfigOpen: (value: boolean) => void;
   forms: ConfigForms;
   setForms: Dispatch<SetStateAction<ConfigForms>>;
+  savedForms: ConfigForms;
   configStatus: string;
   configStatusKind: 'info' | 'error' | 'ok';
   testResults: TestResults;
@@ -297,6 +300,7 @@ export function AppShell({
         config={config}
         forms={forms}
         setForms={setForms}
+        savedForms={savedForms}
         mutationEnabled={mutationEnabled}
         status={configStatus}
         statusKind={configStatusKind}
@@ -779,6 +783,135 @@ function SyncPanel({
   );
 }
 
+function CloudflareRoutePanel({ entry, caddyServerIP, mutationEnabled, onRefresh }: {
+  entry: import('../types').Entry;
+  caddyServerIP: string;
+  mutationEnabled: boolean;
+  onRefresh: () => void;
+}) {
+  const cf = entry.cloudflare_status;
+  const [saving, setSaving] = useState(false);
+  const [removed, setRemoved] = useState(false);
+  const [error, setError] = useState('');
+
+  const viaService = cf.service ?? '';
+  const isViaCaddy = !!(caddyServerIP && viaService.includes(caddyServerIP));
+
+  // Derive scheme and host from caddy_upstream for direct mode
+  const upstreamRaw = entry.caddy_upstream ?? '';
+  const upstreamHasScheme = upstreamRaw.startsWith('http://') || upstreamRaw.startsWith('https://');
+  const upstreamBase = upstreamHasScheme ? upstreamRaw.replace(/^https?:\/\//, '') : upstreamRaw;
+
+  const [directScheme, setDirectScheme] = useState<'http' | 'https'>(
+    upstreamRaw.startsWith('https://') ? 'https' : 'http'
+  );
+  const [noTLSVerify, setNoTLSVerify] = useState(cf.no_tls_verify ?? false);
+
+  const directService = upstreamBase ? `${directScheme}://${upstreamBase}` : '';
+  const caddyService = caddyServerIP ? `https://${caddyServerIP}` : '';
+
+  const setRoute = async (mode: 'caddy' | 'direct') => {
+    setSaving(true);
+    setError('');
+    try {
+      const service = mode === 'caddy' ? caddyService : directService;
+      const httpHostHeader = mode === 'caddy' ? entry.hostname : '';
+      await api.cfSetRoute({ hostname: entry.hostname, service, http_host_header: httpHostHeader, no_tls_verify: mode === 'direct' ? noTLSVerify : false });
+      onRefresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeRoute = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.cfRemoveRoute(entry.hostname);
+      setRemoved(true);
+      onRefresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const configured = cf.configured && !removed;
+
+  return (
+    <div className="cf-route-panel">
+      <div className="cf-route-header">
+        <span className="cf-route-title">Cloudflare Tunnel</span>
+        {configured
+          ? <span className={`service-sync-badge ok`}>{isViaCaddy ? 'Via Caddy' : 'Direct'}</span>
+          : <span className="service-sync-badge missing">{removed ? 'Removed' : 'Not in tunnel'}</span>
+        }
+      </div>
+
+      {configured && (
+        <div className="cf-route-service muted" title={viaService}>{viaService}</div>
+      )}
+      {configured && cf.has_access_policy && (
+        <div className="cf-route-tag">Access policy</div>
+      )}
+
+      {mutationEnabled && !removed && upstreamBase && !isViaCaddy && (
+        <div className="cf-route-direct-opts">
+          <span className="cf-route-label">Direct scheme:</span>
+          <button type="button" className={`btn-sm${directScheme === 'http' ? ' btn-primary' : ''}`} onClick={() => setDirectScheme('http')}>http</button>
+          <button type="button" className={`btn-sm${directScheme === 'https' ? ' btn-primary' : ''}`} onClick={() => setDirectScheme('https')}>https</button>
+          {directScheme === 'https' && (
+            <label className="cf-route-tls-label">
+              <input type="checkbox" checked={noTLSVerify} onChange={e => setNoTLSVerify(e.target.checked)} />
+              Skip TLS verify
+            </label>
+          )}
+        </div>
+      )}
+
+      {mutationEnabled && !removed && (
+        <div className="cf-route-actions">
+          {configured ? (
+            <>
+              {isViaCaddy ? (
+                <button type="button" className="btn-sm" onClick={() => void setRoute('direct')} disabled={saving || !directService} title={directService}>
+                  Switch to Direct
+                </button>
+              ) : (
+                <button type="button" className="btn-sm" onClick={() => void setRoute('caddy')} disabled={saving || !caddyService} title={caddyService}>
+                  Switch to Caddy
+                </button>
+              )}
+              <button type="button" className="btn-sm btn-danger-sm" onClick={() => void removeRoute()} disabled={saving}>
+                <Trash2 size={12} /> Remove
+              </button>
+            </>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+              {caddyService && (
+                <button type="button" className="btn-sm" onClick={() => void setRoute('caddy')} disabled={saving}>
+                  Route via Caddy ({caddyServerIP})
+                </button>
+              )}
+              {directService && (
+                <button type="button" className="btn-sm" onClick={() => void setRoute('direct')} disabled={saving}>
+                  Route direct ({directService})
+                </button>
+              )}
+            </div>
+          )}
+          {saving && <span className="muted" style={{ fontSize: 11 }}>Saving…</span>}
+        </div>
+      )}
+
+      {error && <div className="cf-route-error">{error}</div>}
+    </div>
+  );
+}
+
 function SyncModal({
   open,
   autoSync,
@@ -825,7 +958,12 @@ function SyncModal({
   const isStale = entry?.overall_status === 4;
   const hostnameDecision = entry ? getHostnameDecision(entry, caddyServerIP) : null;
   const [caddyRaw, setCaddyRaw] = useState('');
+  const [caddyEntry, setCaddyEntry] = useState<import('../types').CaddyEntry | null>(null);
+  const [caddyTemplates, setCaddyTemplates] = useState<string[]>([]);
+  const [caddyDefaultTemplate, setCaddyDefaultTemplate] = useState('default');
+  const [caddyRepoPath, setCaddyRepoPath] = useState('');
   const [caddyOpen, setCaddyOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const hasAutoSynced = useRef(false);
 
   // Track which services have been removed in this modal session so buttons
@@ -873,10 +1011,14 @@ function SyncModal({
   }, [busy]);
 
   useEffect(() => {
-    if (!open || !hostname) { setCaddyRaw(''); return; }
-    api.caddyEntries().then(res => {
-      const found = res.entries.find(e => e.hostname === hostname);
+    if (!open || !hostname) { setCaddyRaw(''); setCaddyEntry(null); return; }
+    Promise.all([api.caddyEntries(), api.caddyTemplates()]).then(([res, tmpl]) => {
+      const found = res.entries.find(e => e.hostname === hostname) ?? null;
       setCaddyRaw(found?.raw ?? '');
+      setCaddyEntry(found);
+      setCaddyRepoPath(res.editor?.repo_path ?? '');
+      setCaddyTemplates(tmpl.templates);
+      setCaddyDefaultTemplate(tmpl.default);
     }).catch(() => {});
   }, [open, hostname]);
 
@@ -970,29 +1112,32 @@ function SyncModal({
               else if (configured && inSync) { statusText = status?.ip || 'In sync'; tone = 'ok'; }
               else if (configured && !inSync) { statusText = status?.ip || 'Needs update'; tone = 'warn'; }
 
-              // Button driven purely by per-service state:
-              //   stale + configured + not locally removed → Remove
-              //   in sync (not stale) → disabled "In sync" (nothing to do)
-              //   anything else (out of sync, missing, or locally removed after remove) → Sync
-              let actionBtn: ReactNode;
-              if (isStale && configured && !isLocallyRemoved) {
-                actionBtn = (
-                  <button type="button" className="btn-sm btn-danger-sm" onClick={() => void handleServiceRemove(key)} disabled={busy || !mutationEnabled}>
-                    <Trash2 size={12} /> {isRemoving ? 'Removing…' : 'Remove'}
-                  </button>
-                );
-              } else if (!isStale && configured && inSync) {
-                actionBtn = (
-                  <button type="button" className="btn-sm btn-synced" disabled>
-                    ✓ In sync
-                  </button>
-                );
-              } else {
-                actionBtn = (
-                  <button type="button" className="btn-sm" onClick={() => void runServiceSync(key)} disabled={busy}>
-                    <Zap size={12} /> Sync
-                  </button>
-                );
+              // Buttons reflect current state:
+              //   configured + not locally removed → always show Remove
+              //   stale → only Remove (sync makes no sense for stale entries)
+              //   in sync → show "✓ In sync" indicator + Remove
+              //   out of sync / missing → Sync button (+ Remove if configured)
+              const removeBtn = configured && !isLocallyRemoved && mutationEnabled ? (
+                <button type="button" className="btn-sm btn-danger-sm" onClick={() => void handleServiceRemove(key)} disabled={busy}>
+                  <Trash2 size={12} /> {isRemoving ? 'Removing…' : 'Remove'}
+                </button>
+              ) : null;
+
+              let primaryBtn: ReactNode = null;
+              if (!isLocallyRemoved) {
+                if (isStale) {
+                  // stale: remove only, no sync action
+                } else if (configured && inSync) {
+                  primaryBtn = (
+                    <span className="btn-sm btn-synced" style={{ cursor: 'default' }}>✓ In sync</span>
+                  );
+                } else {
+                  primaryBtn = (
+                    <button type="button" className="btn-sm" onClick={() => void runServiceSync(key)} disabled={busy}>
+                      <Zap size={12} /> Sync
+                    </button>
+                  );
+                }
               }
 
               return (
@@ -1001,7 +1146,10 @@ function SyncModal({
                     <span className="service-sync-name">{label}</span>
                     <span className={`service-sync-badge ${tone}`}>{statusText}</span>
                   </div>
-                  {actionBtn}
+                  <div className="service-sync-actions">
+                    {primaryBtn}
+                    {removeBtn}
+                  </div>
                 </div>
               );
             })}
@@ -1009,6 +1157,15 @@ function SyncModal({
               <div className="service-sync-empty">No DNS services configured</div>
             )}
           </div>
+
+          {entry?.cloudflare_status && enabledServices.cloudflare && (
+            <CloudflareRoutePanel
+              entry={entry}
+              caddyServerIP={caddyServerIP}
+              mutationEnabled={mutationEnabled}
+              onRefresh={onRefresh}
+            />
+          )}
 
           <InlineProgress loading={busy} title={syncProgress.title} detail={syncProgress.detail} />
 
@@ -1019,14 +1176,41 @@ function SyncModal({
             </div>
           )}
 
-          {caddyRaw && (
+          {(caddyRaw || caddyEntry) && (
             <div className="sync-modal-caddy">
-              <button type="button" className="sync-caddy-toggle" onClick={() => setCaddyOpen(o => !o)}>
-                <FileCode2 size={13} /> Caddy config
-                {caddyOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              </button>
+              <div className="sync-caddy-header">
+                <button type="button" className="sync-caddy-toggle" onClick={() => setCaddyOpen(o => !o)}>
+                  <FileCode2 size={13} /> Caddy config
+                  {caddyOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </button>
+                {mutationEnabled && caddyEntry && (
+                  <button type="button" className="btn-sm" onClick={() => setEditOpen(true)}>
+                    <Edit3 size={12} /> Edit
+                  </button>
+                )}
+              </div>
               {caddyOpen && <pre>{caddyRaw}</pre>}
             </div>
+          )}
+
+          {editOpen && (
+            <EntryModal
+              entry={caddyEntry}
+              templates={caddyTemplates}
+              defaultTemplate={caddyDefaultTemplate}
+              repoPath={caddyRepoPath}
+              onClose={() => setEditOpen(false)}
+              onSaved={() => {
+                setEditOpen(false);
+                // Refresh caddy raw + entry
+                api.caddyEntries().then(res => {
+                  const found = res.entries.find(e => e.hostname === hostname) ?? null;
+                  setCaddyRaw(found?.raw ?? '');
+                  setCaddyEntry(found);
+                }).catch(() => {});
+                onRefresh();
+              }}
+            />
           )}
         </div>
         {!mutationEnabled && (
@@ -1198,6 +1382,7 @@ function ConfigModal({
   config,
   forms,
   setForms,
+  savedForms,
   mutationEnabled,
   status,
   statusKind,
@@ -1211,6 +1396,7 @@ function ConfigModal({
   config: ConfigResponse | null;
   forms: ConfigForms;
   setForms: Dispatch<SetStateAction<ConfigForms>>;
+  savedForms: ConfigForms;
   mutationEnabled: boolean;
   status: string;
   statusKind: 'info' | 'error' | 'ok';
@@ -1235,6 +1421,7 @@ function ConfigModal({
             config={config}
             forms={forms}
             setForms={setForms}
+            savedForms={savedForms}
             mutationEnabled={mutationEnabled}
             status={status}
             statusKind={statusKind}
@@ -1266,6 +1453,7 @@ function ConfigWorkspace(props: {
   config: ConfigResponse;
   forms: ConfigForms;
   setForms: Dispatch<SetStateAction<ConfigForms>>;
+  savedForms: ConfigForms;
   mutationEnabled: boolean;
   status: string;
   statusKind: 'info' | 'error' | 'ok';
@@ -1295,6 +1483,7 @@ function ConfigWorkspace(props: {
         {activeTab === 'caddy-editor' ? (
           <CaddyEditorSetupPanel
             form={props.forms.caddyEditor}
+            savedForm={props.savedForms.caddyEditor}
             setForm={(updater) => props.setForms((current) => ({ ...current, caddyEditor: typeof updater === 'function' ? updater(current.caddyEditor) : updater }))}
             mutationEnabled={props.mutationEnabled}
             onSave={props.onSaveCaddyEditor}
@@ -1309,15 +1498,18 @@ function ConfigWorkspace(props: {
 
 function CaddyEditorSetupPanel({
   form,
+  savedForm,
   setForm,
   mutationEnabled,
   onSave
 }: {
   form: CaddyEditorForm;
+  savedForm: CaddyEditorForm;
   setForm: (updater: CaddyEditorForm | ((prev: CaddyEditorForm) => CaddyEditorForm)) => void;
   mutationEnabled: boolean;
   onSave: () => Promise<void>;
 }) {
+  const dirty = JSON.stringify(form) !== JSON.stringify(savedForm);
   const [availableTemplates, setAvailableTemplates] = useState<string[]>([]);
   const set = <K extends keyof CaddyEditorForm>(key: K, value: CaddyEditorForm[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1395,7 +1587,7 @@ function CaddyEditorSetupPanel({
         </div>
 
         <div className="config-actions">
-          <button type="button" id="ce-save" disabled={!mutationEnabled} onClick={() => void onSave()}>Save Caddy Editor Config</button>
+          <button type="button" id="ce-save" className={dirty ? 'btn-primary' : ''} disabled={!mutationEnabled} onClick={() => void onSave()}>Save Caddy Editor Config</button>
         </div>
       </div>
     </section>
@@ -1407,6 +1599,7 @@ function ConfigCard({
   config,
   forms,
   setForms,
+  savedForms,
   mutationEnabled,
   testResults,
   onSave,
@@ -1416,6 +1609,7 @@ function ConfigCard({
   config: ConfigResponse;
   forms: ConfigForms;
   setForms: Dispatch<SetStateAction<ConfigForms>>;
+  savedForms: ConfigForms;
   mutationEnabled: boolean;
   testResults: TestResults;
   onSave: (service: 'unbound' | 'adguard' | 'cloudflare') => Promise<void>;
@@ -1444,7 +1638,7 @@ function ConfigCard({
       {details.map(([key, value]) => <ConfigLine key={key} label={formatConfigKey(key)} value={value} />)}
       {fields.map(([key, value]) => <ConfigLine key={key} label={formatConfigKey(key)} value={value ? 'set' : 'missing'} />)}
       <div className={`missing-list ${missing.length ? '' : 'ok'}`}>{missing.length ? `Missing: ${missing.join(', ')}` : 'Required fields present'}</div>
-      <ConfigEditor service={service} forms={forms} setForms={setForms} mutationEnabled={mutationEnabled} testResult={testResults[service]} onSave={onSave} onTest={onTest} />
+      <ConfigEditor service={service} forms={forms} setForms={setForms} savedForms={savedForms} mutationEnabled={mutationEnabled} testResult={testResults[service]} onSave={onSave} onTest={onTest} />
     </article>
   );
 }
@@ -1457,6 +1651,7 @@ function ConfigEditor({
   service,
   forms,
   setForms,
+  savedForms,
   mutationEnabled,
   testResult,
   onSave,
@@ -1465,16 +1660,21 @@ function ConfigEditor({
   service: ServiceKey;
   forms: ConfigForms;
   setForms: Dispatch<SetStateAction<ConfigForms>>;
+  savedForms: ConfigForms;
   mutationEnabled: boolean;
   testResult?: { text: string; kind: 'info' | 'ok' | 'error' };
   onSave: (service: 'unbound' | 'adguard' | 'cloudflare') => Promise<void>;
   onTest: (service: ServiceKey) => Promise<void>;
 }) {
+  const isDirty = (key: keyof ConfigForms) =>
+    JSON.stringify(forms[key]) !== JSON.stringify(savedForms[key]);
+
   if (service === 'caddy') {
     return <div className="config-editor compact" data-config-editor="caddy"><ConfigTestResult service={service} result={testResult} /><button type="button" data-config-test="caddy" disabled={!mutationEnabled} onClick={() => void onTest('caddy')}>Test Caddy</button></div>;
   }
   if (service === 'dhcp') return null;
   if (service === 'unbound') {
+    const dirty = isDirty('unbound');
     return (
       <div className="config-editor" data-config-editor="unbound">
         <Field label="Base URL"><input id="config-unbound-base-url" type="url" value={forms.unbound.base_url} placeholder="https://opnsense.local" onChange={(event) => setForms((current) => ({ ...current, unbound: { ...current.unbound, base_url: event.target.value } }))} /></Field>
@@ -1484,12 +1684,13 @@ function ConfigEditor({
         <ConfigTestResult service={service} result={testResult} />
         <div className="config-actions">
           <button type="button" data-config-test="unbound" disabled={!mutationEnabled} onClick={() => void onTest('unbound')}>Test OPNSense</button>
-          <button type="button" data-config-save="unbound" disabled={!mutationEnabled} onClick={() => void onSave('unbound')}>Set OPNSense</button>
+          <button type="button" data-config-save="unbound" className={dirty ? 'btn-primary' : ''} disabled={!mutationEnabled} onClick={() => void onSave('unbound')}>Save OPNSense</button>
         </div>
       </div>
     );
   }
   if (service === 'adguard') {
+    const dirty = isDirty('adguard');
     return (
       <div className="config-editor" data-config-editor="adguard">
         <label className="checkbox-row"><input id="config-adguard-enabled" type="checkbox" checked={forms.adguard.enabled} onChange={(event) => setForms((current) => ({ ...current, adguard: { ...current.adguard, enabled: event.target.checked } }))} /> Enabled</label>
@@ -1500,11 +1701,12 @@ function ConfigEditor({
         <ConfigTestResult service={service} result={testResult} />
         <div className="config-actions">
           <button type="button" data-config-test="adguard" disabled={!mutationEnabled} onClick={() => void onTest('adguard')}>Test AdGuard</button>
-          <button type="button" data-config-save="adguard" disabled={!mutationEnabled} onClick={() => void onSave('adguard')}>Set AdGuard</button>
+          <button type="button" data-config-save="adguard" className={dirty ? 'btn-primary' : ''} disabled={!mutationEnabled} onClick={() => void onSave('adguard')}>Save AdGuard</button>
         </div>
       </div>
     );
   }
+  const dirty = isDirty('cloudflare');
   return (
     <div className="config-editor" data-config-editor="cloudflare">
       <label className="checkbox-row"><input id="config-cloudflare-enabled" type="checkbox" checked={forms.cloudflare.enabled} onChange={(event) => setForms((current) => ({ ...current, cloudflare: { ...current.cloudflare, enabled: event.target.checked } }))} /> Enabled</label>
@@ -1517,7 +1719,7 @@ function ConfigEditor({
       <ConfigTestResult service={service} result={testResult} />
       <div className="config-actions">
         <button type="button" data-config-test="cloudflare" disabled={!mutationEnabled} onClick={() => void onTest('cloudflare')}>Test Cloudflare</button>
-        <button type="button" data-config-save="cloudflare" disabled={!mutationEnabled} onClick={() => void onSave('cloudflare')}>Set Cloudflare</button>
+        <button type="button" data-config-save="cloudflare" className={dirty ? 'btn-primary' : ''} disabled={!mutationEnabled} onClick={() => void onSave('cloudflare')}>Save Cloudflare</button>
       </div>
     </div>
   );

@@ -271,6 +271,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/config/test", s.handleConfigTest)
 	s.mux.HandleFunc("/api/cloudflare/discover", s.handleCloudflareDiscover)
 	s.mux.HandleFunc("/api/cloudflare/tunnels", s.handleCloudflareTunnels)
+	s.mux.HandleFunc("/api/cloudflare/set-route", s.handleCloudflareSetRoute)
+	s.mux.HandleFunc("/api/cloudflare/remove-route", s.handleCloudflareRemoveRoute)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
@@ -295,8 +297,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	setSecurityHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
 	body, err := staticFiles.ReadFile("static/index.html")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -632,6 +635,78 @@ func (s *Server) handleCloudflareTunnels(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	writeJSON(w, http.StatusOK, active)
+}
+
+// CloudflareSetRouteRequest sets the routing mode for a single hostname in the CF tunnel.
+type CloudflareSetRouteRequest struct {
+	Hostname       string `json:"hostname"`
+	Service        string `json:"service"`          // full URL, e.g. "https://192.168.1.15" or "http://192.168.1.112:8006"
+	HTTPHostHeader string `json:"http_host_header"` // set when routing via Caddy
+	NoTLSVerify    bool   `json:"no_tls_verify"`
+}
+
+// handleCloudflareSetRoute updates a single CF tunnel ingress rule to point to the given service.
+// POST /api/cloudflare/set-route
+func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	runtime := s.runtimeSnapshot()
+	if runtime.Clients.Cloudflare == nil {
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare not configured"))
+		return
+	}
+	var req CloudflareSetRouteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Hostname == "" || req.Service == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname and service are required"))
+		return
+	}
+	spec := api.IngressRuleSpec{
+		Hostname:       req.Hostname,
+		Service:        req.Service,
+		HTTPHostHeader: req.HTTPHostHeader,
+		NoTLSVerify:    req.NoTLSVerify,
+	}
+	if err := runtime.Clients.Cloudflare.UpdateTunnelRule(spec); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleCloudflareRemoveRoute removes a hostname from the CF tunnel ingress.
+// POST /api/cloudflare/remove-route  { "hostname": "foo.example.com" }
+func (s *Server) handleCloudflareRemoveRoute(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	runtime := s.runtimeSnapshot()
+	if runtime.Clients.Cloudflare == nil {
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare not configured"))
+		return
+	}
+	var req struct {
+		Hostname string `json:"hostname"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Hostname == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname is required"))
+		return
+	}
+	if err := runtime.Clients.Cloudflare.DeleteTunnelRule(req.Hostname); err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // ProbeResponse is the result of an HTTP reachability probe.
@@ -1526,9 +1601,20 @@ func actionIDs(actions []syncplan.Action) []string {
 	return ids
 }
 
+const appCSP = "default-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://static.cloudflareinsights.com; font-src 'self'; frame-ancestors 'none'"
+
+func setSecurityHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", appCSP)
+}
+
 func staticHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
+		setSecurityHeaders(w)
+		// Hashed assets (app.<hash>.js, styles.<hash>.css) are immutable — cache forever.
+		// index.html is served by handleIndex with no-store, so it always fetches fresh.
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		next.ServeHTTP(w, r)
 	})
 }

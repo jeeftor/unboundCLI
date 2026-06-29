@@ -55,3 +55,4 @@ fix_*.sh
 # Misc leftover plan files (keep intentional ones explicitly)
 TUI_REBUILD_PLAN.md
 WIDGET_REFACTOR_FINAL_STEPS.md
+EDIT-plan.md

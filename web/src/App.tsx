@@ -158,6 +158,7 @@ export function App() {
         setConfigOpen={setConfigOpen}
         forms={configForms.forms}
         setForms={configForms.setForms}
+        savedForms={configForms.savedForms}
         configStatus={configForms.configStatus}
         configStatusKind={configForms.configStatusKind}
         testResults={configForms.testResults}
