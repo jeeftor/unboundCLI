@@ -1120,6 +1120,21 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   font-size: 11px;
   color: var(--red, #f87171);
 }
+.cf-repair-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(248, 113, 113, 0.07);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.2);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.cf-repair-banner > svg { color: var(--red, #f87171); flex-shrink: 0; }
+.cf-repair-ok { color: var(--green, #4ade80); display: flex; align-items: center; gap: 4px; font-size: 11px; }
+.cf-repair-fail { color: var(--red, #f87171); font-size: 11px; }
+
 .cf-route-saving {
   display: flex;
   align-items: center;

@@ -275,6 +275,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/cloudflare/tunnels", s.handleCloudflareTunnels)
 	s.mux.HandleFunc("/api/cloudflare/set-route", s.handleCloudflareSetRoute)
 	s.mux.HandleFunc("/api/cloudflare/remove-route", s.handleCloudflareRemoveRoute)
+	s.mux.HandleFunc("/api/cloudflare/repair-dns", s.handleCloudflareRepairDNS)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/dns-probe", s.handleDNSProbe)
@@ -721,6 +722,49 @@ func (s *Server) handleCloudflareRemoveRoute(w http.ResponseWriter, r *http.Requ
 		logging.Info("remove-route: DNS CNAME record deleted", "hostname", req.Hostname)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleCloudflareRepairDNS creates missing CNAME DNS records for all CF tunnel entries.
+// POST /api/cloudflare/repair-dns
+func (s *Server) handleCloudflareRepairDNS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	runtime := s.runtimeSnapshot()
+	if runtime.Clients.Cloudflare == nil {
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare not configured"))
+		return
+	}
+	hostnames, err := runtime.Clients.Cloudflare.GetTunnelHostnames()
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to list tunnel hostnames: %w", err))
+		return
+	}
+	existing, err := runtime.Clients.Cloudflare.ListManagedDNSRecords()
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to list DNS records: %w", err))
+		return
+	}
+
+	fixed := []string{}
+	failed := []string{}
+	for hostname := range hostnames {
+		if _, ok := existing[hostname]; ok {
+			continue // already has a CNAME
+		}
+		if err := runtime.Clients.Cloudflare.EnsureDNSRecord(hostname); err != nil {
+			logging.Warn("repair-dns: failed to create CNAME", "hostname", hostname, "error", err)
+			failed = append(failed, hostname)
+		} else {
+			logging.Info("repair-dns: created CNAME", "hostname", hostname)
+			fixed = append(fixed, hostname)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"fixed":  fixed,
+		"failed": failed,
+	})
 }
 
 // ProbeResponse is the result of an HTTP reachability probe.
