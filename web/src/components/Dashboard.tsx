@@ -362,7 +362,7 @@ function Topbar({ config, loading, view, setView, onRefresh, onOpenConfig }: { c
         <div className="brand-mark"><Zap size={18} /></div>
         <div>
           <h1>Caddy DNS Sync</h1>
-          <span>Local dashboard</span>
+          <span>{config?.version ? <span className="brand-version">{config.version}</span> : 'Local dashboard'}</span>
         </div>
       </div>
       <div className="runtime-card" id="runtime">
