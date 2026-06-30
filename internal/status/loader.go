@@ -348,7 +348,56 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 		e.OverallStatus = models.ComputeSyncStatus(e, d.caddyServerIP)
 	}
 
+	d.logLoadSummary(entries)
+
 	return entries, report, nil
+}
+
+// logLoadSummary logs notable findings after all data is loaded and merged.
+func (d *DataLoader) logLoadSummary(entries []*models.Entry) {
+	var (
+		outOfSync  []string
+		caddyOnly  []string
+		stale      []string
+		cfNoCNAME  []string
+		cfNoHeader []string
+	)
+
+	for _, e := range entries {
+		switch e.OverallStatus {
+		case models.OutOfSync:
+			outOfSync = append(outOfSync, e.Hostname)
+		case models.CaddyOnly:
+			caddyOnly = append(caddyOnly, e.Hostname)
+		case models.Stale:
+			stale = append(stale, e.Hostname)
+		}
+		if e.CloudflareStatus.Configured && !e.CloudflareStatus.HasDNSRecord {
+			cfNoCNAME = append(cfNoCNAME, e.Hostname)
+		}
+		if e.CloudflareStatus.Configured && e.CloudflareStatus.HTTPHostHeader == "" {
+			cfNoHeader = append(cfNoHeader, e.Hostname)
+		}
+	}
+
+	if len(outOfSync) > 0 {
+		logging.Warn("DNS out of sync", "count", len(outOfSync), "hostnames", outOfSync)
+	}
+	if len(caddyOnly) > 0 {
+		logging.Warn("Caddy-only entries (not in DNS)", "count", len(caddyOnly), "hostnames", caddyOnly)
+	}
+	if len(stale) > 0 {
+		logging.Warn("Stale DNS entries (not in Caddy)", "count", len(stale), "hostnames", stale)
+	}
+	if len(cfNoCNAME) > 0 {
+		logging.Warn("CF tunnel rules missing DNS CNAME record", "count", len(cfNoCNAME), "hostnames", cfNoCNAME)
+	}
+	if len(cfNoHeader) > 0 {
+		logging.Warn("CF tunnel rules missing HTTPHostHeader", "count", len(cfNoHeader), "hostnames", cfNoHeader)
+	}
+	if len(outOfSync)+len(caddyOnly)+len(stale)+len(cfNoCNAME)+len(cfNoHeader) == 0 {
+		logging.Info("Load summary: all entries in sync, no issues found")
+	}
 }
 
 func loadReportServices() []ServiceName {
