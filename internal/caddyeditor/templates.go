@@ -19,22 +19,26 @@ type TemplateData struct {
 // builtinTemplates generate a @matcher + handle block for insertion into a wildcard Caddyfile.
 // The Caddy {placeholder} syntax conflicts with Go templates, so we use [[ ]] delimiters.
 var builtinTemplates = map[string]string{
+	// default: uses the shared proxy_headers snippet (import proxy_headers)
+	// which must be defined in your Caddyfile as a snippet, e.g.:
+	//   (proxy_headers) {
+	//       header_up Host {upstream_hostport}
+	//       header_up X-Real-IP {remote_host}
+	//   }
 	"default": `@[[ .MatcherName ]] host [[ .Hostname ]]
 handle @[[ .MatcherName ]] {
 	reverse_proxy [[ .Upstream ]] {
-		header_up Host {upstream_hostport}
-		header_up X-Real-IP {remote_host}
+		import proxy_headers
 	}
 }`,
 
 	"no-tls-verify": `@[[ .MatcherName ]] host [[ .Hostname ]]
 handle @[[ .MatcherName ]] {
 	reverse_proxy [[ .Upstream ]] {
+		import proxy_headers
 		transport http {
 			tls_insecure_skip_verify
 		}
-		header_up Host {upstream_hostport}
-		header_up X-Real-IP {remote_host}
 	}
 }`,
 
@@ -42,14 +46,21 @@ handle @[[ .MatcherName ]] {
 handle @[[ .MatcherName ]] {
 	encode gzip zstd
 	reverse_proxy [[ .Upstream ]] {
-		header_up Host {upstream_hostport}
-		header_up X-Real-IP {remote_host}
+		import proxy_headers
 	}
 }`,
 
 	"simple": `@[[ .MatcherName ]] host [[ .Hostname ]]
 handle @[[ .MatcherName ]] {
 	reverse_proxy [[ .Upstream ]]
+}`,
+
+	"headers-inline": `@[[ .MatcherName ]] host [[ .Hostname ]]
+handle @[[ .MatcherName ]] {
+	reverse_proxy [[ .Upstream ]] {
+		header_up Host {upstream_hostport}
+		header_up X-Real-IP {remote_host}
+	}
 }`,
 }
 
