@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -275,6 +276,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/cloudflare/remove-route", s.handleCloudflareRemoveRoute)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
+	s.mux.HandleFunc("/api/dns-probe", s.handleDNSProbe)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
@@ -676,6 +678,12 @@ func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
+	if err := runtime.Clients.Cloudflare.EnsureDNSRecord(req.Hostname); err != nil {
+		// Log but don't fail — ingress rule was set, DNS is best-effort
+		logging.Warn("set-route: failed to ensure DNS CNAME record", "hostname", req.Hostname, "error", err)
+	} else {
+		logging.Info("set-route: DNS CNAME record ensured", "hostname", req.Hostname)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -705,6 +713,11 @@ func (s *Server) handleCloudflareRemoveRoute(w http.ResponseWriter, r *http.Requ
 	if err := runtime.Clients.Cloudflare.DeleteTunnelRule(req.Hostname); err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
+	}
+	if err := runtime.Clients.Cloudflare.DeleteDNSRecord(req.Hostname); err != nil {
+		logging.Warn("remove-route: failed to delete DNS CNAME record", "hostname", req.Hostname, "error", err)
+	} else {
+		logging.Info("remove-route: DNS CNAME record deleted", "hostname", req.Hostname)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -826,6 +839,64 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		StatusCode: resp.StatusCode,
 		LatencyMS:  latency,
 		ProbeURL:   probeURL,
+	})
+}
+
+// DNSProbeResponse is the result of a public DNS lookup via Cloudflare's 1.1.1.1 resolver.
+type DNSProbeResponse struct {
+	Resolved  bool     `json:"resolved"`
+	CNAME     string   `json:"cname,omitempty"`
+	Addresses []string `json:"addresses,omitempty"`
+	Error     string   `json:"error,omitempty"`
+}
+
+// handleDNSProbe looks up a hostname via Cloudflare's public resolver (1.1.1.1)
+// to check if a CF tunnel hostname is resolving publicly.
+// GET /api/dns-probe?hostname=foo.example.com
+func (s *Server) handleDNSProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
+	if hostname == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname parameter required"))
+		return
+	}
+
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			d := net.Dialer{Timeout: 4 * time.Second}
+			return d.DialContext(ctx, "udp", "1.1.1.1:53")
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	// Walk the CNAME chain.
+	cname, err := resolver.LookupCNAME(ctx, hostname)
+	if err != nil {
+		writeJSON(w, http.StatusOK, DNSProbeResponse{Resolved: false, Error: err.Error()})
+		return
+	}
+	// LookupCNAME returns the hostname itself (with trailing dot) if there's no CNAME.
+	canonicalCNAME := strings.TrimSuffix(cname, ".")
+	if canonicalCNAME == hostname {
+		canonicalCNAME = ""
+	}
+
+	addrs, err := resolver.LookupHost(ctx, hostname)
+	if err != nil {
+		writeJSON(w, http.StatusOK, DNSProbeResponse{Resolved: false, CNAME: canonicalCNAME, Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, DNSProbeResponse{
+		Resolved:  true,
+		CNAME:     canonicalCNAME,
+		Addresses: addrs,
 	})
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/caddyeditor"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
 
 // CaddyEntryRequest is the payload for POST/PUT caddy entry endpoints.
@@ -304,11 +305,14 @@ func (s *Server) handleCaddyGitPull(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	logging.Info("caddy: git pull starting", "repo", cfg.RepoPath)
 	out, err := caddyeditor.GitPull(cfg)
 	if err != nil {
+		logging.Error("caddy: git pull failed", "error", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	logging.Info("caddy: git pull completed", "output", out)
 	writeJSON(w, http.StatusOK, map[string]string{"output": out, "status": "ok"})
 }
 

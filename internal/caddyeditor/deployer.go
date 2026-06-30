@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
 
 // DeployResult holds the final outcome of a deploy pipeline.
@@ -25,6 +27,11 @@ type DeployPipelineOptions struct {
 func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) DeployResult {
 	writeLine := func(line string) {
 		_, _ = fmt.Fprintln(w, line)
+		logging.Info("deploy: " + line)
+	}
+	writeError := func(line string) {
+		_, _ = fmt.Fprintln(w, line)
+		logging.Error("deploy: " + line)
 	}
 
 	// 1. Validate
@@ -35,7 +42,7 @@ func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) D
 			writeLine(result.Output)
 		}
 		if !result.OK {
-			writeLine("FAILED: validation error")
+			writeError("FAILED: validation error")
 			return DeployResult{OK: false, Output: "validation failed"}
 		}
 		writeLine("OK: config valid")
@@ -45,7 +52,7 @@ func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) D
 	if cfg.GitAutoCommit {
 		writeLine("Staging changes...")
 		if err := GitAdd(cfg); err != nil {
-			writeLine(fmt.Sprintf("FAILED: %v", err))
+			writeError(fmt.Sprintf("FAILED: %v", err))
 			return DeployResult{OK: false, Output: err.Error()}
 		}
 
@@ -60,7 +67,7 @@ func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) D
 			}
 			writeLine(fmt.Sprintf("Committing: %s", msg))
 			if err := GitCommit(cfg, msg); err != nil {
-				writeLine(fmt.Sprintf("FAILED: %v", err))
+				writeError(fmt.Sprintf("FAILED: %v", err))
 				return DeployResult{OK: false, Output: err.Error()}
 			}
 			writeLine("OK: committed")
@@ -69,7 +76,7 @@ func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) D
 		if cfg.GitAutoPush {
 			writeLine("Pushing to remote...")
 			if err := GitPush(cfg); err != nil {
-				writeLine(fmt.Sprintf("FAILED: %v", err))
+				writeError(fmt.Sprintf("FAILED: %v", err))
 				return DeployResult{OK: false, Output: err.Error()}
 			}
 			writeLine("OK: pushed")
@@ -88,7 +95,7 @@ func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) D
 	cmd.Stdout = w
 	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
-		writeLine(fmt.Sprintf("FAILED: %v", err))
+		writeError(fmt.Sprintf("FAILED: %v", err))
 		return DeployResult{OK: false, Output: err.Error()}
 	}
 	writeLine("Done.")
