@@ -197,7 +197,7 @@ export function AppShell({
   return (
     <div className="console-layout">
       <div className="console-main">
-        <Topbar config={config} loading={loading} view={view} setView={setView} onRefresh={onRefresh} onOpenConfig={() => setConfigOpen(true)} />
+        <Topbar config={config} loading={loading} syncLoading={syncLoading} view={view} setView={setView} onRefresh={onRefresh} onOpenConfig={() => setConfigOpen(true)} />
 
         {showRemoteBanner && (
           <div className={`git-remote-banner global ${remoteStatus!.fetch_error ? 'error' : 'warn'}`}>
@@ -355,7 +355,10 @@ function Sidebar({ config, report, view, setView, onOpenConfig }: { config: Conf
   );
 }
 
-function Topbar({ config, loading, view, setView, onRefresh, onOpenConfig }: { config: ConfigResponse | null; loading: boolean; view: AppView; setView: (v: AppView) => void; onRefresh: () => void; onOpenConfig: () => void }) {
+function Topbar({ config, loading, syncLoading, view, setView, onRefresh, onOpenConfig }: { config: ConfigResponse | null; loading: boolean; syncLoading: boolean; view: AppView; setView: (v: AppView) => void; onRefresh: () => void; onOpenConfig: () => void }) {
+  const busy = loading || syncLoading;
+  const busyLabel = syncLoading ? 'Syncing…' : 'Loading…';
+
   return (
     <header className="topbar">
       <div className="brand-lockup">
@@ -365,6 +368,12 @@ function Topbar({ config, loading, view, setView, onRefresh, onOpenConfig }: { c
           <span>{config?.version ? <span className="brand-version">{config.version}</span> : 'Local dashboard'}</span>
         </div>
       </div>
+      {busy && (
+        <div className="topbar-activity" role="status" aria-live="polite">
+          <Loader2 size={14} className="spin" />
+          <span>{busyLabel}</span>
+        </div>
+      )}
       <div className="runtime-card" id="runtime">
         <span>Caddy runtime</span>
         <strong>{config ? `${config.caddy.server_ip}:${config.caddy.server_port}` : 'Loading...'}</strong>
@@ -377,7 +386,7 @@ function Topbar({ config, loading, view, setView, onRefresh, onOpenConfig }: { c
             : <><FileCode2 size={16} /> Caddy Editor</>}
         </button>
         <button id="refresh" type="button" onClick={onRefresh} disabled={loading}>
-          <RefreshCw size={16} /> Refresh
+          {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Refresh
         </button>
         <button id="config-toggle" type="button" onClick={onOpenConfig}>
           <Settings size={16} /> Settings
