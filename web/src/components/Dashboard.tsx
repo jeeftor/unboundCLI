@@ -939,32 +939,32 @@ function CloudflareRoutePanel({ entry, caddyServerIP, mutationEnabled, onRefresh
             <>
               {isViaCaddy ? (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('direct')} disabled={saving || !directService} title={directService}>
-                  Switch to Direct
+                  {saving ? <Loader2 size={11} className="spin" /> : null} Switch to Direct
                 </button>
               ) : (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('caddy')} disabled={saving || !caddyService} title={caddyService}>
-                  Switch to Caddy
+                  {saving ? <Loader2 size={11} className="spin" /> : null} Switch to Caddy
                 </button>
               )}
               <button type="button" className="btn-sm btn-danger-sm" onClick={() => void removeRoute()} disabled={saving}>
-                <Trash2 size={12} /> Remove
+                {saving ? <Loader2 size={11} className="spin" /> : <Trash2 size={12} />} Remove
               </button>
             </>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
               {caddyService && (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('caddy')} disabled={saving}>
-                  Route via Caddy ({caddyServerIP})
+                  {saving ? <Loader2 size={11} className="spin" /> : null} Route via Caddy ({caddyServerIP})
                 </button>
               )}
               {directService && (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('direct')} disabled={saving}>
-                  Route direct ({directService})
+                  {saving ? <Loader2 size={11} className="spin" /> : null} Route direct ({directService})
                 </button>
               )}
             </div>
           )}
-          {saving && <span className="muted" style={{ fontSize: 11 }}>Saving…</span>}
+          {saving && <span className="cf-route-saving"><Loader2 size={12} className="spin" /> Updating tunnel + DNS…</span>}
         </div>
       )}
 
