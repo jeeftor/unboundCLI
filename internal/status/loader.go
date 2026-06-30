@@ -231,6 +231,7 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 		}
 	}()
 
+	var cfDNSRecords map[string]string
 	if d.cfClient != nil {
 		wg.Add(1)
 		go func() {
@@ -244,6 +245,21 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 				logging.Warn("Failed to load Cloudflare tunnel details", "error", cfErr)
 			} else {
 				logging.Info("Loaded Cloudflare tunnel details", "count", len(cfDetails))
+			}
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if d.contextErr() != nil {
+				return
+			}
+			records, err := d.cfClient.ListManagedDNSRecords()
+			if err != nil {
+				logging.Warn("Failed to load Cloudflare DNS records", "error", err)
+			} else {
+				cfDNSRecords = records
+				logging.Info("Loaded Cloudflare DNS records", "count", len(records))
 			}
 		}()
 	}
@@ -301,6 +317,7 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 			hostIndex[e.Hostname] = i
 		}
 		for hostname, cfEntry := range cfDetails {
+			_, hasDNSRecord := cfDNSRecords[hostname]
 			cfStatus := models.CloudflareStatus{
 				Configured:      true,
 				TunnelName:      cfEntry.TunnelName,
@@ -312,6 +329,7 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 				NoTLSVerify:     cfEntry.NoTLSVerify,
 				Http2Origin:     cfEntry.Http2Origin,
 				HasAccessPolicy: cfEntry.HasAccessPolicy,
+				HasDNSRecord:    hasDNSRecord,
 			}
 			if idx, ok := hostIndex[hostname]; ok {
 				entries[idx].CloudflareStatus = cfStatus

@@ -6,7 +6,7 @@ export type HostnameDecisionAction = {
 };
 
 export type HostnameWarning = {
-  kind: 'collision' | 'mismatch';
+  kind: 'collision' | 'mismatch' | 'cf_no_dns';
   title: string;
   summary: string;
   facts: string[];
@@ -41,9 +41,33 @@ function sameShortHostname(entry: Entry): boolean {
   return Boolean(dhcpHostname && dhcpHostname === firstLabel(entry.hostname));
 }
 
+function cfNoDNSWarning(entry: Entry): HostnameWarning | null {
+  if (!entry.cloudflare_status?.configured) return null;
+  if (entry.cloudflare_status.has_dns_record) return null;
+  return {
+    kind: 'cf_no_dns',
+    title: 'Missing Cloudflare DNS record',
+    summary: `${entry.hostname} has a tunnel ingress rule but no CNAME in Cloudflare DNS — it won't resolve publicly.`,
+    facts: [
+      'Tunnel ingress rule exists (cloudflared knows where to route traffic)',
+      'No CNAME record found: ' + entry.hostname + ' → <tunnel-id>.cfargotunnel.com',
+      'External DNS returns NXDOMAIN — the tunnel is unreachable from the internet'
+    ],
+    actions: [
+      { label: 'Fix automatically', description: 'Use "Via Caddy" or "Switch to Direct" in the Cloudflare panel to re-save the route — it will now also create the DNS record.' },
+      { label: 'Fix manually', description: 'In Cloudflare DNS, add a proxied CNAME: ' + entry.hostname + ' → <your-tunnel-id>.cfargotunnel.com' }
+    ]
+  };
+}
+
 export function isIssue(entry: Entry, caddyServerIP: string): boolean {
   const d = getHostnameDecision(entry, caddyServerIP);
   return d.kind === 'collision' || d.kind === 'mismatch' || d.warnings.length > 0;
+}
+
+function appendCFWarning(warnings: HostnameWarning[], entry: Entry): HostnameWarning[] {
+  const w = cfNoDNSWarning(entry);
+  return w ? [...warnings, w] : warnings;
 }
 
 export function getHostnameDecision(entry: Entry, caddyServerIP: string): HostnameDecision {
@@ -101,7 +125,7 @@ export function getHostnameDecision(entry: Entry, caddyServerIP: string): Hostna
           description: `Point ${entry.hostname} → ${dhcpIP} for direct/SSH access. Create a new Caddy route (e.g. ${shortName}-web.${entry.hostname.split('.').slice(1).join('.')}) → Caddy for web access.`
         }
       ],
-      warnings: hasUpstreamMismatch ? [mismatchWarning] : []
+      warnings: appendCFWarning(hasUpstreamMismatch ? [mismatchWarning] : [], entry)
     };
   }
 
@@ -127,7 +151,7 @@ export function getHostnameDecision(entry: Entry, caddyServerIP: string): Hostna
           description: 'The service intentionally runs on a different host than the DHCP name suggests.'
         }
       ],
-      warnings: []
+      warnings: appendCFWarning([], entry)
     };
   }
 
@@ -143,7 +167,7 @@ export function getHostnameDecision(entry: Entry, caddyServerIP: string): Hostna
         dhcpIP ? `DHCP context is ${dhcpIP}` : 'No matching DHCP host was found'
       ],
       actions: [{ label: 'No change', description: 'Keep this name as a Caddy-backed service.' }],
-      warnings: []
+      warnings: appendCFWarning([], entry)
     };
   }
 
@@ -155,7 +179,7 @@ export function getHostnameDecision(entry: Entry, caddyServerIP: string): Hostna
       summary: `${entry.hostname} behaves like a machine name.`,
       facts: [`DHCP has ${shortName} at ${dhcpIP}`],
       actions: [{ label: 'No change', description: 'Keep using this name for direct host access.' }],
-      warnings: []
+      warnings: appendCFWarning([], entry)
     };
   }
 
@@ -166,6 +190,6 @@ export function getHostnameDecision(entry: Entry, caddyServerIP: string): Hostna
     summary: 'This name does not have enough host or service context yet.',
     facts: ['No matching DHCP host or Caddy upstream was reported'],
     actions: [{ label: 'Review later', description: 'Classify this as a host or service when you know its intent.' }],
-    warnings: []
+    warnings: appendCFWarning([], entry)
   };
 }
