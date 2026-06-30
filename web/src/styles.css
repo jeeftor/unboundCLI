@@ -171,6 +171,17 @@ input::placeholder { color: var(--text-muted); }
 }
 
 .brand-lockup span { font-size: 11px; color: var(--text-muted); }
+.brand-version {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: var(--blue, #4fa8ff);
+  background: rgba(79, 168, 255, 0.1);
+  border: 1px solid rgba(79, 168, 255, 0.2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.03em;
+}
 
 .nav-stack {
   display: grid;

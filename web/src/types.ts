@@ -28,6 +28,7 @@ export type ConfigResponse = {
   save_target: string;
   summary: Record<ServiceKey, ConfigServiceSummary>;
   caddy_editor?: CaddyEditorConfig;
+  version?: string;
 };
 
 export type ServiceStatus = {

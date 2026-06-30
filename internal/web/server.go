@@ -41,6 +41,7 @@ type Options struct {
 	BoundHost       string
 	EnableTestHooks bool
 	ConfigPath      string
+	Version         string // build version, e.g. "v1.2.3" or "dev"
 }
 
 type Server struct {
@@ -68,6 +69,7 @@ type ConfigResponse struct {
 	SaveTarget      string                   `json:"save_target"`
 	Summary         ConfigSummary            `json:"summary"`
 	CaddyEditor     caddyeditor.EditorConfig `json:"caddy_editor"`
+	Version         string                   `json:"version"`
 }
 
 type ConfigSummary struct {
@@ -454,6 +456,7 @@ func (s *Server) configResponse() (ConfigResponse, error) {
 		SaveTarget:      saveTarget,
 		Summary:         s.configSummary(&runtime),
 		CaddyEditor:     s.loadCaddyEditorConfig(),
+		Version:         s.options.Version,
 	}, nil
 }
 
