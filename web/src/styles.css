@@ -1173,6 +1173,18 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   flex-shrink: 0;
 }
 
+.log-bar-resize-handle {
+  height: 5px;
+  cursor: ns-resize;
+  background: transparent;
+  border-top: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.log-bar-resize-handle:hover,
+.log-bar-resize-handle:active {
+  border-top-color: var(--blue, #4fa8ff);
+}
+
 .log-bar-toggle {
   display: flex;
   align-items: center;
@@ -1208,7 +1220,6 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
-  height: 160px;
   overflow-y: auto;
   border-top: 1px solid var(--border-subtle);
   margin: 0;

@@ -1333,6 +1333,25 @@ function LogBar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const cursorRef = useRef(0);
   const [lines, setLines] = useState<string[]>([]);
   const [active, setActive] = useState(false);
+  const [height, setHeight] = useState(160);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+  const onDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startY: e.clientY, startH: height };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.startY - ev.clientY; // drag up = bigger
+      setHeight(Math.max(80, Math.min(600, dragRef.current.startH + delta)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   // Continuously poll /api/logs regardless of open state so the count stays current.
   useEffect(() => {
@@ -1373,6 +1392,7 @@ function LogBar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
 
   return (
     <div className={`log-bar${open ? ' open' : ''}`}>
+      {open && <div className="log-bar-resize-handle" onMouseDown={onDragStart} title="Drag to resize" />}
       <button type="button" className="log-bar-toggle" onClick={onToggle}>
         <Terminal size={13} />
         <span>Server log</span>
@@ -1381,7 +1401,7 @@ function LogBar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
         {open ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
       </button>
       {open && (
-        <pre ref={preRef} className="log-bar-content">
+        <pre ref={preRef} className="log-bar-content" style={{ height: `${height}px` }}>
           {lines.length ? lines.join('\n') : 'Waiting for server log output...'}
         </pre>
       )}
