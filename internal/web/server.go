@@ -195,6 +195,7 @@ type CloudflareStatusResponse struct {
 	NoTLSVerify     bool   `json:"no_tls_verify"`
 	Http2Origin     bool   `json:"http2_origin"`
 	HasAccessPolicy bool   `json:"has_access_policy"`
+	HasDNSRecord    bool   `json:"has_dns_record"`
 }
 
 type EntryResponse struct {
@@ -1298,6 +1299,7 @@ func entryResponses(entries []*models.Entry) []EntryResponse {
 				NoTLSVerify:     entry.CloudflareStatus.NoTLSVerify,
 				Http2Origin:     entry.CloudflareStatus.Http2Origin,
 				HasAccessPolicy: entry.CloudflareStatus.HasAccessPolicy,
+				HasDNSRecord:    entry.CloudflareStatus.HasDNSRecord,
 			},
 			OverallStatus: entry.OverallStatus,
 			StatusLabel:   entry.OverallStatus.Label(),

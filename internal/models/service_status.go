@@ -99,4 +99,5 @@ type CloudflareStatus struct {
 	NoTLSVerify     bool
 	Http2Origin     bool
 	HasAccessPolicy bool
+	HasDNSRecord    bool // CNAME → <tunnelID>.cfargotunnel.com exists in Cloudflare DNS
 }

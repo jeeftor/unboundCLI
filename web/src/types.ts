@@ -56,6 +56,7 @@ export type CloudflareStatus = {
   no_tls_verify: boolean;
   http2_origin: boolean;
   has_access_policy: boolean;
+  has_dns_record: boolean;
 };
 
 export type Entry = {
