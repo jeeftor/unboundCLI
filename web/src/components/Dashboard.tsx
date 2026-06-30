@@ -256,6 +256,12 @@ export function AppShell({
                 mutationEnabled={mutationEnabled}
                 onSyncAll={onSyncAll}
               />
+              <CFRepairBanner
+                entries={entries}
+                mutationEnabled={mutationEnabled}
+                cfEnabled={enabledServices.cloudflare === true}
+                onRepaired={onRefresh}
+              />
               <EntriesTable
                 entries={entries}
                 selectedHostname={selectedHostname}
@@ -1404,6 +1410,58 @@ function LogBar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
         <pre ref={preRef} className="log-bar-content" style={{ height: `${height}px` }}>
           {lines.length ? lines.join('\n') : 'Waiting for server log output...'}
         </pre>
+      )}
+    </div>
+  );
+}
+
+function CFRepairBanner({ entries, mutationEnabled, cfEnabled, onRepaired }: {
+  entries: Entry[];
+  mutationEnabled: boolean;
+  cfEnabled: boolean;
+  onRepaired: () => void;
+}) {
+  const [repairing, setRepairing] = useState(false);
+  const [result, setResult] = useState<{ fixed: string[]; failed: string[] } | null>(null);
+
+  const missingCNAME = entries.filter(e =>
+    e.cloudflare_status?.configured && !e.cloudflare_status?.has_dns_record
+  );
+
+  if (!cfEnabled || missingCNAME.length === 0) return null;
+
+  const repair = async () => {
+    setRepairing(true);
+    setResult(null);
+    try {
+      const r = await api.cfRepairDNS();
+      setResult(r);
+      onRepaired();
+    } catch { /* ignore */ } finally {
+      setRepairing(false);
+    }
+  };
+
+  return (
+    <div className="cf-repair-banner">
+      <CircleAlert size={14} />
+      <span>
+        <strong>{missingCNAME.length} CF tunnel {missingCNAME.length === 1 ? 'entry is' : 'entries are'} missing a DNS CNAME record</strong>
+        {' '}— they won&apos;t resolve publicly until fixed.
+      </span>
+      {mutationEnabled && (
+        <button type="button" className="btn-sm btn-primary" onClick={() => void repair()} disabled={repairing}>
+          {repairing ? <Loader2 size={11} className="spin" /> : null}
+          {repairing ? ' Repairing…' : 'Repair all missing CNAMEs'}
+        </button>
+      )}
+      {result && result.fixed.length > 0 && (
+        <span className="cf-repair-ok">
+          <CheckCircle2 size={12} /> Fixed: {result.fixed.join(', ')}
+        </span>
+      )}
+      {result && result.failed.length > 0 && (
+        <span className="cf-repair-fail">Failed: {result.failed.join(', ')}</span>
       )}
     </div>
   );

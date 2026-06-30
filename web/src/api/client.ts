@@ -106,6 +106,8 @@ export const api = {
     postJSON<{ status: string }>('/api/cloudflare/set-route', payload),
   cfRemoveRoute: (hostname: string) =>
     postJSON<{ status: string }>('/api/cloudflare/remove-route', { hostname }),
+  cfRepairDNS: () =>
+    postJSON<{ fixed: string[]; failed: string[] }>('/api/cloudflare/repair-dns', {}),
 
   // DNS probe via Cloudflare's public resolver (1.1.1.1)
   dnsProbe: (hostname: string) => getJSON<{ resolved: boolean; cname?: string; addresses?: string[]; error?: string }>(`/api/dns-probe?hostname=${encodeURIComponent(hostname)}`),
