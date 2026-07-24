@@ -464,18 +464,17 @@ func (c *CloudflareClient) EnsureDNSRecord(hostname string) error {
 				logging.Info("Updated DNS record", "hostname", hostname, "target", target)
 				return nil
 			}
-			// Non-tunnel CNAME (e.g. points to another service).
-			return fmt.Errorf(
-				"cannot create tunnel CNAME for %s: a CNAME record already exists pointing to %q — "+
-					"remove or replace it in the Cloudflare DNS dashboard first",
-				hostname, r.Content,
-			)
+			// Non-tunnel CNAME — delete it so we can create the correct one.
+			logging.Info("Replacing conflicting CNAME record", "hostname", hostname, "old", r.Content, "new", target)
+			if err := c.api.DeleteDNSRecord(ctx, cloudflare.ResourceIdentifier(c.zoneID), r.ID); err != nil {
+				return fmt.Errorf("error removing conflicting CNAME record for %s: %w", hostname, err)
+			}
 		case "A", "AAAA":
-			return fmt.Errorf(
-				"cannot create tunnel CNAME for %s: a %s record already exists with value %q — "+
-					"remove it in the Cloudflare DNS dashboard first",
-				hostname, r.Type, r.Content,
-			)
+			// Conflicting address record — delete it so we can create the CNAME.
+			logging.Info("Replacing conflicting address record with tunnel CNAME", "hostname", hostname, "type", r.Type, "old", r.Content, "new", target)
+			if err := c.api.DeleteDNSRecord(ctx, cloudflare.ResourceIdentifier(c.zoneID), r.ID); err != nil {
+				return fmt.Errorf("error removing conflicting %s record for %s: %w", r.Type, hostname, err)
+			}
 		}
 	}
 
