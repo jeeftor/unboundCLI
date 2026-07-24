@@ -717,7 +717,9 @@ func (d *DataLoader) buildEntry(
 	return entry
 }
 
-// resolveDNS performs a DNS lookup for the hostname and returns the first IP address
+// resolveDNS performs a DNS lookup for the hostname via Unbound directly (if available),
+// falling back to the system resolver. This avoids Tailscale MagicDNS intercepting queries
+// and returning Tailscale IPs instead of the LAN IPs that Unbound serves.
 func (d *DataLoader) resolveDNS(hostname string) string {
 	parent := d.ctx
 	if parent == nil {
@@ -726,7 +728,20 @@ func (d *DataLoader) resolveDNS(hostname string) string {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 
-	addrs, err := net.DefaultResolver.LookupHost(ctx, hostname)
+	resolver := net.DefaultResolver
+	if d.unboundClient != nil {
+		host := d.unboundClient.Host()
+		if host != "" {
+			resolver = &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					return (&net.Dialer{}).DialContext(ctx, "udp", host+":53")
+				},
+			}
+		}
+	}
+
+	addrs, err := resolver.LookupHost(ctx, hostname)
 	if err != nil {
 		return "FAIL"
 	}
