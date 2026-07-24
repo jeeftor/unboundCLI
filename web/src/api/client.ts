@@ -108,7 +108,7 @@ export const api = {
 
   // Cloudflare
   cfSetRoute: (payload: { hostname: string; service: string; http_host_header?: string; no_tls_verify?: boolean }) =>
-    postJSON<{ status: string }>('/api/cloudflare/set-route', payload),
+    postJSON<{ status: string; dns_warning?: string }>('/api/cloudflare/set-route', payload),
   cfRemoveRoute: (hostname: string) =>
     postJSON<{ status: string }>('/api/cloudflare/remove-route', { hostname }),
   cfRepairDNS: () =>

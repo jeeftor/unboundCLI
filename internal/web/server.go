@@ -684,11 +684,16 @@ func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := runtime.Clients.Cloudflare.EnsureDNSRecord(req.Hostname); err != nil {
-		// Log but don't fail — ingress rule was set, DNS is best-effort
 		logging.Warn("set-route: failed to ensure DNS CNAME record", "hostname", req.Hostname, "error", err)
-	} else {
-		logging.Info("set-route: DNS CNAME record ensured", "hostname", req.Hostname)
+		// Tunnel rule was set but DNS CNAME failed — surface the warning to the caller
+		// so the UI can prompt the user to repair rather than silently succeeding.
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":      "ok",
+			"dns_warning": fmt.Sprintf("Tunnel rule saved but CNAME creation failed: %v — use Repair DNS to fix", err),
+		})
+		return
 	}
+	logging.Info("set-route: DNS CNAME record ensured", "hostname", req.Hostname)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

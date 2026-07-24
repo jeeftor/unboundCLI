@@ -1146,6 +1146,10 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   font-size: 11px;
   color: var(--red, #f87171);
 }
+.cf-route-dns-warning {
+  font-size: 11px;
+  color: var(--amber, #fbbf24);
+}
 .cf-repair-banner {
   display: flex;
   align-items: center;
