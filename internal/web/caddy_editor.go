@@ -18,11 +18,12 @@ import (
 
 // CaddyEntryRequest is the payload for POST/PUT caddy entry endpoints.
 type CaddyEntryRequest struct {
-	Hostname      string          `json:"hostname"`
-	Upstream      string          `json:"upstream"`
-	Template      string          `json:"template"`
-	Options       map[string]bool `json:"options,omitempty"`
-	CommitMessage string          `json:"commit_message,omitempty"`
+	Hostname      string            `json:"hostname"`
+	Upstream      string            `json:"upstream"`
+	Template      string            `json:"template"`
+	Options       map[string]bool   `json:"options,omitempty"`
+	Params        map[string]string `json:"params,omitempty"`
+	CommitMessage string            `json:"commit_message,omitempty"`
 }
 
 // CaddyEntryResponse represents a single parsed Caddyfile site block.
@@ -211,7 +212,7 @@ func (s *Server) createCaddyEntry(w http.ResponseWriter, r *http.Request) {
 	if tmpl == "" {
 		tmpl = "default"
 	}
-	block := caddyeditor.SiteBlock{Hostname: req.Hostname, Upstream: req.Upstream}
+	block := caddyeditor.SiteBlock{Hostname: req.Hostname, Upstream: req.Upstream, Params: req.Params}
 	if err := caddyeditor.AddEntry(cfg, block, tmpl); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("writing entry: %w", err))
 		return
@@ -262,11 +263,12 @@ func (s *Server) updateCaddyEntry(w http.ResponseWriter, r *http.Request) {
 	if tmpl == "" {
 		tmpl = "default"
 	}
-	block := caddyeditor.SiteBlock{Hostname: hostname, Upstream: req.Upstream}
+	block := caddyeditor.SiteBlock{Hostname: hostname, Upstream: req.Upstream, Params: req.Params}
 	data := caddyeditor.TemplateData{
 		Hostname: hostname,
 		Upstream: req.Upstream,
 		Options:  req.Options,
+		Params:   req.Params,
 	}
 	if err := caddyeditor.UpdateEntry(cfg, block, tmpl, data); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("updating entry: %w", err))
@@ -409,7 +411,7 @@ func (s *Server) handleCaddyValidateDraft(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	block := caddyeditor.SiteBlock{Hostname: req.Hostname, Upstream: req.Upstream}
+	block := caddyeditor.SiteBlock{Hostname: req.Hostname, Upstream: req.Upstream, Params: req.Params}
 	result := caddyeditor.ValidateDraft(cfg, block, req.Template)
 	writeJSON(w, http.StatusOK, result)
 }
