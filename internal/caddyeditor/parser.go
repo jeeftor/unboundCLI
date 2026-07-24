@@ -10,14 +10,15 @@ import (
 // SiteBlock is an in-memory representation of a single reverse-proxy entry
 // expressed as an @matcher + handle block inside a wildcard Caddyfile block.
 type SiteBlock struct {
-	Hostname    string   // e.g. "sonarr.vookie.net"
-	Upstream    string   // e.g. "http://10.0.0.112:8989"
-	MatcherName string   // e.g. "sonarr" (the @name used in the file)
-	Directives  []string // extra raw directives inside the handle block
-	SourceFile  string   // absolute path of the Caddyfile
-	LineStart   int      // 1-based line of the @matcher definition
-	LineEnd     int      // 1-based line of the closing } of the handle block
-	Raw         string   // raw text of the @matcher line + handle block
+	Hostname    string            // e.g. "sonarr.vookie.net"
+	Upstream    string            // e.g. "http://10.0.0.112:8989"
+	MatcherName string            // e.g. "sonarr" (the @name used in the file)
+	Directives  []string          // extra raw directives inside the handle block
+	SourceFile  string            // absolute path of the Caddyfile
+	LineStart   int               // 1-based line of the @matcher definition
+	LineEnd     int               // 1-based line of the closing } of the handle block
+	Raw         string            // raw text of the @matcher line + handle block
+	Params      map[string]string // extra string parameters passed to the entry template
 }
 
 // AbsCaddyfilePath returns the absolute path to the Caddyfile.

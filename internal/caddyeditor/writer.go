@@ -67,7 +67,7 @@ func matcherNameFromHostname(hostname string) string {
 }
 
 // renderMatcherBlock renders the @matcher + handle block for insertion into the Caddyfile.
-func renderMatcherBlock(matcherName, hostname, upstream, templateName string, repoPath string) (string, error) {
+func renderMatcherBlock(matcherName, hostname, upstream, templateName string, repoPath string, params map[string]string) (string, error) {
 	tmplStr, err := lookupTemplate(repoPath, templateName)
 	if err != nil {
 		return "", err
@@ -76,6 +76,7 @@ func renderMatcherBlock(matcherName, hostname, upstream, templateName string, re
 		Hostname:    hostname,
 		Upstream:    upstream,
 		MatcherName: matcherName,
+		Params:      params,
 	})
 	if err != nil {
 		return "", err
@@ -100,7 +101,7 @@ func ValidateDraft(cfg EditorConfig, block SiteBlock, templateName string) Valid
 	}
 
 	matcherName := matcherNameFromHostname(block.Hostname)
-	snippet, err := renderMatcherBlock(matcherName, block.Hostname, block.Upstream, templateName, cfg.RepoPath)
+	snippet, err := renderMatcherBlock(matcherName, block.Hostname, block.Upstream, templateName, cfg.RepoPath, block.Params)
 	if err != nil {
 		return ValidationResult{OK: false, Output: fmt.Sprintf("rendering template: %s", err)}
 	}
@@ -174,7 +175,7 @@ func AddEntry(cfg EditorConfig, block SiteBlock, templateName string) error {
 	}
 
 	matcherName := matcherNameFromHostname(block.Hostname)
-	snippet, err := renderMatcherBlock(matcherName, block.Hostname, block.Upstream, templateName, cfg.RepoPath)
+	snippet, err := renderMatcherBlock(matcherName, block.Hostname, block.Upstream, templateName, cfg.RepoPath, block.Params)
 	if err != nil {
 		return fmt.Errorf("rendering template: %w", err)
 	}
