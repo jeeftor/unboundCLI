@@ -191,9 +191,11 @@ func syncCaddyWithUnboundInternal(
 	// Apply changes if not dry run
 	changesApplied := false
 	if !options.DryRun {
-		changesApplied = applyChanges(
+		changesApplied = applyUnboundChanges(
 			unboundClient,
-			options,
+			unboundSyncOptions{
+				EntryDescription: options.EntryDescription,
+			},
 			hostnameMap,
 			syncCreatedOverrides,
 			toAdd,

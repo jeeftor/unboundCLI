@@ -1,12 +1,16 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/caddyeditor"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
@@ -23,11 +27,13 @@ type CaddyEntryRequest struct {
 
 // CaddyEntryResponse represents a single parsed Caddyfile site block.
 type CaddyEntryResponse struct {
-	Hostname   string   `json:"hostname"`
-	Upstream   string   `json:"upstream"`
-	Directives []string `json:"directives"`
-	SourceFile string   `json:"source_file"`
-	Raw        string   `json:"raw"`
+	Hostname       string   `json:"hostname"`
+	Upstream       string   `json:"upstream"`
+	Directives     []string `json:"directives"`
+	SourceFile     string   `json:"source_file"`
+	Raw            string   `json:"raw"`
+	UpstreamStatus string   `json:"upstream_status"`
+	UpstreamError  string   `json:"upstream_error,omitempty"`
 }
 
 // CaddyEntriesResponse is the list response for GET /api/caddy/entries.
@@ -123,7 +129,59 @@ func (s *Server) getCaddyEntries(w http.ResponseWriter, r *http.Request) {
 	for _, b := range blocks {
 		entries = append(entries, blockToResponse(b))
 	}
+	probeCaddyUpstreams(r.Context(), entries)
 	writeJSON(w, http.StatusOK, CaddyEntriesResponse{Entries: entries, Editor: cfg})
+}
+
+const caddyUpstreamProbeTimeout = 2 * time.Second
+
+// probeCaddyUpstreams marks each reverse-proxy upstream as reachable, stale, or unknown.
+// It uses a TCP connection rather than an HTTP request so authenticated services are not
+// misreported as down simply because they reject an unauthenticated health request.
+func probeCaddyUpstreams(ctx context.Context, entries []CaddyEntryResponse) {
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	workerCount := min(8, len(entries))
+	for range workerCount {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				entries[index].UpstreamStatus, entries[index].UpstreamError = probeCaddyUpstream(ctx, entries[index].Upstream)
+			}
+		}()
+	}
+	for index := range entries {
+		jobs <- index
+	}
+	close(jobs)
+	workers.Wait()
+}
+
+func probeCaddyUpstream(ctx context.Context, upstream string) (string, string) {
+	parsed, err := url.Parse(upstream)
+	if err != nil || parsed.Hostname() == "" {
+		return "unknown", "upstream is not a TCP URL"
+	}
+	port := parsed.Port()
+	if port == "" {
+		switch parsed.Scheme {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		default:
+			return "unknown", "upstream URL has no port"
+		}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, caddyUpstreamProbeTimeout)
+	defer cancel()
+	connection, err := (&net.Dialer{}).DialContext(probeCtx, "tcp", net.JoinHostPort(parsed.Hostname(), port))
+	if err != nil {
+		return "stale", err.Error()
+	}
+	_ = connection.Close()
+	return "reachable", ""
 }
 
 func (s *Server) createCaddyEntry(w http.ResponseWriter, r *http.Request) {

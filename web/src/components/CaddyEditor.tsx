@@ -196,15 +196,17 @@ function EntriesTable({
   onDelete: (hostname: string) => void;
 }) {
   const [search, setSearch] = useState('');
+  const [healthFilter, setHealthFilter] = useState<'all' | 'stale'>('all');
 
   const q = search.trim().toLowerCase();
-  const visible = q
-    ? entries.filter((e) =>
-        e.hostname.toLowerCase().includes(q) ||
-        e.upstream.toLowerCase().includes(q) ||
-        (e.source_file ?? '').toLowerCase().includes(q)
-      )
-    : entries;
+  const visible = entries.filter((entry) => {
+    if (healthFilter === 'stale' && entry.upstream_status !== 'stale') return false;
+    return !q || (
+      entry.hostname.toLowerCase().includes(q) ||
+      entry.upstream.toLowerCase().includes(q) ||
+      (entry.source_file ?? '').toLowerCase().includes(q)
+    );
+  });
 
   if (entries.length === 0) {
     return (
@@ -230,13 +232,21 @@ function EntriesTable({
             <X size={13} />
           </button>
         )}
-        {q && <span className="caddy-search-count">{visible.length} / {entries.length}</span>}
+        {(q || healthFilter !== 'all') && <span className="caddy-search-count">{visible.length} / {entries.length}</span>}
+        <label className="caddy-health-filter">
+          <span>Upstream</span>
+          <select value={healthFilter} onChange={(event) => setHealthFilter(event.target.value as 'all' | 'stale')}>
+            <option value="all">All</option>
+            <option value="stale">Stale only</option>
+          </select>
+        </label>
       </div>
       <table>
         <thead>
           <tr>
             <th>Hostname</th>
             <th>Upstream</th>
+            <th>Health</th>
             <th>Directives</th>
             <th>File</th>
             {mutationEnabled && <th>Actions</th>}
@@ -247,6 +257,9 @@ function EntriesTable({
             <tr key={entry.hostname}>
               <td><code>{entry.hostname}</code></td>
               <td><code>{entry.upstream}</code></td>
+              <td>
+                <UpstreamHealth entry={entry} />
+              </td>
               <td className="caddy-directives">
                 {entry.directives?.length > 0
                   ? entry.directives.map((d, i) => <span key={i} className="directive-tag">{d}</span>)
@@ -266,11 +279,22 @@ function EntriesTable({
             </tr>
           ))}
           {q && visible.length === 0 && (
-            <tr><td colSpan={mutationEnabled ? 5 : 4} className="caddy-no-results">No entries match "{search}"</td></tr>
+            <tr><td colSpan={mutationEnabled ? 6 : 5} className="caddy-no-results">No matching entries</td></tr>
           )}
         </tbody>
       </table>
     </section>
+  );
+}
+
+function UpstreamHealth({ entry }: { entry: CaddyEntry }) {
+  const status = entry.upstream_status ?? 'unknown';
+  const label = status === 'reachable' ? 'Reachable' : status === 'stale' ? 'Stale' : 'Unknown';
+  return (
+    <span className={`caddy-health ${status}`} title={entry.upstream_error || `TCP probe: ${label.toLowerCase()}`}>
+      {status === 'reachable' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+      {label}
+    </span>
   );
 }
 
