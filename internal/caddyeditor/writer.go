@@ -298,9 +298,11 @@ func deleteEntry(content, matcherName, hostname string) string {
 	for i < len(lines) {
 		trimmed := strings.TrimSpace(lines[i])
 
-		// Skip the @matcher line.
+		// Skip the @matcher line and any companion matchers derived from the
+		// same name (e.g. @name_external written by the forward-auth template).
 		if trimmed == "@"+matcherName+" host "+hostname ||
-			strings.HasPrefix(trimmed, "@"+matcherName+" host ") {
+			strings.HasPrefix(trimmed, "@"+matcherName+" host ") ||
+			strings.HasPrefix(trimmed, "@"+matcherName+"_") {
 			// Also skip a blank line that immediately follows.
 			i++
 			if i < len(lines) && strings.TrimSpace(lines[i]) == "" {
