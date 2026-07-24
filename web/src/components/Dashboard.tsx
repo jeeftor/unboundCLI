@@ -869,6 +869,7 @@ function CloudflareRoutePanel({ entry, caddyServerIP, mutationEnabled, onRefresh
   const [saving, setSaving] = useState(false);
   const [removed, setRemoved] = useState(false);
   const [error, setError] = useState('');
+  const [dnsWarning, setDnsWarning] = useState('');
 
   const viaService = cf.service ?? '';
   const isViaCaddy = !!(caddyServerIP && viaService.includes(caddyServerIP));
@@ -889,10 +890,12 @@ function CloudflareRoutePanel({ entry, caddyServerIP, mutationEnabled, onRefresh
   const setRoute = async (mode: 'caddy' | 'direct') => {
     setSaving(true);
     setError('');
+    setDnsWarning('');
     try {
       const service = mode === 'caddy' ? caddyService : directService;
       const httpHostHeader = mode === 'caddy' ? entry.hostname : '';
-      await api.cfSetRoute({ hostname: entry.hostname, service, http_host_header: httpHostHeader, no_tls_verify: mode === 'direct' ? noTLSVerify : false });
+      const res = await api.cfSetRoute({ hostname: entry.hostname, service, http_host_header: httpHostHeader, no_tls_verify: mode === 'direct' ? noTLSVerify : false });
+      if (res.dns_warning) setDnsWarning(res.dns_warning);
       onRefresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed');
@@ -984,6 +987,7 @@ function CloudflareRoutePanel({ entry, caddyServerIP, mutationEnabled, onRefresh
       )}
 
       {error && <div className="cf-route-error">{error}</div>}
+      {dnsWarning && <div className="cf-route-dns-warning">{dnsWarning}</div>}
     </div>
   );
 }
