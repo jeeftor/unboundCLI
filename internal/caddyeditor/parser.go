@@ -120,7 +120,10 @@ func ParseCaddyfile(caddyfilePath string) ([]SiteBlock, error) {
 			if depth > 0 && t != "" && !strings.HasPrefix(t, "#") {
 				if strings.HasPrefix(t, "reverse_proxy") {
 					parts := strings.Fields(t)
-					if len(parts) >= 2 && upstream == "" {
+					// parts[1] is the upstream URL. Skip path-pattern args (e.g.
+					// "reverse_proxy /outpost.goauthentik.io/* host:port") so we
+					// don't accidentally store a path as the upstream.
+					if len(parts) >= 2 && upstream == "" && !strings.HasPrefix(parts[1], "/") {
 						upstream = parts[1]
 					}
 				} else if depth == 1 {

@@ -83,9 +83,9 @@ export const api = {
 
   // Caddy Editor
   caddyEntries: () => getJSON<CaddyEntriesResponse>('/api/caddy/entries'),
-  caddyCreateEntry: (payload: { hostname: string; upstream: string; template: string; commit_message?: string }) =>
+  caddyCreateEntry: (payload: { hostname: string; upstream: string; template: string; params?: Record<string, string>; commit_message?: string }) =>
     postJSON<{ status: string }>('/api/caddy/entries', payload),
-  caddyUpdateEntry: (hostname: string, payload: { upstream: string; template: string; options?: Record<string, boolean>; commit_message?: string }) =>
+  caddyUpdateEntry: (hostname: string, payload: { upstream: string; template: string; options?: Record<string, boolean>; params?: Record<string, string>; commit_message?: string }) =>
     putJSON<{ status: string }>(`/api/caddy/entries/${encodeURIComponent(hostname)}`, payload),
   caddyDeleteEntry: (hostname: string) =>
     deleteJSON<{ status: string }>(`/api/caddy/entries/${encodeURIComponent(hostname)}`),
@@ -93,11 +93,16 @@ export const api = {
   caddyGitStatus: () => getJSON<{ remote_ahead: number; local_ahead: number; branch: string; remote: string; fetch_error?: string }>('/api/caddy/git/status'),
   caddyGitPull: () => postJSON<{ output: string; status: string }>('/api/caddy/git/pull', {}),
   caddyValidate: () => postJSON<CaddyValidateResult>('/api/caddy/validate', {}),
-  caddyValidateDraft: (payload: { hostname: string; upstream: string; template: string }) =>
+  caddyValidateDraft: (payload: { hostname: string; upstream: string; template: string; params?: Record<string, string> }) =>
     postJSON<CaddyValidateResult>('/api/caddy/validate-draft', payload),
   caddyTemplates: () => getJSON<CaddyTemplatesResponse>('/api/caddy/templates'),
-  caddyPreview: (hostname: string, upstream: string, template: string) => {
+  caddyPreview: (hostname: string, upstream: string, template: string, params?: Record<string, string>) => {
     const q = new URLSearchParams({ hostname, upstream, template });
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v) q.set(`param_${k}`, v);
+      }
+    }
     return getJSON<CaddyPreviewResponse>(`/api/caddy/preview?${q.toString()}`);
   },
 
