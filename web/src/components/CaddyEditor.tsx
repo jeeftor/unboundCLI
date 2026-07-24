@@ -298,6 +298,18 @@ function UpstreamHealth({ entry }: { entry: CaddyEntry }) {
   );
 }
 
+// ─── Template param schema ─────────────────────────────────────────────────
+// Defines which extra inputs to show for parameterised built-in templates.
+
+type TemplateParamDef = { key: string; label: string; placeholder?: string; required?: boolean };
+
+const TEMPLATE_PARAMS: Record<string, TemplateParamDef[]> = {
+  'forward-auth': [
+    { key: 'authentik_url', label: 'Authentik URL', placeholder: '192.168.1.112:9000', required: true },
+    { key: 'external_cidrs', label: 'External CIDRs (space-separated)', placeholder: 'private_ranges' },
+  ],
+};
+
 // ─── Add / Edit modal ─────────────────────────────────────────────────────
 
 export function EntryModal({
@@ -319,6 +331,7 @@ export function EntryModal({
   const [hostname, setHostname] = useState(entry?.hostname ?? '');
   const [upstream, setUpstream] = useState(entry?.upstream ?? '');
   const [template, setTemplate] = useState(defaultTemplate);
+  const [params, setParams] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -326,14 +339,22 @@ export function EntryModal({
   const [validateResult, setValidateResult] = useState<CaddyValidateResult | null>(null);
   const [error, setError] = useState('');
 
-  // Reset validation whenever inputs change.
-  useEffect(() => { setValidateResult(null); }, [hostname, upstream, template]);
+  const paramDefs = TEMPLATE_PARAMS[template] ?? [];
 
-  const updatePreview = useCallback(async (h: string, u: string, t: string) => {
+  // Reset params and validation whenever template changes.
+  useEffect(() => {
+    setParams({});
+    setValidateResult(null);
+  }, [template]);
+
+  // Reset validation whenever other inputs change.
+  useEffect(() => { setValidateResult(null); }, [hostname, upstream, params]);
+
+  const updatePreview = useCallback(async (h: string, u: string, t: string, p: Record<string, string>) => {
     if (!h || !u) { setPreview(''); return; }
     setPreviewLoading(true);
     try {
-      const res = await api.caddyPreview(h, u, t);
+      const res = await api.caddyPreview(h, u, t, p);
       setPreview(res.content);
     } catch {
       setPreview('');
@@ -343,12 +364,12 @@ export function EntryModal({
   }, []);
 
   useEffect(() => {
-    void updatePreview(hostname, upstream, template);
-  }, [hostname, upstream, template, updatePreview]);
+    void updatePreview(hostname, upstream, template, params);
+  }, [hostname, upstream, template, params, updatePreview]);
 
   // Load initial preview for edit mode.
   useEffect(() => {
-    if (entry) void updatePreview(entry.hostname, entry.upstream, template);
+    if (entry) void updatePreview(entry.hostname, entry.upstream, template, params);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -361,7 +382,7 @@ export function EntryModal({
     setError('');
     setValidateResult(null);
     try {
-      const res = await api.caddyValidateDraft({ hostname, upstream, template });
+      const res = await api.caddyValidateDraft({ hostname, upstream, template, params });
       setValidateResult(res);
     } catch (err) {
       setValidateResult({ ok: false, output: String(err) });
@@ -375,9 +396,9 @@ export function EntryModal({
     setError('');
     try {
       if (isEdit) {
-        await api.caddyUpdateEntry(hostname, { upstream, template });
+        await api.caddyUpdateEntry(hostname, { upstream, template, params });
       } else {
-        await api.caddyCreateEntry({ hostname, upstream, template });
+        await api.caddyCreateEntry({ hostname, upstream, template, params });
       }
       onSaved();
     } catch (err) {
@@ -441,6 +462,22 @@ export function EntryModal({
               <ChevronDown size={14} />
             </div>
           </label>
+
+          {paramDefs.length > 0 && (
+            <div className="template-params">
+              {paramDefs.map((def) => (
+                <label key={def.key}>
+                  {def.label}{def.required && <span className="required"> *</span>}
+                  <input
+                    type="text"
+                    value={params[def.key] ?? ''}
+                    onChange={(e) => setParams(p => ({ ...p, [def.key]: e.target.value }))}
+                    placeholder={def.placeholder ?? ''}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
 
           {(preview || previewLoading) && (
             <div className="preview-block">

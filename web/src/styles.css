@@ -1991,6 +1991,24 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   min-width: 0;
 }
 
+.template-params {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.template-params label {
+  margin-bottom: 0;
+}
+
+.template-params .required {
+  color: var(--color-error, #e55);
+}
+
 .preview-block {
   margin-top: 8px;
   border: 1px solid var(--border-subtle);
