@@ -57,6 +57,18 @@ type Client struct {
 	Prompt     bool // Enable interactive prompting for API calls
 }
 
+// Host returns the hostname/IP of the OPNSense server parsed from BaseURL.
+func (c *Client) Host() string {
+	u := c.config.BaseURL
+	u = strings.TrimPrefix(u, "https://")
+	u = strings.TrimPrefix(u, "http://")
+	// strip any path or port
+	if i := strings.IndexAny(u, ":/"); i >= 0 {
+		u = u[:i]
+	}
+	return u
+}
+
 // NewClient creates a new OPNSense API client
 func NewClient(config Config) *Client {
 	tr := &http.Transport{
