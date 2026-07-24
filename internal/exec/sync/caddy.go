@@ -45,8 +45,31 @@ func SyncCaddyWithUnbound(
 		return nil, fmt.Errorf("error fetching Caddy hostnames: %w", err)
 	}
 
+	return syncHostnamesWithUnbound(unboundClient, hostnameMap, unboundSyncOptions{
+		Source:             "Caddy config",
+		EntryDescription:   options.EntryDescription,
+		LegacyDescriptions: options.LegacyDescriptions,
+		DryRun:             options.DryRun,
+		Verbose:            options.Verbose,
+	})
+}
+
+type unboundSyncOptions struct {
+	Source             string
+	EntryDescription   string
+	LegacyDescriptions []string
+	DryRun             bool
+	Verbose            bool
+}
+
+// syncHostnamesWithUnbound plans and optionally applies an Unbound sync from a hostname map.
+func syncHostnamesWithUnbound(
+	unboundClient *api.Client,
+	hostnameMap map[string]string,
+	options unboundSyncOptions,
+) (*SyncResult, error) {
 	if len(hostnameMap) == 0 {
-		logging.Warn("No hostnames found in Caddy config")
+		logging.Warn("No hostnames found", "source", options.Source)
 		return &SyncResult{HostnameMap: hostnameMap}, nil
 	}
 
@@ -74,7 +97,7 @@ func SyncCaddyWithUnbound(
 		}
 	}
 
-	// Process each hostname from Caddy
+	// Process each hostname from the source.
 	var toAdd, toUpdate, toUpdateDesc []string
 
 	for hostname, serverIP := range hostnameMap {
@@ -125,7 +148,7 @@ func SyncCaddyWithUnbound(
 		}
 	}
 
-	// Find entries to remove (in sync but not in Caddy)
+	// Find entries to remove (in sync but no longer in the source).
 	var toRemove []string
 	for hostname := range syncCreatedOverrides {
 		if _, exists := hostnameMap[hostname]; !exists {
@@ -136,7 +159,7 @@ func SyncCaddyWithUnbound(
 	// If not a dry run, perform the actual changes
 	changesApplied := false
 	if !options.DryRun {
-		changesApplied = applyChanges(
+		changesApplied = applyUnboundChanges(
 			unboundClient,
 			options,
 			hostnameMap,
@@ -161,10 +184,10 @@ func SyncCaddyWithUnbound(
 	}, nil
 }
 
-// applyChanges applies the changes to the Unbound DNS server
-func applyChanges(
+// applyUnboundChanges applies planned changes to the Unbound DNS server.
+func applyUnboundChanges(
 	client *api.Client,
-	options CaddySyncOptions,
+	options unboundSyncOptions,
 	hostnameMap map[string]string,
 	syncCreatedOverrides map[string]api.DNSOverride,
 	toAdd, toUpdate, toUpdateDesc, toRemove []string,

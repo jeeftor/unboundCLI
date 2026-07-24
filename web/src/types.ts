@@ -146,6 +146,8 @@ export type CaddyEntry = {
   directives: string[];
   source_file: string;
   raw: string;
+  upstream_status: 'reachable' | 'stale' | 'unknown';
+  upstream_error?: string;
 };
 
 export type CaddyEntriesResponse = {

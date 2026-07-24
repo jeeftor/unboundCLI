@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -153,6 +154,58 @@ func TestIndexRouteServesHTML(t *testing.T) {
 	}
 	if bytes.Contains(rec.Body.Bytes(), []byte("UNBOUNDCLI_TEST_HOOKS = true")) {
 		t.Fatalf("index HTML should not enable test hooks by default: %s", rec.Body.String())
+	}
+}
+
+func TestProbeCaddyUpstream(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	status, detail := probeCaddyUpstream(context.Background(), "http://"+listener.Addr().String())
+	if status != "reachable" || detail != "" {
+		t.Fatalf("expected reachable upstream, got status=%q detail=%q", status, detail)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+	status, detail = probeCaddyUpstream(context.Background(), "http://"+listener.Addr().String())
+	if status != "stale" || detail == "" {
+		t.Fatalf("expected stale upstream, got status=%q detail=%q", status, detail)
+	}
+
+	status, detail = probeCaddyUpstream(context.Background(), "not-a-url")
+	if status != "unknown" || detail == "" {
+		t.Fatalf("expected unknown malformed upstream, got status=%q detail=%q", status, detail)
+	}
+}
+
+func TestCaddyEntriesExposeUpstreamHealth(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	repoPath := t.TempDir()
+	caddyfilePath := filepath.Join(repoPath, "Caddyfile")
+	caddyfile := fmt.Sprintf("*.example.test {\n\t@service host service.example.test\n\thandle @service {\n\t\treverse_proxy http://%s\n\t}\n}\n", listener.Addr())
+	if err := os.WriteFile(caddyfilePath, []byte(caddyfile), 0o600); err != nil {
+		t.Fatalf("write Caddyfile: %v", err)
+	}
+	configPath := filepath.Join(repoPath, "config.json")
+	config := fmt.Sprintf(`{"caddy_editor":{"enabled":true,"repo_path":%q,"caddyfile":"Caddyfile"}}`, repoPath)
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	server := NewServerWithOptions(&app.Runtime{}, Options{ConfigPath: configPath})
+	response := getJSON[CaddyEntriesResponse](t, server, "/api/caddy/entries")
+	if len(response.Entries) != 1 {
+		t.Fatalf("expected one Caddy entry, got %#v", response.Entries)
+	}
+	if response.Entries[0].UpstreamStatus != "reachable" || response.Entries[0].UpstreamError != "" {
+		t.Fatalf("expected reachable Caddy entry, got %#v", response.Entries[0])
 	}
 }
 
