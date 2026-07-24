@@ -421,41 +421,61 @@ func (c *CloudflareClient) ListManagedDNSRecords() (map[string]string, error) {
 // EnsureDNSRecord creates a proxied CNAME record pointing hostname to
 // <tunnelID>.cfargotunnel.com. If a cfargotunnel.com record already exists for
 // the hostname it is updated in-place; if it is already correct it is left alone.
+// If a conflicting A, AAAA, or non-tunnel CNAME record exists, a descriptive
+// error is returned so the caller can prompt the user to resolve the conflict
+// in the Cloudflare dashboard rather than receiving a cryptic API error 81053.
 func (c *CloudflareClient) EnsureDNSRecord(hostname string) error {
 	ctx := context.Background()
 	target := c.tunnelID + ".cfargotunnel.com"
 	proxied := true
 
-	existing, _, err := c.api.ListDNSRecords(ctx,
+	// Fetch ALL record types for this hostname so we can detect conflicts.
+	all, _, err := c.api.ListDNSRecords(ctx,
 		cloudflare.ResourceIdentifier(c.zoneID),
-		cloudflare.ListDNSRecordsParams{Type: "CNAME", Name: hostname},
+		cloudflare.ListDNSRecordsParams{Name: hostname},
 	)
 	if err != nil {
-		return fmt.Errorf("error looking up DNS record for %s: %w", hostname, err)
+		return fmt.Errorf("error looking up DNS records for %s: %w", hostname, err)
 	}
 
-	for _, r := range existing {
-		if strings.Contains(r.Content, "cfargotunnel.com") {
-			if r.Content == target {
-				logging.Debug("DNS record already correct", "hostname", hostname)
+	for _, r := range all {
+		switch r.Type {
+		case "CNAME":
+			if strings.Contains(r.Content, "cfargotunnel.com") {
+				// Existing tunnel CNAME — update if wrong, leave alone if correct.
+				if r.Content == target {
+					logging.Debug("DNS record already correct", "hostname", hostname)
+					return nil
+				}
+				_, err := c.api.UpdateDNSRecord(ctx,
+					cloudflare.ResourceIdentifier(c.zoneID),
+					cloudflare.UpdateDNSRecordParams{
+						ID:      r.ID,
+						Type:    "CNAME",
+						Name:    hostname,
+						Content: target,
+						Proxied: &proxied,
+						TTL:     1,
+					},
+				)
+				if err != nil {
+					return fmt.Errorf("error updating DNS record for %s: %w", hostname, err)
+				}
+				logging.Info("Updated DNS record", "hostname", hostname, "target", target)
 				return nil
 			}
-			_, err := c.api.UpdateDNSRecord(ctx,
-				cloudflare.ResourceIdentifier(c.zoneID),
-				cloudflare.UpdateDNSRecordParams{
-					ID:      r.ID,
-					Type:    "CNAME",
-					Name:    hostname,
-					Content: target,
-					Proxied: &proxied,
-					TTL:     1,
-				},
+			// Non-tunnel CNAME (e.g. points to another service).
+			return fmt.Errorf(
+				"cannot create tunnel CNAME for %s: a CNAME record already exists pointing to %q — "+
+					"remove or replace it in the Cloudflare DNS dashboard first",
+				hostname, r.Content,
 			)
-			if err != nil {
-				return fmt.Errorf("error updating DNS record for %s: %w", hostname, err)
-			}
-			logging.Info("Updated DNS record", "hostname", hostname, "target", target)
-			return nil
+		case "A", "AAAA":
+			return fmt.Errorf(
+				"cannot create tunnel CNAME for %s: a %s record already exists with value %q — "+
+					"remove it in the Cloudflare DNS dashboard first",
+				hostname, r.Type, r.Content,
+			)
 		}
 	}
 
