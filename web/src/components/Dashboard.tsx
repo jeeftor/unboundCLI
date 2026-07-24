@@ -456,8 +456,8 @@ function MetricGrid({
     <section id="summary" className="metric-grid" aria-live="polite">
       <Metric label="Total entries" value={summary.entries} sublabel="hostnames" icon={<ListFilter size={20} />} tone="neutral" status="all" activeFilter={statusFilter} onFilter={toggle} />
       <Metric label="In sync" value={summary.inSync} sublabel="perfect" icon={<CheckCircle2 size={20} />} tone="ok" status="synced" activeFilter={statusFilter} onFilter={toggle} />
-      <Metric label="Caddy only" value={summary.caddyOnly} sublabel="not in DNS" icon={<CircleAlert size={20} />} tone="warn" status="caddy_only" activeFilter={statusFilter} onFilter={toggle} />
-      <Metric label="Stale DNS" value={summary.stale} sublabel="needs cleanup" icon={<SlidersHorizontal size={20} />} tone="bad" status="stale" activeFilter={statusFilter} onFilter={toggle} />
+      <Metric label="Caddy only" value={summary.caddyOnly} sublabel="not in DNS" icon={<CircleAlert size={20} />} tone={summary.caddyOnly > 0 ? 'warn' : 'ok'} status="caddy_only" activeFilter={statusFilter} onFilter={toggle} />
+      <Metric label="Stale DNS" value={summary.stale} sublabel="needs cleanup" icon={<SlidersHorizontal size={20} />} tone={summary.stale > 0 ? 'bad' : 'ok'} status="stale" activeFilter={statusFilter} onFilter={toggle} />
       <Metric label="Issues" value={summary.issues} sublabel="need review" icon={<ShieldCheck size={20} />} tone={summary.issues > 0 ? 'bad' : 'ok'} status="issues" activeFilter={statusFilter} onFilter={toggle} />
       <Metric label="Cloudflare routed" value={summary.cloudflare} sublabel="via tunnel" icon={<Cloud size={20} />} tone="violet" status="cloudflare" activeFilter={statusFilter} onFilter={toggle} />
     </section>
