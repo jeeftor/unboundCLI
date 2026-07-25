@@ -57,6 +57,15 @@ func RenderCFDetail(entry *models.Entry, theme *Theme) string {
 		}
 		lines = append(lines, label("HTTPHostHeader:")+" "+hostHeader)
 
+		// OriginServerName
+		osn := cf.OriginServerName
+		if osn == "" {
+			osn = warnStyle.Render("NOT SET  ⚠  TLS SNI may be wrong")
+		} else {
+			osn = valueStyle.Render(osn) + "  " + goodStyle.Render("✓")
+		}
+		lines = append(lines, label("OriginServerName:")+" "+osn)
+
 		// TLS verify
 		tlsVerify := goodStyle.Render("enabled")
 		if cf.NoTLSVerify {

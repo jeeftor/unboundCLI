@@ -319,17 +319,18 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 		for hostname, cfEntry := range cfDetails {
 			_, hasDNSRecord := cfDNSRecords[hostname]
 			cfStatus := models.CloudflareStatus{
-				Configured:      true,
-				TunnelName:      cfEntry.TunnelName,
-				TunnelID:        cfEntry.TunnelID,
-				Service:         cfEntry.Service,
-				Path:            cfEntry.Path,
-				IsDefaultTunnel: cfEntry.IsDefaultTunnel,
-				HTTPHostHeader:  cfEntry.HTTPHostHeader,
-				NoTLSVerify:     cfEntry.NoTLSVerify,
-				Http2Origin:     cfEntry.Http2Origin,
-				HasAccessPolicy: cfEntry.HasAccessPolicy,
-				HasDNSRecord:    hasDNSRecord,
+				Configured:       true,
+				TunnelName:       cfEntry.TunnelName,
+				TunnelID:         cfEntry.TunnelID,
+				Service:          cfEntry.Service,
+				Path:             cfEntry.Path,
+				IsDefaultTunnel:  cfEntry.IsDefaultTunnel,
+				HTTPHostHeader:   cfEntry.HTTPHostHeader,
+				OriginServerName: cfEntry.OriginServerName,
+				NoTLSVerify:      cfEntry.NoTLSVerify,
+				Http2Origin:      cfEntry.Http2Origin,
+				HasAccessPolicy:  cfEntry.HasAccessPolicy,
+				HasDNSRecord:     hasDNSRecord,
 			}
 			if idx, ok := hostIndex[hostname]; ok {
 				entries[idx].CloudflareStatus = cfStatus

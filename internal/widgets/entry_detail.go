@@ -202,6 +202,12 @@ func RenderEntryDetail(entry *models.Entry, theme *Theme) string {
 			lines = append(lines, lbl("HTTPHostHeader:")+val(cf.HTTPHostHeader)+"  "+goodStyle.Render("✓"))
 		}
 
+		if cf.OriginServerName == "" {
+			lines = append(lines, lbl("OriginServerName:")+warnStyle.Render("NOT SET  ⚠  TLS SNI may be wrong"))
+		} else {
+			lines = append(lines, lbl("OriginServerName:")+val(cf.OriginServerName)+"  "+goodStyle.Render("✓"))
+		}
+
 		tlsVerify := goodStyle.Render("enabled")
 		if cf.NoTLSVerify {
 			tlsVerify = warnStyle.Render("disabled (insecure)")
