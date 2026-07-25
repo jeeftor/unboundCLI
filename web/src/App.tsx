@@ -134,6 +134,8 @@ export function App() {
         selectedEntry={filters.selectedEntry}
         selectedHostname={filters.selectedHostname}
         setSelectedHostname={filters.setSelectedHostname}
+        suppressed={filters.suppressed}
+        onToggleSuppress={filters.toggleSuppress}
         mutationEnabled={mutationEnabled}
         syncService={sync.syncService}
         setSyncService={sync.setSyncService}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Entry } from '../types';
 import { isIssue } from '../lib/hostnameDecision';
 
@@ -7,6 +7,15 @@ export function useEntryFilters(entries: Entry[], caddyServerIP = '') {
   const [serviceFilter, setServiceFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedHostname, setSelectedHostname] = useState('');
+  const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+
+  const toggleSuppress = useCallback((key: string) => {
+    setSuppressed(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
 
   const filteredEntries = useMemo(() => entries.filter((entry) => {
     if (statusFilter === 'synced' && entry.overall_status !== 0 && entry.overall_status !== 1) return false;
@@ -14,13 +23,13 @@ export function useEntryFilters(entries: Entry[], caddyServerIP = '') {
     if (statusFilter === 'caddy_only' && entry.overall_status !== 3) return false;
     if (statusFilter === 'stale' && entry.overall_status !== 4) return false;
     if (statusFilter === 'cloudflare' && !entry.cloudflare_status?.configured) return false;
-    if (statusFilter === 'issues' && !isIssue(entry, caddyServerIP)) return false;
+    if (statusFilter === 'issues' && !isIssue(entry, caddyServerIP, suppressed)) return false;
     if (serviceFilter === 'unbound' && !entry.unbound_status?.configured) return false;
     if (serviceFilter === 'adguard' && !entry.adguard_status?.configured) return false;
     if (serviceFilter === 'dhcp' && !entry.dhcp_status?.configured) return false;
     if (serviceFilter === 'cloudflare' && !entry.cloudflare_status?.configured) return false;
     return !search.trim() || entry.hostname.toLowerCase().includes(search.trim().toLowerCase());
-  }), [entries, search, serviceFilter, statusFilter]);
+  }), [entries, search, serviceFilter, statusFilter, suppressed, caddyServerIP]);
 
   useEffect(() => {
     if (selectedHostname && filteredEntries.some((entry) => entry.hostname === selectedHostname)) return;
@@ -41,8 +50,8 @@ export function useEntryFilters(entries: Entry[], caddyServerIP = '') {
     caddyOnly: entries.filter((entry) => entry.overall_status === 3).length,
     stale: entries.filter((entry) => entry.overall_status === 4).length,
     cloudflare: entries.filter((entry) => entry.cloudflare_status?.configured).length,
-    issues: entries.filter((entry) => isIssue(entry, caddyServerIP)).length
-  }), [entries, caddyServerIP]);
+    issues: entries.filter((entry) => isIssue(entry, caddyServerIP, suppressed)).length
+  }), [entries, caddyServerIP, suppressed]);
 
   return {
     statusFilter,
@@ -55,6 +64,8 @@ export function useEntryFilters(entries: Entry[], caddyServerIP = '') {
     setSelectedHostname,
     filteredEntries,
     selectedEntry,
-    summary
+    summary,
+    suppressed,
+    toggleSuppress,
   };
 }

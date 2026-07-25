@@ -45,7 +45,7 @@ import {
   statusFilterOptions,
   syncOptions
 } from '../lib/services';
-import { getHostnameDecision } from '../lib/hostnameDecision';
+import { getHostnameDecision, suppressionKey } from '../lib/hostnameDecision';
 import type { ConfigResponse, ConfigServiceSummary, EntriesResponse, Entry, ServiceKey, SyncAction } from '../types';
 
 type AppView = 'dashboard' | 'caddy-editor';
@@ -113,6 +113,8 @@ export function AppShell({
   selectedEntry?: Entry;
   selectedHostname: string;
   setSelectedHostname: (value: string) => void;
+  suppressed: Set<string>;
+  onToggleSuppress: (key: string) => void;
   mutationEnabled: boolean;
   syncService: string;
   setSyncService: (value: string) => void;
@@ -268,6 +270,8 @@ export function AppShell({
                 mutationEnabled={mutationEnabled}
                 enabledServices={enabledServices}
                 caddyServerIP={config?.caddy.server_ip || ''}
+                suppressed={suppressed}
+                onToggleSuppress={onToggleSuppress}
                 onSelect={setSelectedHostname}
                 onQuickSync={openQuickSync}
                 onOpenModify={openModify}
@@ -286,6 +290,8 @@ export function AppShell({
         entry={modalEntry}
         enabledServices={enabledServices}
         caddyServerIP={config?.caddy.server_ip || ''}
+        suppressed={suppressed}
+        onToggleSuppress={onToggleSuppress}
         syncService={syncService}
         setSyncService={setSyncService}
         syncLoading={syncLoading}
@@ -532,12 +538,13 @@ function EntriesToolbar({
   );
 }
 
-function AlertBadge({ title, summary, facts, actions, variant }: {
+function AlertBadge({ title, summary, facts, actions, variant, onMarkIntentional }: {
   title: string;
   summary: string;
   facts: string[];
   actions: { label: string; description: string }[];
   variant: 'collision' | 'mismatch';
+  onMarkIntentional?: () => void;
 }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLSpanElement>(null);
@@ -567,7 +574,20 @@ function AlertBadge({ title, summary, facts, actions, variant }: {
           {facts.length > 0 && <ul>{facts.map((f) => <li key={f}>{f}</li>)}</ul>}
           {actions.length > 0 && (
             <div className="alert-tooltip-actions">
-              {actions.map((a) => <span key={a.label}><em>{a.label}:</em> {a.description}</span>)}
+              {actions.map((a) => (
+                a.label === 'Mark intentional' && onMarkIntentional
+                  ? <span key={a.label}>
+                      <em>{a.label}:</em> {a.description}{' '}
+                      <button
+                        type="button"
+                        className="suppress-inline-btn"
+                        onClick={(e) => { e.stopPropagation(); setPos(null); onMarkIntentional(); }}
+                      >
+                        Suppress warning
+                      </button>
+                    </span>
+                  : <span key={a.label}><em>{a.label}:</em> {a.description}</span>
+              ))}
             </div>
           )}
         </div>,
@@ -583,6 +603,8 @@ function EntriesTable({
   mutationEnabled,
   enabledServices,
   caddyServerIP,
+  suppressed,
+  onToggleSuppress,
   onSelect,
   onQuickSync,
   onOpenModify,
@@ -593,6 +615,8 @@ function EntriesTable({
   mutationEnabled: boolean;
   enabledServices: Partial<Record<ServiceKey, boolean>>;
   caddyServerIP: string;
+  suppressed: Set<string>;
+  onToggleSuppress: (key: string) => void;
   onSelect: (hostname: string) => void;
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
@@ -614,6 +638,8 @@ function EntriesTable({
               selected={entry.hostname === selectedHostname}
               mutationEnabled={mutationEnabled}
               caddyServerIP={caddyServerIP}
+              suppressed={suppressed}
+              onToggleSuppress={onToggleSuppress}
               onSelect={onSelect}
               onQuickSync={onQuickSync}
               onOpenModify={onOpenModify}
@@ -631,6 +657,8 @@ function EntryRow({
   selected,
   mutationEnabled,
   caddyServerIP,
+  suppressed,
+  onToggleSuppress,
   onSelect,
   onQuickSync,
   onOpenModify,
@@ -640,6 +668,8 @@ function EntryRow({
   selected: boolean;
   mutationEnabled: boolean;
   caddyServerIP: string;
+  suppressed: Set<string>;
+  onToggleSuppress: (key: string) => void;
   onSelect: (hostname: string) => void;
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
@@ -661,17 +691,21 @@ function EntryRow({
     event.preventDefault();
     selectRow();
   };
+  const primaryKey = suppressionKey(entry.hostname, decision.kind);
+  const primarySuppressed = suppressed.has(primaryKey);
   return (
     <tr data-hostname={entry.hostname} className={selected ? 'selected-row' : ''} onClick={selectRow} onKeyDown={onRowKeyDown} tabIndex={0} aria-selected={selected}>
       <td data-label="Hostname">
         <strong>{entry.hostname}</strong>
         <span className="subtle">{entry.data_source || 'Caddy route'} <i /></span>
-        {(decision.kind === 'collision' || decision.kind === 'mismatch') && (
-          <AlertBadge title={decision.title} summary={decision.summary} facts={decision.facts} actions={decision.actions} variant="collision" />
+        {(decision.kind === 'collision' || decision.kind === 'mismatch') && !primarySuppressed && (
+          <AlertBadge title={decision.title} summary={decision.summary} facts={decision.facts} actions={decision.actions} variant="collision" onMarkIntentional={() => onToggleSuppress(primaryKey)} />
         )}
-        {decision.warnings.map((w) => (
-          <AlertBadge key={w.kind} title={w.title} summary={w.summary} facts={w.facts} actions={w.actions} variant="mismatch" />
-        ))}
+        {decision.warnings
+          .filter(w => !suppressed.has(suppressionKey(entry.hostname, w.kind)))
+          .map((w) => (
+            <AlertBadge key={w.kind} title={w.title} summary={w.summary} facts={w.facts} actions={w.actions} variant="mismatch" onMarkIntentional={() => onToggleSuppress(suppressionKey(entry.hostname, w.kind))} />
+          ))}
       </td>
       <td data-label="Status"><StatusChip entry={entry} /><span className="status-subtext">{statusDetail}</span></td>
       <td data-label="Services"><ServiceBadges entry={entry} /></td>
@@ -1000,6 +1034,8 @@ function SyncModal({
   entry,
   enabledServices,
   caddyServerIP,
+  suppressed,
+  onToggleSuppress,
   syncService,
   setSyncService,
   syncLoading,
@@ -1021,6 +1057,8 @@ function SyncModal({
   entry?: import('../types').Entry;
   enabledServices: Partial<Record<ServiceKey, boolean>>;
   caddyServerIP: string;
+  suppressed: Set<string>;
+  onToggleSuppress: (key: string) => void;
   syncService: string;
   setSyncService: (value: string) => void;
   syncLoading: boolean;
@@ -1174,7 +1212,7 @@ function SyncModal({
         </div>
         <div className="modal-body sync-modal-body">
           {hostnameDecision && (
-            <HostnameDecisionPanel decision={hostnameDecision} />
+            <HostnameDecisionPanel decision={hostnameDecision} hostname={hostname} suppressed={suppressed} onToggleSuppress={onToggleSuppress} />
           )}
 
           {/* Per-service rows */}
@@ -1303,44 +1341,80 @@ function SyncModal({
   );
 }
 
-function DecisionBlock({ kind, severity, title, summary, facts, actions }: {
+function DecisionBlock({ kind, severity, title, summary, facts, actions, suppressKey, isSuppressed, onToggle }: {
   kind: string; severity: string; title: string; summary: string;
   facts: string[]; actions: { label: string; description: string }[];
+  suppressKey?: string; isSuppressed?: boolean; onToggle?: () => void;
 }) {
   return (
-    <section className={`hostname-decision ${severity}`}>
+    <section className={`hostname-decision ${severity}${isSuppressed ? ' suppressed' : ''}`}>
       <div className="hostname-decision-header">
         {severity === 'warning' ? <CircleAlert size={15} /> : <ShieldCheck size={15} />}
         <div>
           <strong>{title}</strong>
           <span>{summary}</span>
         </div>
+        {suppressKey && onToggle && (
+          <button
+            type="button"
+            className={`suppress-toggle-btn${isSuppressed ? ' active' : ''}`}
+            title={isSuppressed ? 'Restore warning' : 'Mark as intentional (suppress for this session)'}
+            onClick={onToggle}
+          >
+            {isSuppressed ? 'Restore' : 'Mark intentional'}
+          </button>
+        )}
       </div>
-      <div className="hostname-decision-facts">
-        {facts.map((fact) => <span key={fact}>{fact}</span>)}
-      </div>
-      {(kind === 'collision' || kind === 'mismatch') && (
-        <span className="hostname-decision-note">This is a warning only — pick a path when you next change DNS or Caddy config.</span>
-      )}
-      <div className="hostname-decision-actions">
-        {actions.map((action) => (
-          <div key={action.label} className="hostname-decision-action">
-            <strong>{action.label}</strong>
-            <span>{action.description}</span>
+      {!isSuppressed && (
+        <>
+          <div className="hostname-decision-facts">
+            {facts.map((fact) => <span key={fact}>{fact}</span>)}
           </div>
-        ))}
-      </div>
+          {(kind === 'collision' || kind === 'mismatch') && (
+            <span className="hostname-decision-note">This is a warning only — pick a path when you next change DNS or Caddy config.</span>
+          )}
+          <div className="hostname-decision-actions">
+            {actions.filter(a => a.label !== 'Mark intentional').map((action) => (
+              <div key={action.label} className="hostname-decision-action">
+                <strong>{action.label}</strong>
+                <span>{action.description}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {isSuppressed && (
+        <span className="hostname-decision-note suppressed-note">Warning suppressed for this session. Click Restore to show it again.</span>
+      )}
     </section>
   );
 }
 
-function HostnameDecisionPanel({ decision }: { decision: ReturnType<typeof getHostnameDecision> }) {
+function HostnameDecisionPanel({ decision, hostname, suppressed, onToggleSuppress }: {
+  decision: ReturnType<typeof getHostnameDecision>;
+  hostname: string;
+  suppressed: Set<string>;
+  onToggleSuppress: (key: string) => void;
+}) {
+  const primaryKey = suppressionKey(hostname, decision.kind);
   return (
     <>
-      <DecisionBlock {...decision} />
-      {decision.warnings.map((w) => (
-        <DecisionBlock key={w.kind} {...w} severity="warning" />
-      ))}
+      <DecisionBlock
+        {...decision}
+        suppressKey={(decision.kind === 'collision' || decision.kind === 'mismatch') ? primaryKey : undefined}
+        isSuppressed={suppressed.has(primaryKey)}
+        onToggle={() => onToggleSuppress(primaryKey)}
+      />
+      {decision.warnings.map((w) => {
+        const wKey = suppressionKey(hostname, w.kind);
+        return (
+          <DecisionBlock key={w.kind} {...w} severity="warning"
+            suppressKey={wKey}
+            isSuppressed={suppressed.has(wKey)}
+            onToggle={() => onToggleSuppress(wKey)}
+          />
+        );
+      })}
     </>
   );
 }

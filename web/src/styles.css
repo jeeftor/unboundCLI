@@ -846,6 +846,21 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   color: var(--text-1);
 }
 
+.suppress-inline-btn {
+  display: inline;
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  border: 1px solid var(--amber);
+  background: rgba(255,180,0,.12);
+  color: var(--amber);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.suppress-inline-btn:hover { background: rgba(255,180,0,.22); }
+
 /* ============================================================
    Row Actions
    ============================================================ */
@@ -955,9 +970,37 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 .hostname-decision-header {
   display: grid;
-  grid-template-columns: 18px 1fr;
+  grid-template-columns: 18px 1fr auto;
   gap: 8px;
   align-items: start;
+}
+
+.suppress-toggle-btn {
+  align-self: center;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  border: 1px solid var(--amber);
+  background: rgba(255,180,0,.1);
+  color: var(--amber);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.suppress-toggle-btn:hover { background: rgba(255,180,0,.2); }
+.suppress-toggle-btn.active {
+  border-color: var(--green);
+  background: rgba(46,204,142,.1);
+  color: var(--green);
+}
+.suppress-toggle-btn.active:hover { background: rgba(46,204,142,.2); }
+
+.hostname-decision.suppressed {
+  opacity: 0.55;
+}
+.suppressed-note {
+  color: var(--text-3) !important;
+  font-style: italic;
 }
 
 .hostname-decision-header svg { color: var(--amber); margin-top: 2px; }
