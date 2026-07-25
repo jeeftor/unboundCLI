@@ -29,8 +29,8 @@ async function readJSON<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-export async function getJSON<T>(path: string): Promise<T> {
-  return readJSON<T>(await fetch(path));
+export async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return readJSON<T>(await fetch(path, signal ? { signal } : undefined));
 }
 
 export async function postJSON<T>(path: string, payload: unknown): Promise<T> {
@@ -65,8 +65,8 @@ export async function deleteJSON<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  config: () => getJSON<ConfigResponse>('/api/config'),
-  entries: () => getJSON<EntriesResponse>('/api/entries'),
+  config: (signal?: AbortSignal) => getJSON<ConfigResponse>('/api/config', signal),
+  entries: (signal?: AbortSignal) => getJSON<EntriesResponse>('/api/entries', signal),
   logs: (since: number) => getJSON<{ lines: Array<{ index: number; level: string; message: string; time: string }>; cursor: number }>(`/api/logs?since=${since}`),
   planSync: (service: string, hostname = '') => {
     const query = new URLSearchParams();
@@ -107,7 +107,7 @@ export const api = {
   },
 
   // Cloudflare
-  cfSetRoute: (payload: { hostname: string; service: string; http_host_header?: string; no_tls_verify?: boolean }) =>
+  cfSetRoute: (payload: { hostname: string; service: string; http_host_header?: string; origin_server_name?: string; no_tls_verify?: boolean }) =>
     postJSON<{ status: string; dns_warning?: string }>('/api/cloudflare/set-route', payload),
   cfRemoveRoute: (hostname: string) =>
     postJSON<{ status: string }>('/api/cloudflare/remove-route', { hostname }),

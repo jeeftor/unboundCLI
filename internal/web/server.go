@@ -55,7 +55,10 @@ type Server struct {
 
 type storedPlan struct {
 	ActionsByID map[string]syncplan.Action
+	createdAt   time.Time
 }
+
+const planTTL = 10 * time.Minute
 
 type CaddyConfigResponse struct {
 	ServerIP   string `json:"server_ip"`
@@ -187,17 +190,18 @@ type DHCPStatusResponse struct {
 }
 
 type CloudflareStatusResponse struct {
-	Configured      bool   `json:"configured"`
-	TunnelName      string `json:"tunnel_name"`
-	TunnelID        string `json:"tunnel_id"`
-	Service         string `json:"service"`
-	Path            string `json:"path"`
-	IsDefaultTunnel bool   `json:"is_default_tunnel"`
-	HTTPHostHeader  string `json:"http_host_header"`
-	NoTLSVerify     bool   `json:"no_tls_verify"`
-	Http2Origin     bool   `json:"http2_origin"`
-	HasAccessPolicy bool   `json:"has_access_policy"`
-	HasDNSRecord    bool   `json:"has_dns_record"`
+	Configured       bool   `json:"configured"`
+	TunnelName       string `json:"tunnel_name"`
+	TunnelID         string `json:"tunnel_id"`
+	Service          string `json:"service"`
+	Path             string `json:"path"`
+	IsDefaultTunnel  bool   `json:"is_default_tunnel"`
+	HTTPHostHeader   string `json:"http_host_header"`
+	OriginServerName string `json:"origin_server_name"`
+	NoTLSVerify      bool   `json:"no_tls_verify"`
+	Http2Origin      bool   `json:"http2_origin"`
+	HasAccessPolicy  bool   `json:"has_access_policy"`
+	HasDNSRecord     bool   `json:"has_dns_record"`
 }
 
 type EntryResponse struct {
@@ -213,6 +217,8 @@ type EntryResponse struct {
 	OverallStatus    models.SyncStatus        `json:"overall_status"`
 	StatusLabel      string                   `json:"status_label"`
 	DataSource       string                   `json:"data_source"`
+	HasForwardAuth   bool                     `json:"has_forward_auth"`
+	HasAuthBypass    bool                     `json:"has_auth_bypass_risk"`
 }
 
 type PlanResponse struct {
@@ -646,10 +652,11 @@ func (s *Server) handleCloudflareTunnels(w http.ResponseWriter, r *http.Request)
 
 // CloudflareSetRouteRequest sets the routing mode for a single hostname in the CF tunnel.
 type CloudflareSetRouteRequest struct {
-	Hostname       string `json:"hostname"`
-	Service        string `json:"service"`          // full URL, e.g. "https://192.168.1.15" or "http://192.168.1.112:8006"
-	HTTPHostHeader string `json:"http_host_header"` // set when routing via Caddy
-	NoTLSVerify    bool   `json:"no_tls_verify"`
+	Hostname         string `json:"hostname"`
+	Service          string `json:"service"`            // full URL, e.g. "https://192.168.1.15" or "http://192.168.1.112:8006"
+	HTTPHostHeader   string `json:"http_host_header"`   // set when routing via Caddy
+	OriginServerName string `json:"origin_server_name"` // TLS SNI hostname for origin
+	NoTLSVerify      bool   `json:"no_tls_verify"`
 }
 
 // handleCloudflareSetRoute updates a single CF tunnel ingress rule to point to the given service.
@@ -674,10 +681,12 @@ func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request
 		return
 	}
 	spec := api.IngressRuleSpec{
-		Hostname:       req.Hostname,
-		Service:        req.Service,
-		HTTPHostHeader: req.HTTPHostHeader,
-		NoTLSVerify:    req.NoTLSVerify,
+		Hostname:            req.Hostname,
+		Service:             req.Service,
+		HTTPHostHeader:      req.HTTPHostHeader,
+		OriginServerName:    req.OriginServerName,
+		SetOriginServerName: req.OriginServerName != "",
+		NoTLSVerify:         req.NoTLSVerify,
 	}
 	if err := runtime.Clients.Cloudflare.UpdateTunnelRule(spec); err != nil {
 		writeError(w, http.StatusBadGateway, err)
@@ -1341,21 +1350,24 @@ func entryResponses(entries []*models.Entry) []EntryResponse {
 			},
 			DNSResolved: entry.DNSResolved,
 			CloudflareStatus: CloudflareStatusResponse{
-				Configured:      entry.CloudflareStatus.Configured,
-				TunnelName:      entry.CloudflareStatus.TunnelName,
-				TunnelID:        entry.CloudflareStatus.TunnelID,
-				Service:         entry.CloudflareStatus.Service,
-				Path:            entry.CloudflareStatus.Path,
-				IsDefaultTunnel: entry.CloudflareStatus.IsDefaultTunnel,
-				HTTPHostHeader:  entry.CloudflareStatus.HTTPHostHeader,
-				NoTLSVerify:     entry.CloudflareStatus.NoTLSVerify,
-				Http2Origin:     entry.CloudflareStatus.Http2Origin,
-				HasAccessPolicy: entry.CloudflareStatus.HasAccessPolicy,
-				HasDNSRecord:    entry.CloudflareStatus.HasDNSRecord,
+				Configured:       entry.CloudflareStatus.Configured,
+				TunnelName:       entry.CloudflareStatus.TunnelName,
+				TunnelID:         entry.CloudflareStatus.TunnelID,
+				Service:          entry.CloudflareStatus.Service,
+				Path:             entry.CloudflareStatus.Path,
+				IsDefaultTunnel:  entry.CloudflareStatus.IsDefaultTunnel,
+				HTTPHostHeader:   entry.CloudflareStatus.HTTPHostHeader,
+				OriginServerName: entry.CloudflareStatus.OriginServerName,
+				NoTLSVerify:      entry.CloudflareStatus.NoTLSVerify,
+				Http2Origin:      entry.CloudflareStatus.Http2Origin,
+				HasAccessPolicy:  entry.CloudflareStatus.HasAccessPolicy,
+				HasDNSRecord:     entry.CloudflareStatus.HasDNSRecord,
 			},
-			OverallStatus: entry.OverallStatus,
-			StatusLabel:   entry.OverallStatus.Label(),
-			DataSource:    entry.DataSource,
+			OverallStatus:  entry.OverallStatus,
+			StatusLabel:    entry.OverallStatus.Label(),
+			DataSource:     entry.DataSource,
+			HasForwardAuth: entry.CaddyRoute.HasForwardAuth,
+			HasAuthBypass:  entry.HasAuthBypassRisk(),
 		})
 	}
 	return out
@@ -1615,6 +1627,7 @@ func (s *Server) mutationsEnabled() bool {
 }
 
 func (s *Server) storePlan(planID string, actions []syncplan.Action, actionIDs []string) {
+	s.cleanExpiredPlans()
 	actionsByID := make(map[string]syncplan.Action, len(actions))
 	for i, action := range actions {
 		if i >= len(actionIDs) {
@@ -1623,8 +1636,20 @@ func (s *Server) storePlan(planID string, actions []syncplan.Action, actionIDs [
 		actionsByID[actionIDs[i]] = action
 	}
 	s.planMu.Lock()
-	s.plans[planID] = storedPlan{ActionsByID: actionsByID}
+	s.plans[planID] = storedPlan{ActionsByID: actionsByID, createdAt: time.Now()}
 	s.planMu.Unlock()
+}
+
+// cleanExpiredPlans removes plans older than planTTL from the in-memory store.
+func (s *Server) cleanExpiredPlans() {
+	s.planMu.Lock()
+	defer s.planMu.Unlock()
+	cutoff := time.Now().Add(-planTTL)
+	for id, plan := range s.plans {
+		if plan.createdAt.Before(cutoff) {
+			delete(s.plans, id)
+		}
+	}
 }
 
 func (s *Server) actionsForIDs(planID string, actionIDs []string) ([]syncplan.Action, error) {
