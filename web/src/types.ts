@@ -54,6 +54,7 @@ export type CloudflareStatus = {
   path: string;
   is_default_tunnel: boolean;
   http_host_header: string;
+  origin_server_name: string;
   no_tls_verify: boolean;
   http2_origin: boolean;
   has_access_policy: boolean;
@@ -73,6 +74,8 @@ export type Entry = {
   overall_status: number;
   status_label: string;
   data_source: string;
+  has_forward_auth: boolean;
+  has_auth_bypass_risk: boolean;
 };
 
 export type EntriesResponse = {

@@ -10,6 +10,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
   const [message, setMessage] = useState('Loading service status...');
   const [messageKind, setMessageKind] = useState<'info' | 'error' | 'ok'>('info');
   const sequence = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const applyConfig = useCallback((nextConfig: ConfigResponse) => {
     setConfig(nextConfig);
@@ -22,13 +23,21 @@ export function useRuntimeData(onDataChanged?: () => void) {
   }, []);
 
   const refreshEntries = useCallback(async () => {
+    // Abort any in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const requestID = sequence.current + 1;
     sequence.current = requestID;
     setLoading(true);
     setMessage('Loading service status...');
     setMessageKind('info');
     try {
-      const [nextConfig, data] = await Promise.all([api.config(), api.entries()]);
+      const [nextConfig, data] = await Promise.all([
+        api.config(controller.signal),
+        api.entries(controller.signal),
+      ]);
       if (requestID !== sequence.current) return;
       setConfig(nextConfig);
       setEntries(data.entries || []);
@@ -37,6 +46,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
       setMessage((data.entries || []).length ? 'Loaded service status.' : 'No entries found.');
       setMessageKind('info');
     } catch (err) {
+      if (controller.signal.aborted) return;
       if (requestID !== sequence.current) return;
       const text = err instanceof Error ? err.message : String(err);
       setMessage(text);
@@ -48,6 +58,9 @@ export function useRuntimeData(onDataChanged?: () => void) {
 
   useEffect(() => {
     void refreshEntries();
+    return () => {
+      abortRef.current?.abort();
+    };
   }, [refreshEntries]);
 
   return {

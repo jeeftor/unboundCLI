@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
@@ -144,30 +145,20 @@ func (c *CaddyClient) extractHostsFromMatch(match interface{}, hostnames *[]stri
 					// Skip hosts with port numbers for now
 					if strings.Contains(hostStr, ":") {
 						hostBase := strings.Split(hostStr, ":")[0]
-						if !c.containsString(*hostnames, hostBase) {
+						if !slices.Contains(*hostnames, hostBase) {
 							*hostnames = append(*hostnames, hostBase)
 						}
 						continue
 					}
 
 					// Add the host if not already in list
-					if !c.containsString(*hostnames, hostStr) {
+					if !slices.Contains(*hostnames, hostStr) {
 						*hostnames = append(*hostnames, hostStr)
 					}
 				}
 			}
 		}
 	}
-}
-
-// containsString checks if a string is present in a slice
-func (c *CaddyClient) containsString(slice []string, str string) bool {
-	for _, s := range slice {
-		if s == str {
-			return true
-		}
-	}
-	return false
 }
 
 // GetHostnameMap returns a map of all hostnames in the Caddy configuration,

@@ -93,6 +93,8 @@ options.LegacyDescriptions = []string{"Entry created by unboundCLI caddy-sync-un
 
 **TUI Widget Architecture**: `AppModel` holds widget pointers and switches `currentView` between `ViewModeTable`, `ViewModeSync`, `ViewModeConfig`. Widgets are pure Bubble Tea models returned by their constructors.
 
+**Auth Bypass Warning**: CF tunnel rules pointing directly to a service (not through Caddy) bypass Caddy's `forward_auth`/Authentik. If a hostname has Authentik auth in Caddy but its tunnel rule skips Caddy, auth is absent. See `plan.md` for mitigations and detection notes.
+
 ### Configuration System
 
 **Precedence** (highest first):
