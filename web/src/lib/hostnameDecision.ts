@@ -60,9 +60,16 @@ function cfNoDNSWarning(entry: Entry): HostnameWarning | null {
   };
 }
 
-export function isIssue(entry: Entry, caddyServerIP: string): boolean {
+export function suppressionKey(hostname: string, kind: string): string {
+  return `${hostname}:${kind}`;
+}
+
+export function isIssue(entry: Entry, caddyServerIP: string, suppressed?: Set<string>): boolean {
   const d = getHostnameDecision(entry, caddyServerIP);
-  return d.kind === 'collision' || d.kind === 'mismatch' || d.warnings.length > 0;
+  const primaryActive = (d.kind === 'collision' || d.kind === 'mismatch')
+    && !suppressed?.has(suppressionKey(entry.hostname, d.kind));
+  const warningsActive = d.warnings.some(w => !suppressed?.has(suppressionKey(entry.hostname, w.kind)));
+  return primaryActive || warningsActive;
 }
 
 function appendCFWarning(warnings: HostnameWarning[], entry: Entry): HostnameWarning[] {
