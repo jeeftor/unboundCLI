@@ -95,3 +95,23 @@ func (e *Entry) NeedsRemovalFromAdguard() bool {
 	// Only remove if it's configured in AdGuard but NOT in Caddy
 	return e.AdguardStatus.Configured && !e.IsConfiguredInCaddy()
 }
+
+// HasAuthBypassRisk returns true if Caddy uses forward_auth (Authentik) for this
+// hostname but the CF tunnel routes directly to the service (not through Caddy),
+// meaning auth is bypassed. Only flags when there is no CF Access policy to compensate.
+func (e *Entry) HasAuthBypassRisk() bool {
+	if !e.CaddyRoute.HasForwardAuth || !e.CloudflareStatus.Configured {
+		return false
+	}
+	if e.CloudflareStatus.HasAccessPolicy {
+		return false // CF Access compensates
+	}
+	// If the tunnel service doesn't match the Caddy upstream, it's likely routing
+	// through Caddy (which is correct). We flag when the tunnel points to the same
+	// backend as Caddy — indicating it bypasses Caddy entirely.
+	// A service pointing to Caddy's own address (with HTTPHostHeader set) is safe.
+	if e.CloudflareStatus.HTTPHostHeader != "" {
+		return false // has host header → likely routing through Caddy
+	}
+	return true
+}

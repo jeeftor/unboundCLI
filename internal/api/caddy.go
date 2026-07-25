@@ -406,6 +406,7 @@ func (c *CaddyClient) collectRouteDetails(routes []interface{}, result map[strin
 
 		if len(hostnames) > 0 {
 			chain, upstream, reqSet, reqAdd, respSet, tlsUpstream := c.extractHandlerChain(rObj)
+			hasForwardAuth := routeContainsForwardAuth(rObj)
 			for _, h := range hostnames {
 				if _, exists := result[h]; !exists {
 					result[h] = models.CaddyRouteInfo{
@@ -415,6 +416,7 @@ func (c *CaddyClient) collectRouteDetails(routes []interface{}, result map[strin
 						RequestHeadersAdd:  reqAdd,
 						ResponseHeadersSet: respSet,
 						TLSToUpstream:      tlsUpstream,
+						HasForwardAuth:     hasForwardAuth,
 					}
 				}
 			}
@@ -511,6 +513,17 @@ func (c *CaddyClient) extractHandlerChain(routeObj map[string]interface{}) (
 		}
 	}
 	return
+}
+
+// routeContainsForwardAuth checks whether a route object contains an Authentik
+// forward_auth pattern by serializing to JSON and looking for the outpost marker.
+// This avoids deeply walking the nested handler tree.
+func routeContainsForwardAuth(routeObj map[string]interface{}) bool {
+	data, err := json.Marshal(routeObj)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "outpost.goauthentik.io")
 }
 
 // caddyExtractHeaderMap extracts a header set/add map from a reverse_proxy handler object.

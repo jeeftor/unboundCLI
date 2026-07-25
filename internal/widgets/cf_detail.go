@@ -86,6 +86,14 @@ func RenderCFDetail(entry *models.Entry, theme *Theme) string {
 			access = goodStyle.Render("required")
 		}
 		lines = append(lines, label("Access Policy:")+" "+access)
+
+		// Auth mismatch warning
+		if entry.HasAuthBypassRisk() {
+			lines = append(lines, "")
+			lines = append(lines, warnStyle.Render("  ⚠  AUTH MISMATCH: Caddy has forward_auth (Authentik)"))
+			lines = append(lines, warnStyle.Render("     but tunnel may bypass Caddy — auth is not enforced."))
+			lines = append(lines, warnStyle.Render("     Set HTTPHostHeader or add a CF Access policy."))
+		}
 	}
 
 	lines = append(lines, "")
