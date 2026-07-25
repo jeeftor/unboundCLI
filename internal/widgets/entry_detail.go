@@ -71,6 +71,11 @@ func RenderEntryDetail(entry *models.Entry, theme *Theme) string {
 			lines = append(lines, lbl("Handler chain:")+dimStyle.Render(strings.Join(r.HandlerChain, " → ")))
 		}
 
+		// Forward auth
+		if r.HasForwardAuth {
+			lines = append(lines, lbl("Forward auth:")+goodStyle.Render("✓ Authentik"))
+		}
+
 		// TLS to upstream
 		if r.TLSToUpstream {
 			lines = append(lines, lbl("TLS to upstream:")+goodStyle.Render("✓ Yes"))
@@ -225,6 +230,14 @@ func RenderEntryDetail(entry *models.Entry, theme *Theme) string {
 			access = goodStyle.Render("required")
 		}
 		lines = append(lines, lbl("Access Policy:")+access)
+
+		// Auth mismatch warning
+		if entry.HasAuthBypassRisk() {
+			lines = append(lines, "")
+			lines = append(lines, warnStyle.Render("  ⚠  AUTH MISMATCH: Caddy has forward_auth but tunnel"))
+			lines = append(lines, warnStyle.Render("     may bypass Caddy — auth not enforced. Set"))
+			lines = append(lines, warnStyle.Render("     HTTPHostHeader or add a CF Access policy."))
+		}
 	}
 
 	// Source
