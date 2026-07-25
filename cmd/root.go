@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
+	"time"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
@@ -17,6 +19,35 @@ var (
 	Commit  = "none"
 	Date    = "unknown"
 )
+
+func init() {
+	if Version != "dev" {
+		return
+	}
+	// Enrich dev version with VCS commit info or build timestamp
+	if info, ok := debug.ReadBuildInfo(); ok {
+		var vcsRev, vcsTime string
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				vcsRev = s.Value
+			case "vcs.time":
+				vcsTime = s.Value
+			}
+		}
+		if vcsTime != "" {
+			if t, err := time.Parse(time.RFC3339, vcsTime); err == nil {
+				Version = "dev (" + t.Local().Format("2006-01-02 15:04") + ")"
+				if len(vcsRev) >= 7 {
+					Commit = vcsRev[:7]
+				}
+				return
+			}
+		}
+	}
+	// Fallback: use process start time
+	Version = "dev (" + time.Now().Format("2006-01-02 15:04") + ")"
+}
 
 var (
 	cfgFile  string
@@ -96,6 +127,9 @@ func Execute() {
 }
 
 func init() {
+	// Re-sync cobra version after dev enrichment init() ran
+	rootCmd.Version = Version
+
 	cobra.OnInitialize(initConfig)
 
 	// Global flags
