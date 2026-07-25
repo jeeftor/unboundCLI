@@ -16,6 +16,7 @@ type cfEditField int
 const (
 	cfEditService cfEditField = iota
 	cfEditHostHeader
+	cfEditOriginServerName
 	cfEditNoTLSVerify
 	cfEditHttp2Origin
 	cfEditSave
@@ -35,10 +36,11 @@ type CFEditWidget struct {
 	caddyServiceURL string
 	isDefaultTunnel bool // false = entry is in a read-only tunnel, show warning
 
-	serviceInput    textinput.Model
-	hostHeaderInput textinput.Model
-	noTLSVerify     bool
-	http2Origin     bool
+	serviceInput          textinput.Model
+	hostHeaderInput       textinput.Model
+	originServerNameInput textinput.Model
+	noTLSVerify           bool
+	http2Origin           bool
 
 	activeField cfEditField
 
@@ -66,18 +68,25 @@ func NewCFEditWidget(entry *models.Entry, caddyServiceURL string, theme *Theme) 
 	hi.Width = 52
 	hi.SetValue(entry.CloudflareStatus.HTTPHostHeader)
 
+	oi := textinput.New()
+	oi.Placeholder = entry.Hostname
+	oi.CharLimit = 120
+	oi.Width = 52
+	oi.SetValue(entry.CloudflareStatus.OriginServerName)
+
 	return &CFEditWidget{
-		BaseWidget:      NewBaseWidget(),
-		entry:           entry,
-		hostname:        entry.Hostname,
-		caddyServiceURL: caddyServiceURL,
-		isDefaultTunnel: entry.CloudflareStatus.IsDefaultTunnel || !entry.CloudflareStatus.Configured,
-		serviceInput:    si,
-		hostHeaderInput: hi,
-		noTLSVerify:     entry.CloudflareStatus.NoTLSVerify,
-		http2Origin:     entry.CloudflareStatus.Http2Origin,
-		activeField:     cfEditService,
-		theme:           theme,
+		BaseWidget:            NewBaseWidget(),
+		entry:                 entry,
+		hostname:              entry.Hostname,
+		caddyServiceURL:       caddyServiceURL,
+		isDefaultTunnel:       entry.CloudflareStatus.IsDefaultTunnel || !entry.CloudflareStatus.Configured,
+		serviceInput:          si,
+		hostHeaderInput:       hi,
+		originServerNameInput: oi,
+		noTLSVerify:           entry.CloudflareStatus.NoTLSVerify,
+		http2Origin:           entry.CloudflareStatus.Http2Origin,
+		activeField:           cfEditService,
+		theme:                 theme,
 	}
 }
 
@@ -98,11 +107,12 @@ func (w *CFEditWidget) WasDeleted() bool { return w.deleted }
 // Spec returns the edit result. Only meaningful when IsDone() && !WasCancelled().
 func (w *CFEditWidget) Spec() models.CFEditSpec {
 	return models.CFEditSpec{
-		Hostname:       w.hostname,
-		Service:        strings.TrimSpace(w.serviceInput.Value()),
-		HTTPHostHeader: strings.TrimSpace(w.hostHeaderInput.Value()),
-		NoTLSVerify:    w.noTLSVerify,
-		Http2Origin:    w.http2Origin,
+		Hostname:         w.hostname,
+		Service:          strings.TrimSpace(w.serviceInput.Value()),
+		HTTPHostHeader:   strings.TrimSpace(w.hostHeaderInput.Value()),
+		OriginServerName: strings.TrimSpace(w.originServerNameInput.Value()),
+		NoTLSVerify:      w.noTLSVerify,
+		Http2Origin:      w.http2Origin,
 	}
 }
 
@@ -131,11 +141,12 @@ func (w *CFEditWidget) Update(msg tea.Msg) (Widget, tea.Cmd) {
 			return w, nil
 
 		case "ctrl+k":
-			// Route via Caddy: fill both service and host header
+			// Route via Caddy: fill service, host header, and origin server name
 			if w.caddyServiceURL != "" {
 				w.serviceInput.SetValue(w.caddyServiceURL)
 			}
 			w.hostHeaderInput.SetValue(w.hostname)
+			w.originServerNameInput.SetValue(w.hostname)
 			return w, nil
 
 		case "ctrl+h":
@@ -207,6 +218,8 @@ func (w *CFEditWidget) Update(msg tea.Msg) (Widget, tea.Cmd) {
 		w.serviceInput, cmd = w.serviceInput.Update(msg)
 	case cfEditHostHeader:
 		w.hostHeaderInput, cmd = w.hostHeaderInput.Update(msg)
+	case cfEditOriginServerName:
+		w.originServerNameInput, cmd = w.originServerNameInput.Update(msg)
 	}
 	return w, cmd
 }
@@ -226,11 +239,14 @@ func (w *CFEditWidget) prevField() {
 func (w *CFEditWidget) focusCurrent() tea.Cmd {
 	w.serviceInput.Blur()
 	w.hostHeaderInput.Blur()
+	w.originServerNameInput.Blur()
 	switch w.activeField {
 	case cfEditService:
 		return w.serviceInput.Focus()
 	case cfEditHostHeader:
 		return w.hostHeaderInput.Focus()
+	case cfEditOriginServerName:
+		return w.originServerNameInput.Focus()
 	}
 	return nil
 }
@@ -381,6 +397,15 @@ func (w *CFEditWidget) View() string {
 	}
 	lines = append(lines, hhLbl)
 	lines = append(lines, "    "+w.hostHeaderInput.View())
+	lines = append(lines, "")
+
+	// OriginServerName
+	osnLbl := lbl("OriginServerName:")
+	if w.activeField == cfEditOriginServerName {
+		osnLbl = activeLbl("OriginServerName:")
+	}
+	lines = append(lines, osnLbl)
+	lines = append(lines, "    "+w.originServerNameInput.View())
 	lines = append(lines, "")
 
 	// Toggles — same label format as view widget but with checkbox prefix

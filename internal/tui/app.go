@@ -376,13 +376,15 @@ func (m *AppModel) handleTableViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cfClient := m.cfClient
 			return m, func() tea.Msg {
 				apiSpec := api.IngressRuleSpec{
-					Hostname:       spec.Hostname,
-					Service:        spec.Service,
-					HTTPHostHeader: spec.HTTPHostHeader,
-					NoTLSVerify:    spec.NoTLSVerify,
-					Http2Origin:    spec.Http2Origin,
-					SetNoTLSVerify: true,
-					SetHttp2Origin: true,
+					Hostname:            spec.Hostname,
+					Service:             spec.Service,
+					HTTPHostHeader:      spec.HTTPHostHeader,
+					OriginServerName:    spec.OriginServerName,
+					NoTLSVerify:         spec.NoTLSVerify,
+					Http2Origin:         spec.Http2Origin,
+					SetOriginServerName: true,
+					SetNoTLSVerify:      true,
+					SetHttp2Origin:      true,
 				}
 				err := cfClient.UpdateTunnelRule(apiSpec)
 				return cfEditSavedMsg{err: err}

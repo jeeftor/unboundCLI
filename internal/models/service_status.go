@@ -89,15 +89,16 @@ func (d DHCPStatus) IsDynamic() bool {
 
 // CloudflareStatus holds the Cloudflare Zero Trust tunnel ingress state for a hostname.
 type CloudflareStatus struct {
-	Configured      bool
-	TunnelName      string
-	TunnelID        string
-	Service         string
-	Path            string
-	IsDefaultTunnel bool
-	HTTPHostHeader  string // empty means not configured (common Caddy routing issue)
-	NoTLSVerify     bool
-	Http2Origin     bool
-	HasAccessPolicy bool
-	HasDNSRecord    bool // CNAME → <tunnelID>.cfargotunnel.com exists in Cloudflare DNS
+	Configured       bool
+	TunnelName       string
+	TunnelID         string
+	Service          string
+	Path             string
+	IsDefaultTunnel  bool
+	HTTPHostHeader   string // empty means not configured (common Caddy routing issue)
+	OriginServerName string // TLS SNI hostname cloudflared uses when connecting to origin
+	NoTLSVerify      bool
+	Http2Origin      bool
+	HasAccessPolicy  bool
+	HasDNSRecord     bool // CNAME → <tunnelID>.cfargotunnel.com exists in Cloudflare DNS
 }

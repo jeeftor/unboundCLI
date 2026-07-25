@@ -227,6 +227,7 @@ type CloudflareIngressEntry struct {
 	Path             string
 	Service          string // LAN endpoint, e.g. "http://192.168.1.15:8096"
 	HTTPHostHeader   string // empty = not configured (common Caddy routing issue)
+	OriginServerName string // TLS SNI hostname for connecting to origin
 	NoTLSVerify      bool
 	Http2Origin      bool
 	HasAccessPolicy  bool // true if OriginRequest.Access.Required
@@ -913,6 +914,9 @@ func (c *CloudflareClient) GetAllTunnelsDetails() (map[string]CloudflareIngressE
 				if ingress.OriginRequest.HTTPHostHeader != nil {
 					merged.HTTPHostHeader = ingress.OriginRequest.HTTPHostHeader
 				}
+				if ingress.OriginRequest.OriginServerName != nil {
+					merged.OriginServerName = ingress.OriginRequest.OriginServerName
+				}
 				if ingress.OriginRequest.NoTLSVerify != nil {
 					merged.NoTLSVerify = ingress.OriginRequest.NoTLSVerify
 				}
@@ -935,6 +939,9 @@ func (c *CloudflareClient) GetAllTunnelsDetails() (map[string]CloudflareIngressE
 			}
 			if merged.HTTPHostHeader != nil {
 				entry.HTTPHostHeader = *merged.HTTPHostHeader
+			}
+			if merged.OriginServerName != nil {
+				entry.OriginServerName = *merged.OriginServerName
 			}
 			if merged.NoTLSVerify != nil {
 				entry.NoTLSVerify = *merged.NoTLSVerify

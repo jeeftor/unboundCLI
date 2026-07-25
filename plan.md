@@ -183,6 +183,38 @@ Extend `caddy-sync-all` / `SyncAll()` with a `--cloudflare` flag so a single inv
 
 ---
 
+## Auth Bypass Warning: Direct CF Tunnel vs Caddy/Authentik
+
+When a CF tunnel ingress rule points **directly** to a service (e.g. `http://192.168.1.15:8096`)
+instead of routing through Caddy (`https://caddy:443`), any authentication provided by Caddy's
+`forward_auth` middleware (Authentik) is **completely bypassed**. The request never touches Caddy,
+so Authentik never gates it.
+
+```
+CF Tunnel → Caddy → Authentik → Service    ✅ authenticated
+CF Tunnel → Service directly                ❌ auth bypassed, service is wide open
+```
+
+**Mitigations (pick one):**
+
+1. **Route through Caddy** — set the tunnel ingress service to Caddy's address with
+   `HTTPHostHeader` + `OriginServerName` so Caddy routes and authenticates correctly.
+   This is what `caddy-push-cloudflare` does by default (`CF_CADDY_SERVICE_URL`).
+
+2. **Use CF Access** — attach a Cloudflare Access Application/policy to the hostname
+   so CF itself gates the request before it reaches the tunnel. The wildcard
+   `*.vookie.net` app covers this for all subdomains.
+
+3. **Both** — belt and suspenders. CF Access gates at the edge, Authentik gates at
+   the origin. Defense in depth.
+
+**Detection opportunity:** The TUI already knows which hostnames have `forward_auth`
+(Caddy parser) and which tunnel rules point directly to services vs. through Caddy.
+A future enhancement could flag hostnames where the tunnel bypasses Caddy but Caddy
+has Authentik configured — indicating an auth gap.
+
+---
+
 ## Existing Command Clarification
 
 The existing `caddy-sync-cloudflare` command is **not** a CF tunnel write operation — it creates dual-mode local DNS entries (`service.dev.example.com` → direct IP, `service.caddy.example.com` → Caddy IP) to support split-horizon routing alongside an existing CF tunnel. It remains useful as-is and should not be renamed.
