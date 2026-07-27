@@ -2315,14 +2315,14 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
    ============================================================ */
 
 .auth-shell {
-  padding: 20px 24px;
+  padding: 12px 16px;
 }
 
 .auth-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .auth-header-title {
@@ -2339,8 +2339,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 .auth-sources {
   display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .auth-source-badge {
@@ -2367,9 +2367,9 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 .auth-metrics {
   display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
-  padding: 12px 16px;
+  gap: 16px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
   background: var(--bg-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
@@ -2396,13 +2396,13 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 8px 12px;
   background: rgba(240, 80, 110, .08);
   border: 1px solid rgba(240, 80, 110, .2);
   border-radius: var(--radius);
   color: #f0506e;
   font-size: 13px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .auth-loading {
@@ -2434,7 +2434,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 .auth-table th {
   text-align: left;
-  padding: 10px 14px;
+  padding: 6px 12px;
   font-weight: 600;
   color: var(--text-2);
   font-size: 12px;
@@ -2460,7 +2460,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .auth-hostname {
   font-weight: 500;
   color: var(--text-1);
-  padding: 10px 14px;
+  padding: 6px 12px;
   white-space: nowrap;
 }
 
@@ -2473,7 +2473,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 }
 
 .auth-cell {
-  padding: 10px 14px;
+  padding: 6px 12px;
   white-space: nowrap;
 }
 
@@ -2684,7 +2684,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 /* Legend panel */
 .auth-legend {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--bg-2);
@@ -2696,7 +2696,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 7px 12px;
   border: none;
   background: transparent;
   color: var(--text-2);
@@ -2717,12 +2717,12 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 }
 
 .auth-legend-content {
-  padding: 0 14px 14px;
+  padding: 0 10px 10px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
+  gap: 10px;
   border-top: 1px solid var(--border-subtle);
-  padding-top: 14px;
+  padding-top: 10px;
 }
 
 .auth-legend-section h4 {
@@ -2745,8 +2745,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .auth-legend-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 5px;
 }
 
 .auth-legend-item .auth-badge {
@@ -2755,9 +2755,9 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 }
 
 .auth-legend-desc {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-2);
-  line-height: 1.5;
+  line-height: 1.35;
 }
 
 /* Status badge in legend */
@@ -2809,8 +2809,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 /* Flow diagram */
 .auth-flow-diagram {
-  margin-bottom: 20px;
-  padding: 16px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
   background: var(--bg-1);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
@@ -2822,20 +2822,20 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   justify-content: center;
   gap: 0;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .auth-flow-node {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 14px;
+  gap: 2px;
+  padding: 6px 10px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--bg-2);
-  min-width: 100px;
-  font-size: 12px;
+  min-width: 90px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-1);
 }
@@ -2860,32 +2860,32 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 4px;
-  min-width: 80px;
+  padding: 0 2px;
+  min-width: 60px;
 }
 
 .auth-flow-label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--text-3);
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .auth-flow-line {
-  font-size: 18px;
+  font-size: 16px;
   color: var(--text-3);
 }
 
 .auth-flow-explanation {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--text-2);
-  line-height: 1.6;
+  line-height: 1.4;
 }
 
 .auth-flow-explanation p {
-  margin: 4px 0;
+  margin: 2px 0;
 }
 
 .auth-flow-explanation strong {
@@ -2895,8 +2895,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 /* Legend grid — 4 color-coded cards */
 .auth-legend-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px;
 }
 
 .auth-legend-card {
@@ -2915,8 +2915,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .auth-legend-card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-2);
 }
@@ -2941,15 +2941,15 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 }
 
 .auth-legend-items {
-  padding: 10px 14px;
+  padding: 7px 10px;
 }
 
 /* Legend item with icon + tone */
 .auth-legend-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .auth-legend-item:last-child {
@@ -2960,8 +2960,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
   margin-top: 1px;
@@ -3012,7 +3012,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .auth-legend-item-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .auth-legend-item-content .auth-badge {
