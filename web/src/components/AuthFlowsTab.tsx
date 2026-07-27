@@ -13,6 +13,7 @@ import {
   Network,
   RefreshCw,
   Route,
+  Search,
   Server,
   ShieldAlert,
   ShieldCheck,
@@ -24,6 +25,7 @@ import {
   Unlock,
   UnlockKeyhole,
   Wifi,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
@@ -293,7 +295,9 @@ function HostRow({ host }: { host: HostAuth }) {
           {isStale && <span className="auth-stale-tag">enriching…</span>}
         </td>
         <td className="auth-cell">
-          {host.wan_exposed ? <AuthBadge value={host.wan_auth} info={WAN_AUTH_INFO} /> : <span className="auth-na">N/A</span>}
+          {host.wan_exposed
+            ? <AuthBadge value={host.wan_auth} info={WAN_AUTH_INFO} />
+            : <span className="auth-na" title="This host is not exposed to the internet (no Cloudflare tunnel). WAN auth doesn't apply.">Not exposed</span>}
         </td>
         <td className="auth-cell">
           <AuthBadge value={host.lan_auth} info={LAN_AUTH_INFO} />
@@ -361,6 +365,7 @@ export function AuthFlowsTab() {
   const [sources, setSources] = useState<{ cloudflare_access: boolean; authentik: boolean } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const load = useCallback(() => {
@@ -450,8 +455,12 @@ export function AuthFlowsTab() {
     };
   }, [load]);
 
-  // Sort hosts by hostname for display.
-  const sortedHosts = Array.from(hosts.values()).sort((a, b) => a.hostname.localeCompare(b.hostname));
+  // Sort hosts by hostname for display, filtered by search query.
+  const sortedHosts = Array.from(hosts.values())
+    .sort((a, b) => a.hostname.localeCompare(b.hostname));
+  const filteredHosts = search.trim()
+    ? sortedHosts.filter(h => h.hostname.toLowerCase().includes(search.trim().toLowerCase()))
+    : sortedHosts;
 
   const okCount = sortedHosts.filter(h => h.status === 'ok').length;
   const warnCount = sortedHosts.filter(h => h.status === 'warning').length;
@@ -529,28 +538,55 @@ export function AuthFlowsTab() {
           <span>Loading auth inventory...</span>
         </div>
       ) : (
-        <div className="auth-table-wrap" id="entries-panel">
-          <table className="auth-table">
-            <thead>
-              <tr>
-                <th><Network size={13} /> Hostname</th>
-                <th><Globe size={13} /> WAN Auth</th>
-                <th><Wifi size={13} /> LAN Auth</th>
-                <th title="How scripts, automation, and other non-browser clients authenticate to this host's API. Different from browser login — uses tokens/keys instead of interactive login."><Terminal size={13} /> API Auth</th>
-                <th><ShieldCheck size={13} /> Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedHosts.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="auth-empty">No hosts discovered</td>
-                </tr>
-              ) : (
-                sortedHosts.map(host => <HostRow key={host.hostname} host={host} />)
+        <>
+          {sortedHosts.length > 0 && (
+            <div className="auth-search-bar">
+              <Search size={14} className="auth-search-icon" />
+              <input
+                type="text"
+                className="auth-search-input"
+                placeholder="Filter hosts…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                aria-label="Filter hosts by name"
+              />
+              {search && (
+                <button type="button" className="auth-search-clear" onClick={() => setSearch('')} aria-label="Clear filter">
+                  <X size={13} />
+                </button>
               )}
-            </tbody>
-          </table>
-        </div>
+              <span className="auth-search-count">
+                {filteredHosts.length}/{sortedHosts.length}
+              </span>
+            </div>
+          )}
+          <div className="auth-table-wrap" id="entries-panel">
+            <table className="auth-table">
+              <thead>
+                <tr>
+                  <th><Network size={13} /> Hostname</th>
+                  <th><Globe size={13} /> WAN Auth</th>
+                  <th><Wifi size={13} /> LAN Auth</th>
+                  <th title="How scripts, automation, and other non-browser clients authenticate to this host's API. Different from browser login — uses tokens/keys instead of interactive login."><Terminal size={13} /> API Auth</th>
+                  <th><ShieldCheck size={13} /> Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedHosts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="auth-empty">No hosts discovered</td>
+                  </tr>
+                ) : filteredHosts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="auth-empty">No hosts match "{search}"</td>
+                  </tr>
+                ) : (
+                  filteredHosts.map(host => <HostRow key={host.hostname} host={host} />)
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </main>
   );
