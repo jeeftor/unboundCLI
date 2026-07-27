@@ -3040,3 +3040,50 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   Auth Flows — icons in table rows + badge icons
+   ============================================================ */
+
+/* Icon inside auth badge (table + legend) */
+.auth-badge-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+/* Tone the badge icon to match the badge */
+.auth-badge.cf-access .auth-badge-icon { color: #f09f3c; }
+.auth-badge.forward-auth .auth-badge-icon { color: #7aa2f7; }
+.auth-badge.app-native .auth-badge-icon { color: #3fb971; }
+.auth-badge.none .auth-badge-icon { color: var(--text-3); }
+.auth-badge.cf-service-token .auth-badge-icon { color: #f09f3c; }
+.auth-badge.authentik-bearer .auth-badge-icon { color: #7aa2f7; }
+.auth-badge.app-native-key .auth-badge-icon { color: #3fb971; }
+
+/* Table header icons */
+.auth-table th svg {
+  vertical-align: middle;
+  margin-right: 4px;
+  opacity: 0.6;
+}
+
+/* Hostname cell icons */
+.auth-hostname-icon {
+  vertical-align: middle;
+  margin-right: 6px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.auth-wan-icon {
+  vertical-align: middle;
+  margin-left: 6px;
+  color: #7aa2f7;
+  opacity: 0.7;
+}
+
+/* Status icon tones in table */
+.auth-status-icon.ok { color: #3fb971; }
+.auth-status-icon.warning { color: #f0a830; }
+.auth-status-icon.error { color: #f0506e; }
+.auth-status-icon.unknown { color: var(--text-3); }
