@@ -22,6 +22,150 @@ type DiscoveryOptions struct {
 	// HostAuth fields are left empty.
 }
 
+// StreamEvent is a single event emitted by DiscoverStream.
+type StreamEvent struct {
+	Type string `json:"type"` // "base", "enrich", "done", "error"
+
+	// For "base" and "enrich" events: the hosts being sent.
+	Hosts []*models.HostAuth `json:"hosts,omitempty"`
+
+	// For "enrich" events: which source completed ("cloudflare" or "authentik").
+	Source string `json:"source,omitempty"`
+
+	// For "done" events: which sources were queried.
+	Sources *AuthSources `json:"sources,omitempty"`
+
+	// For "error" events.
+	Error string `json:"error,omitempty"`
+}
+
+// AuthSources indicates which auth discovery sources were queried.
+type AuthSources struct {
+	CloudflareAccess bool `json:"cloudflare_access"`
+	Authentik        bool `json:"authentik"`
+}
+
+// DiscoverStream runs auth discovery and emits events as each phase completes.
+// This allows the frontend to render hosts incrementally:
+//  1. "base" — all hosts with Caddy-derived auth (instant, no API calls)
+//  2. "enrich" — updated hosts after CF Access data arrives (source="cloudflare")
+//  3. "enrich" — updated hosts after Authentik data arrives (source="authentik")
+//  4. "done" — discovery complete, includes source availability
+//
+// If an API call fails, an "error" event is sent but discovery continues
+// with the remaining sources.
+func DiscoverStream(
+	ctx context.Context,
+	entries []*models.Entry,
+	cfClient *api.CloudflareClient,
+	akClient *api.AuthentikClient,
+	emit func(StreamEvent),
+) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Phase 1: Build base auth from entries (instant — no API calls).
+	authMap := make(map[string]*models.HostAuth, len(entries))
+	for _, e := range entries {
+		if e == nil {
+			continue
+		}
+		authMap[e.Hostname] = buildBaseAuth(e)
+	}
+
+	// Classify base auth and emit immediately.
+	baseHosts := make([]*models.HostAuth, 0, len(authMap))
+	for _, ha := range authMap {
+		classifyAuth(ha)
+		baseHosts = append(baseHosts, ha)
+	}
+	emit(StreamEvent{Type: "base", Hosts: baseHosts})
+
+	sources := AuthSources{
+		CloudflareAccess: cfClient != nil,
+		Authentik:        akClient != nil,
+	}
+
+	// Phase 2 + 3: Query CF Access and Authentik in parallel.
+	// Each source emits an "enrich" event as soon as it completes.
+	var wg sync.WaitGroup
+
+	if cfClient != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cfApps, cfPolicies, err := discoverCloudflareAccess(ctx, cfClient)
+			if err != nil {
+				logging.Warn("CF Access discovery failed", "error", err)
+				emit(StreamEvent{Type: "error", Source: "cloudflare", Error: err.Error()})
+				return
+			}
+			// Enrich and emit updated hosts.
+			enrichWithCFAccess(authMap, cfApps, cfPolicies)
+			updated := collectUpdatedHosts(authMap, func(ha *models.HostAuth) bool {
+				return ha.CFAccessAppID != ""
+			})
+			for _, ha := range updated {
+				classifyAuth(ha)
+			}
+			if len(updated) > 0 {
+				emit(StreamEvent{Type: "enrich", Source: "cloudflare", Hosts: updated})
+			}
+		}()
+	}
+
+	if akClient != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			akProviders, akOutposts, err := discoverAuthentik(ctx, akClient)
+			if err != nil {
+				logging.Warn("Authentik discovery failed", "error", err)
+				emit(StreamEvent{Type: "error", Source: "authentik", Error: err.Error()})
+				return
+			}
+			// Enrich and emit updated hosts.
+			enrichWithAuthentik(authMap, akProviders, akOutposts)
+			updated := collectUpdatedHosts(authMap, func(ha *models.HostAuth) bool {
+				return ha.AuthentikProviderPK > 0
+			})
+			for _, ha := range updated {
+				classifyAuth(ha)
+			}
+			if len(updated) > 0 {
+				emit(StreamEvent{Type: "enrich", Source: "authentik", Hosts: updated})
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// Phase 4: Re-classify all hosts (in case enrichment changed status)
+	// and emit done.
+	for _, ha := range authMap {
+		classifyAuth(ha)
+	}
+	emit(StreamEvent{Type: "done", Sources: &sources})
+}
+
+// collectUpdatedHosts returns hosts that match the predicate, sorted by hostname.
+func collectUpdatedHosts(authMap map[string]*models.HostAuth, pred func(*models.HostAuth) bool) []*models.HostAuth {
+	var result []*models.HostAuth
+	for _, ha := range authMap {
+		if pred(ha) {
+			result = append(result, ha)
+		}
+	}
+	// Sort by hostname for stable ordering.
+	for i := 1; i < len(result); i++ {
+		for j := i; j > 0 && result[j-1].Hostname > result[j].Hostname; j-- {
+			result[j-1], result[j] = result[j], result[j-1]
+		}
+	}
+	return result
+}
+
 // Discover queries all auth sources and returns a map of hostname → HostAuth.
 //
 // Parameters:

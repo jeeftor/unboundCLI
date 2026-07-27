@@ -206,6 +206,9 @@ export type HostAuth = {
   has_forward_auth: boolean;
   wan_exposed: boolean;
   notes?: string[];
+  // Frontend-only: marks hosts that have base auth but are awaiting
+  // CF Access / Authentik enrichment from the SSE stream.
+  _stale?: boolean;
 };
 
 export type AuthInventoryResponse = {
