@@ -3087,3 +3087,61 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .auth-status-icon.warning { color: #f0a830; }
 .auth-status-icon.error { color: #f0506e; }
 .auth-status-icon.unknown { color: var(--text-3); }
+
+/* ============================================================
+   Dashboard — SSE service progress chips
+   ============================================================ */
+
+.service-progress-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.service-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-2);
+  color: var(--text-3);
+  transition: all .2s ease;
+}
+
+.service-chip.pending {
+  opacity: 0.5;
+  animation: chip-pulse 1.5s ease-in-out infinite;
+}
+
+.service-chip.loaded {
+  background: rgba(63, 185, 113, .1);
+  color: #3fb971;
+  border-color: rgba(63, 185, 113, .2);
+}
+
+.service-chip.failed {
+  background: rgba(240, 80, 110, .1);
+  color: #f0506e;
+  border-color: rgba(240, 80, 110, .2);
+}
+
+.service-chip.skipped {
+  background: var(--bg-3);
+  color: var(--text-3);
+  opacity: 0.6;
+}
+
+.service-chip-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+@keyframes chip-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}

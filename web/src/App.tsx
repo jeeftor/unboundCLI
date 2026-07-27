@@ -134,6 +134,7 @@ export function App() {
         loading={runtime.loading}
         message={runtime.message}
         messageKind={runtime.messageKind}
+        progress={runtime.progress}
         report={runtime.report}
         summary={filters.summary}
         statusFilter={filters.statusFilter}

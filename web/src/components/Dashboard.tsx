@@ -29,6 +29,7 @@ export function AppShell({
   loading,
   message,
   messageKind,
+  progress,
   report,
   summary,
   statusFilter,
@@ -75,6 +76,7 @@ export function AppShell({
   loading: boolean;
   message: string;
   messageKind: 'info' | 'error' | 'ok';
+  progress: Record<string, import('../types').ProgressEvent>;
   report: EntriesResponse['report'];
   summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number; issues: number };
   statusFilter: string;
@@ -217,6 +219,7 @@ export function AppShell({
                 loading={loading}
                 message={message}
                 messageKind={messageKind}
+                progress={progress}
                 summary={summary}
               />
               <MetricGrid summary={summary} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />

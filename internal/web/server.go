@@ -299,6 +299,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/cloudflare/remove-route", s.handleCloudflareRemoveRoute)
 	s.mux.HandleFunc("/api/cloudflare/repair-dns", s.handleCloudflareRepairDNS)
 	s.mux.HandleFunc("/api/entries", s.handleEntries)
+	s.mux.HandleFunc("/api/entries/stream", s.handleEntriesStream)
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/dns-probe", s.handleDNSProbe)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
@@ -990,6 +991,77 @@ func (s *Server) handleEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, EntriesResponse{Entries: entryResponses(entries), Report: report})
+}
+
+// handleEntriesStream streams entry loading progress via Server-Sent Events.
+// GET /api/entries/stream — sends progress events as each service loads,
+// then a final "done" event with the full entries payload.
+//
+// Events:
+//   - event: progress  (a service status changed: pending → loaded/failed/skipped)
+//   - event: done      (all services loaded, includes full entries + report)
+//   - event: error     (fatal error, loading aborted)
+func (s *Server) handleEntriesStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+
+	// SSE headers.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("streaming not supported"))
+		return
+	}
+
+	ctx := r.Context()
+	runtime := s.runtimeSnapshot()
+
+	// Create a loader with a progress callback that emits SSE events.
+	loader := status.NewDataLoader(
+		runtime.Clients.Caddy,
+		runtime.Clients.Unbound,
+		runtime.Clients.Adguard,
+		runtime.Clients.DNSMasq,
+		runtime.CaddyEndpoint.ServerIP,
+	)
+	loader.WithCloudflareClient(runtime.Clients.Cloudflare)
+	loader.WithContext(ctx)
+	loader.WithProgress(func(ev status.ProgressEvent) {
+		data, err := json.Marshal(ev)
+		if err != nil {
+			logging.Warn("Failed to marshal progress event", "error", err)
+			return
+		}
+		fmt.Fprintf(w, "event: progress\ndata: %s\n\n", data)
+		flusher.Flush()
+	})
+
+	// Load entries (this emits progress events as each service completes).
+	entries, report, err := loader.LoadDataWithReport()
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: {\"error\":%s}\n\n", escapeJSONString(err.Error()))
+		flusher.Flush()
+		return
+	}
+
+	// Send the final entries payload.
+	response := EntriesResponse{
+		Entries: entryResponses(entries),
+		Report:  report,
+	}
+	data, err := json.Marshal(response)
+	if err != nil {
+		logging.Warn("Failed to marshal entries response", "error", err)
+		return
+	}
+	fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
+	flusher.Flush()
 }
 
 func (s *Server) configSummary(runtime *app.Runtime) ConfigSummary {
