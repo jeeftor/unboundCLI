@@ -6,9 +6,17 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
 )
+
+// caddyHTTPClient is a shared client with a sane timeout, matching the pattern
+// used by the other API clients in this package.
+var caddyHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
 
 // CaddyClient handles communication with the Caddy server
 type CaddyClient struct {
@@ -28,21 +36,26 @@ func NewCaddyClient(serverIP string, serverPort int) *CaddyClient {
 func (c *CaddyClient) GetConfig() (map[string]interface{}, error) {
 	url := fmt.Sprintf("http://%s:%d/config/", c.ServerIP, c.ServerPort)
 
-	resp, err := http.Get(url)
+	logging.Debug("Fetching Caddy config", "url", url)
+	resp, err := caddyHTTPClient.Get(url)
 	if err != nil {
+		logging.Error("Failed to connect to Caddy server", "error", err)
 		return nil, fmt.Errorf("failed to connect to Caddy server: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		logging.Error("Caddy returned unexpected status", "code", resp.StatusCode)
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	var config map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+		logging.Error("Failed to parse Caddy config", "error", err)
 		return nil, fmt.Errorf("failed to parse Caddy config: %w", err)
 	}
 
+	logging.Debug("Loaded Caddy config")
 	return config, nil
 }
 

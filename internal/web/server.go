@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"embed"
 	"encoding/hex"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/auth"
 	"github.com/jeeftor/caddy-dns-sync/internal/caddyeditor"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
@@ -174,6 +176,18 @@ type EntriesResponse struct {
 	Report  status.LoadReport `json:"report"`
 }
 
+// AuthInventoryResponse is the response for GET /api/auth/inventory.
+type AuthInventoryResponse struct {
+	Hosts       []models.HostAuth `json:"hosts"`
+	Sources     AuthSources       `json:"sources"`
+}
+
+// AuthSources indicates which auth discovery sources were queried.
+type AuthSources struct {
+	CloudflareAccess bool `json:"cloudflare_access"`
+	Authentik        bool `json:"authentik"`
+}
+
 type ServiceStatusResponse struct {
 	Configured bool   `json:"configured"`
 	IP         string `json:"ip"`
@@ -302,6 +316,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/caddy/deploy", s.handleCaddyDeploy)
 	s.mux.HandleFunc("/api/caddy/templates", s.handleCaddyTemplates)
 	s.mux.HandleFunc("/api/caddy/preview", s.handleCaddyPreview)
+	// Auth inventory
+	s.mux.HandleFunc("/api/auth/inventory", s.handleAuthInventory)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -1058,7 +1074,6 @@ func (s *Server) configSummary(runtime *app.Runtime) ConfigSummary {
 			},
 			Details: map[string]string{
 				"caddy_service_url": caddyServiceURL,
-				"tunnel_id":         runtime.CloudflareConfig.TunnelID,
 			},
 			Missing: cloudflareMissing,
 		},
@@ -1291,13 +1306,14 @@ func applyCaddyEditorConfigUpdate(cfg *caddyeditor.EditorConfig, update *CaddyEd
 
 func (s *Server) reloadRuntimeFromConfig(cfg config.ExtendedConfig) error {
 	current := s.runtimeSnapshot()
-	nextRuntime, err := app.NewRuntimeFromConfigs(cfg.Config, cfg.Adguard, cfg.Cloudflare, app.RuntimeOptions{
+	nextRuntime, err := app.NewRuntimeFromConfigs(cfg.Config, cfg.Adguard, cfg.Cloudflare, cfg.Authentik, app.RuntimeOptions{
 		CaddyServerIP:     current.CaddyEndpoint.ServerIP,
 		CaddyServerPort:   current.CaddyEndpoint.ServerPort,
 		IncludeUnbound:    true,
 		IncludeDNSMasq:    current.Clients.DNSMasq != nil,
 		IncludeAdguard:    true,
 		IncludeCloudflare: true,
+		IncludeAuthentik:  true,
 	})
 	if err != nil {
 		return fmt.Errorf("error refreshing runtime from saved config: %w", err)
@@ -1579,6 +1595,58 @@ func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadR
 	})
 }
 
+// handleAuthInventory returns the auth discovery results for all hostnames.
+// GET /api/auth/inventory — queries Caddy, CF Access, and Authentik to
+// classify each hostname's WAN/LAN/API auth configuration.
+func (s *Server) handleAuthInventory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+
+	ctx := r.Context()
+	runtime := s.runtimeSnapshot()
+
+	// Load entries (Caddy + CF tunnel state) as the base for auth discovery.
+	entries, _, err := s.loadEntries(ctx)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("loading entries for auth discovery: %w", err))
+		return
+	}
+
+	// Run auth discovery with whatever clients are available.
+	authMap, err := auth.Discover(ctx, entries, runtime.Clients.Cloudflare, runtime.Clients.Authentik)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("auth discovery failed: %w", err))
+		return
+	}
+
+	// Convert map to sorted slice.
+	hosts := make([]models.HostAuth, 0, len(authMap))
+	for _, ha := range authMap {
+		hosts = append(hosts, *ha)
+	}
+	// Sort by hostname for stable output.
+	sortHostAuthByName(hosts)
+
+	response := AuthInventoryResponse{
+		Hosts: hosts,
+		Sources: AuthSources{
+			CloudflareAccess: runtime.Clients.Cloudflare != nil,
+			Authentik:        runtime.Clients.Authentik != nil,
+		},
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func sortHostAuthByName(hosts []models.HostAuth) {
+	for i := 1; i < len(hosts); i++ {
+		for j := i; j > 0 && hosts[j-1].Hostname > hosts[j].Hostname; j-- {
+			hosts[j-1], hosts[j] = hosts[j], hosts[j-1]
+		}
+	}
+}
+
 func validPlanService(service string) bool {
 	switch service {
 	case "", "all", "unbound", "adguard", "dhcp", "cloudflare":
@@ -1710,7 +1778,7 @@ func (s *Server) allowMutation(r *http.Request) error {
 	if !s.options.AllowUnsafeBind && !isLoopbackHost(s.options.BoundHost) {
 		return fmt.Errorf("web apply mutations require a loopback bind address")
 	}
-	if s.options.ApplyToken == "" || r.Header.Get("X-UnboundCLI-Token") != s.options.ApplyToken {
+	if s.options.ApplyToken == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-UnboundCLI-Token")), []byte(s.options.ApplyToken)) != 1 {
 		return fmt.Errorf("web apply requires a valid local session token")
 	}
 	if s.options.AllowedOrigin != "" {

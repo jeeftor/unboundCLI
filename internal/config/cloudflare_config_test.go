@@ -1,21 +1,18 @@
 package config
 
 import (
-	"os"
 	"testing"
 )
 
 func TestLoadCloudflareConfig_FromEnv(t *testing.T) {
-	os.Clearenv()
-	os.Setenv("HOME", "/tmp")
+	clearConfigEnvVars(t)
 
-	os.Setenv(EnvCFEnabled, "true")
-	os.Setenv(EnvCFAPIToken, "test-token")
-	os.Setenv(EnvCFAccountID, "test-account-id")
-	os.Setenv(EnvCFZoneID, "test-zone-id")
-	os.Setenv(EnvCFTunnelID, "test-tunnel-id")
-	os.Setenv(EnvCFCaddyServiceURL, "http://10.0.0.15:80")
-	defer os.Clearenv()
+	t.Setenv(EnvCFEnabled, "true")
+	t.Setenv(EnvCFAPIToken, "test-token")
+	t.Setenv(EnvCFAccountID, "test-account-id")
+	t.Setenv(EnvCFZoneID, "test-zone-id")
+	t.Setenv(EnvCFTunnelID, "test-tunnel-id")
+	t.Setenv(EnvCFCaddyServiceURL, "http://10.0.0.15:80")
 
 	cfg, err := LoadCloudflareConfig()
 	if err != nil {
@@ -43,9 +40,15 @@ func TestLoadCloudflareConfig_FromEnv(t *testing.T) {
 }
 
 func TestLoadCloudflareConfig_Defaults(t *testing.T) {
-	os.Clearenv()
-	os.Setenv("HOME", "/tmp")
-	defer os.Clearenv()
+	clearConfigEnvVars(t)
+
+	// Also clear Cloudflare-specific env vars
+	t.Setenv(EnvCFEnabled, "")
+	t.Setenv(EnvCFAPIToken, "")
+	t.Setenv(EnvCFAccountID, "")
+	t.Setenv(EnvCFZoneID, "")
+	t.Setenv(EnvCFTunnelID, "")
+	t.Setenv(EnvCFCaddyServiceURL, "")
 
 	cfg, err := LoadCloudflareConfig()
 	if err != nil {

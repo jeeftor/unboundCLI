@@ -2,7 +2,6 @@ package sync
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
@@ -10,12 +9,7 @@ import (
 
 // CaddyAdguardSyncOptions contains options for the Caddy to AdguardHome sync operation
 type CaddyAdguardSyncOptions struct {
-	DryRun             bool
-	CaddyServerIP      string
-	CaddyServerPort    int
-	EntryDescription   string
-	LegacyDescriptions []string
-	Verbose            bool
+	BaseSyncOptions
 }
 
 // AdguardSyncResult contains the results of the AdguardHome sync operation
@@ -72,7 +66,7 @@ func SyncCaddyWithAdguard(
 	caddyHostnameSet := make(map[string]bool)
 	for hostname := range hostnameMap {
 		// Skip non-FQDN hostnames
-		if strings.Contains(hostname, ".") {
+		if IsFQDN(hostname) {
 			caddyHostnameSet[hostname] = true
 		}
 	}
@@ -102,7 +96,7 @@ func SyncCaddyWithAdguard(
 
 	for hostname, serverIP := range hostnameMap {
 		// Skip if hostname doesn't contain a dot (not a FQDN)
-		if !strings.Contains(hostname, ".") {
+		if !IsFQDN(hostname) {
 			continue
 		}
 

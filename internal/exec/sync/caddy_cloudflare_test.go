@@ -99,11 +99,13 @@ func TestSyncCaddyWithCloudflareAppliesPlannedUpdates(t *testing.T) {
 	})
 
 	result, err := SyncCaddyWithCloudflare(client, CaddyCloudflareSyncOptions{
-		CaddyServerIP:    caddyHost,
-		CaddyServerPort:  caddyPort,
-		EntryDescription: "managed by test",
-		DirectSubdomain:  "dev",
-		SyncDirect:       true,
+		BaseSyncOptions: BaseSyncOptions{
+			CaddyServerIP:    caddyHost,
+			CaddyServerPort:  caddyPort,
+			EntryDescription: "managed by test",
+		},
+		DirectSubdomain: "dev",
+		SyncDirect:      true,
 	})
 	if err != nil {
 		t.Fatalf("SyncCaddyWithCloudflare failed: %v", err)

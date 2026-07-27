@@ -15,11 +15,20 @@ const (
 	// DefaultConfigFileName is the default name for the config file
 	DefaultConfigFileName = ".caddy-dns-sync.json"
 
-	// Environment variable names
-	EnvAPIKey    = "UNBOUND_CLI_API_KEY"
-	EnvAPISecret = "UNBOUND_CLI_API_SECRET"
-	EnvBaseURL   = "UNBOUND_CLI_BASE_URL"
-	EnvInsecure  = "UNBOUND_CLI_INSECURE"
+	// Primary environment variable names (preferred).
+	// The UNBOUND_CLI_* equivalents below remain supported as deprecated
+	// fallbacks for users with existing shell configs.
+	EnvAPIKey    = "CADDY_DNS_SYNC_API_KEY"
+	EnvAPISecret = "CADDY_DNS_SYNC_API_SECRET"
+	EnvBaseURL   = "CADDY_DNS_SYNC_BASE_URL"
+	EnvInsecure  = "CADDY_DNS_SYNC_INSECURE"
+
+	// Deprecated: kept as fallback aliases for backwards compatibility.
+	// These will be removed in a future release.
+	EnvAPIKeyDeprecated    = "UNBOUND_CLI_API_KEY"
+	EnvAPISecretDeprecated = "UNBOUND_CLI_API_SECRET"
+	EnvBaseURLDeprecated   = "UNBOUND_CLI_BASE_URL"
+	EnvInsecureDeprecated  = "UNBOUND_CLI_INSECURE"
 
 	// AdguardHome specific environment variables
 	EnvAdguardEnabled  = "ADGUARD_ENABLED"
@@ -36,7 +45,30 @@ const (
 	EnvCFTunnelID        = "CF_TUNNEL_ID"
 	EnvCFCaddyServiceURL = "CF_CADDY_SERVICE_URL"
 	EnvCFInsecure        = "CF_INSECURE"
+
+	// Authentik specific environment variables
+	EnvAuthentikEnabled  = "AUTHENTIK_ENABLED"
+	EnvAuthentikAPIToken = "AUTHENTIK_API_TOKEN"
+	EnvAuthentikBaseURL  = "AUTHENTIK_BASE_URL"
+	EnvAuthentikInsecure = "AUTHENTIK_INSECURE"
 )
+
+// envOr returns the value of the primary env var if set, otherwise the
+// fallback (deprecated) env var. Used to migrate from UNBOUND_CLI_* to
+// CADDY_DNS_SYNC_* without breaking existing user setups.
+func envOr(primary, fallback string) string {
+	if v := os.Getenv(primary); v != "" {
+		return v
+	}
+	return os.Getenv(fallback)
+}
+
+// envBoolOr returns the bool value of the primary env var if set, otherwise
+// the fallback (deprecated) env var. "true" or "1" are treated as true.
+func envBoolOr(primary, fallback string) bool {
+	v := envOr(primary, fallback)
+	return v == "true" || v == "1"
+}
 
 // CaddyConfig represents configuration specific to Caddy server integration
 type CaddyConfig struct {
@@ -76,12 +108,33 @@ func (c CloudflareConfig) GetCloudflareAPIConfig() api.CloudflareConfig {
 	}
 }
 
+// AuthentikConfig represents configuration specific to Authentik integration.
+// Authentik is the identity provider used for Caddy forward_auth and OIDC.
+// The API token is an admin-level token created via the Authentik admin UI
+// (Directory → Tokens → Create Token, intent=API Access Token).
+type AuthentikConfig struct {
+	Enabled  bool   `json:"enabled" mapstructure:"enabled"`
+	APIToken string `json:"api_token,omitempty" mapstructure:"api_token"`
+	BaseURL  string `json:"base_url,omitempty" mapstructure:"base_url"`
+	Insecure bool   `json:"insecure" mapstructure:"insecure"`
+}
+
+// GetAuthentikAPIConfig creates an api.AuthentikConfig suitable for API client use
+func (c AuthentikConfig) GetAuthentikAPIConfig() api.AuthentikConfig {
+	return api.AuthentikConfig{
+		APIToken: c.APIToken,
+		BaseURL:  c.BaseURL,
+		Insecure: c.Insecure,
+	}
+}
+
 // ExtendedConfig represents the full application configuration including AdguardHome and Caddy
 type ExtendedConfig struct {
 	api.Config  `json:",inline" mapstructure:",squash"`
 	Caddy       CaddyConfig              `json:"caddy" mapstructure:"caddy"`
 	Adguard     AdguardConfig            `json:"adguard" mapstructure:"adguard"`
 	Cloudflare  CloudflareConfig         `json:"cloudflare" mapstructure:"cloudflare"`
+	Authentik   AuthentikConfig          `json:"authentik" mapstructure:"authentik"`
 	CaddyEditor caddyeditor.EditorConfig `json:"caddy_editor" mapstructure:"caddy_editor"`
 }
 
@@ -129,12 +182,13 @@ func SaveConfig(config api.Config, filePath string) error {
 func LoadConfig() (api.Config, error) {
 	var config api.Config
 
-	// First check environment variables
-	if apiKey := os.Getenv(EnvAPIKey); apiKey != "" {
+	// First check environment variables (new CADDY_DNS_SYNC_* names, with
+	// deprecated UNBOUND_CLI_* fallbacks for backwards compatibility).
+	if apiKey := envOr(EnvAPIKey, EnvAPIKeyDeprecated); apiKey != "" {
 		config.APIKey = apiKey
-		config.APISecret = os.Getenv(EnvAPISecret)
-		config.BaseURL = os.Getenv(EnvBaseURL)
-		config.Insecure = os.Getenv(EnvInsecure) == "true" || os.Getenv(EnvInsecure) == "1"
+		config.APISecret = envOr(EnvAPISecret, EnvAPISecretDeprecated)
+		config.BaseURL = envOr(EnvBaseURL, EnvBaseURLDeprecated)
+		config.Insecure = envBoolOr(EnvInsecure, EnvInsecureDeprecated)
 
 		// Validate required fields
 		if config.APISecret != "" && config.BaseURL != "" {
@@ -198,13 +252,13 @@ func LoadAdguardConfig() (AdguardConfig, error) {
 		if username := os.Getenv(EnvAdguardUsername); username != "" {
 			config.Username = username
 		} else {
-			config.Username = os.Getenv(EnvAPIKey) // Fallback to main API key
+			config.Username = envOr(EnvAPIKey, EnvAPIKeyDeprecated) // Fallback to main API key
 		}
 
 		if password := os.Getenv(EnvAdguardPassword); password != "" {
 			config.Password = password
 		} else {
-			config.Password = os.Getenv(EnvAPISecret) // Fallback to main API secret
+			config.Password = envOr(EnvAPISecret, EnvAPISecretDeprecated) // Fallback to main API secret
 		}
 
 		if baseURL := os.Getenv(EnvAdguardBaseURL); baseURL != "" {
@@ -303,6 +357,57 @@ func LoadCloudflareConfig() (CloudflareConfig, error) {
 	cfg = extendedConfig.Cloudflare
 
 	viper.Set("cloudflare", cfg)
+
+	return cfg, nil
+}
+
+// LoadAuthentikConfig loads Authentik-specific configuration from environment
+// variables, viper, or config file. Authentik is optional — if not configured,
+// the returned config will have Enabled=false.
+func LoadAuthentikConfig() (AuthentikConfig, error) {
+	var cfg AuthentikConfig
+
+	// Check environment variables first
+	if enabledEnv := os.Getenv(EnvAuthentikEnabled); enabledEnv != "" {
+		cfg.Enabled = enabledEnv == "true" || enabledEnv == "1"
+		cfg.APIToken = os.Getenv(EnvAuthentikAPIToken)
+		cfg.BaseURL = os.Getenv(EnvAuthentikBaseURL)
+		insecureEnv := os.Getenv(EnvAuthentikInsecure)
+		cfg.Insecure = insecureEnv == "true" || insecureEnv == "1"
+		return cfg, nil
+	}
+
+	// Try to load from viper
+	if viper.IsSet("authentik") {
+		if err := viper.UnmarshalKey("authentik", &cfg); err != nil {
+			return cfg, fmt.Errorf("error parsing Authentik config from viper: %w", err)
+		}
+		return cfg, nil
+	}
+
+	// Try to load from config file
+	configPath, err := GetDefaultConfigPath()
+	if err != nil {
+		return cfg, err
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return cfg, nil
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return cfg, fmt.Errorf("error reading config file: %w", err)
+	}
+
+	var extendedConfig ExtendedConfig
+	if err := json.Unmarshal(data, &extendedConfig); err != nil {
+		return cfg, fmt.Errorf("error parsing extended config file: %w", err)
+	}
+
+	cfg = extendedConfig.Authentik
+
+	viper.Set("authentik", cfg)
 
 	return cfg, nil
 }

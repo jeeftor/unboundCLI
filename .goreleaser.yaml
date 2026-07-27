@@ -43,7 +43,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{ .CommitDate }} -X main.builtBy=goreleaser
+      - -s -w -X github.com/jeeftor/caddy-dns-sync/cmd.Version={{.Version}} -X github.com/jeeftor/caddy-dns-sync/cmd.Commit={{.Commit}} -X github.com/jeeftor/caddy-dns-sync/cmd.Date={{ .CommitDate }} -X main.builtBy=goreleaser
 
 universal_binaries:
   - replace: true

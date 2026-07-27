@@ -1,10 +1,10 @@
 import {
-  ChevronDown,
   FileCode2,
   Gauge,
   Loader2,
   RefreshCw,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   TerminalSquare,
   Zap
@@ -14,10 +14,10 @@ import {
   serviceOrder
 } from '../lib/services';
 import type { ConfigResponse, EntriesResponse, ServiceKey } from '../types';
+import { TabBar } from './TabBar';
+import type { TabId } from './TabBar';
 
-type AppView = 'dashboard' | 'caddy-editor';
-
-export function Topbar({ config, loading, syncLoading, view, setView, onRefresh, onOpenConfig }: { config: ConfigResponse | null; loading: boolean; syncLoading: boolean; view: AppView; setView: (v: AppView) => void; onRefresh: () => void; onOpenConfig: () => void }) {
+export function Topbar({ config, loading, syncLoading, view, setView, onRefresh, onOpenConfig }: { config: ConfigResponse | null; loading: boolean; syncLoading: boolean; view: TabId; setView: (v: TabId) => void; onRefresh: () => void; onOpenConfig: () => void }) {
   const busy = loading || syncLoading;
   const busyLabel = syncLoading ? 'Syncing...' : 'Loading...';
 
@@ -30,6 +30,7 @@ export function Topbar({ config, loading, syncLoading, view, setView, onRefresh,
           <span>{config?.version ? <span className="brand-version">{config.version}</span> : 'Local dashboard'}</span>
         </div>
       </div>
+      <TabBar active={view} onChange={setView} />
       {busy && (
         <div className="topbar-activity" role="status" aria-live="polite">
           <Loader2 size={14} className="spin" />
@@ -42,11 +43,6 @@ export function Topbar({ config, loading, syncLoading, view, setView, onRefresh,
         <em className={config?.enabled?.caddy === false ? 'down' : ''}>{config?.enabled?.caddy === false ? 'Offline' : 'Running'}</em>
       </div>
       <div className="top-actions">
-        <button type="button" className={view === 'caddy-editor' ? 'active' : ''} onClick={() => setView(view === 'caddy-editor' ? 'dashboard' : 'caddy-editor')}>
-          {view === 'caddy-editor'
-            ? <><ChevronDown size={16} style={{ transform: 'rotate(90deg)' }} /> Dashboard</>
-            : <><FileCode2 size={16} /> Caddy Editor</>}
-        </button>
         <button id="refresh" type="button" onClick={onRefresh} disabled={loading}>
           {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Refresh
         </button>
@@ -58,7 +54,7 @@ export function Topbar({ config, loading, syncLoading, view, setView, onRefresh,
   );
 }
 
-export function Sidebar({ config, report, view, setView, onOpenConfig }: { config: ConfigResponse | null; report: EntriesResponse['report']; view: AppView; setView: (v: AppView) => void; onOpenConfig: () => void }) {
+export function Sidebar({ config, report, view, setView, onOpenConfig }: { config: ConfigResponse | null; report: EntriesResponse['report']; view: TabId; setView: (v: TabId) => void; onOpenConfig: () => void }) {
   return (
     <aside className="sidebar">
       <div className="brand-lockup">
@@ -71,7 +67,8 @@ export function Sidebar({ config, report, view, setView, onOpenConfig }: { confi
       <nav className="nav-stack" aria-label="Primary">
         <span className="nav-section">Overview</span>
         <button type="button" className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}><Gauge size={15} /> Dashboard</button>
-        <button type="button" className={`nav-item ${view === 'caddy-editor' ? 'active' : ''}`} onClick={() => setView('caddy-editor')}><FileCode2 size={15} /> Caddy Editor</button>
+        <button type="button" className={`nav-item ${view === 'caddyfile' ? 'active' : ''}`} onClick={() => setView('caddyfile')}><FileCode2 size={15} /> Caddyfile</button>
+        <button type="button" className={`nav-item ${view === 'auth' ? 'active' : ''}`} onClick={() => setView('auth')}><ShieldCheck size={15} /> Auth Flows</button>
         <a className="nav-item" href="#sync-panel"><SlidersHorizontal size={15} /> Sync plan</a>
         <a className="nav-item" href="#sync-log"><TerminalSquare size={15} /> Logs</a>
         <span className="nav-section">Services</span>

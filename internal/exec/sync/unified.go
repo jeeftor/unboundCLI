@@ -9,12 +9,7 @@ import (
 
 // CommonSyncOptions contains common options for unified sync operations
 type CommonSyncOptions struct {
-	DryRun             bool
-	CaddyServerIP      string
-	CaddyServerPort    int
-	EntryDescription   string
-	LegacyDescriptions []string
-	Verbose            bool
+	BaseSyncOptions
 }
 
 // UnifiedSyncResult contains the results of syncing to both systems
@@ -59,12 +54,7 @@ func UnifiedCaddySync(
 		logging.Info("Starting UnboundDNS sync", "hostnames", len(hostnameMap))
 
 		unboundOptions := CaddySyncOptions{
-			DryRun:             options.DryRun,
-			CaddyServerIP:      options.CaddyServerIP,
-			CaddyServerPort:    options.CaddyServerPort,
-			EntryDescription:   options.EntryDescription,
-			LegacyDescriptions: options.LegacyDescriptions,
-			Verbose:            options.Verbose,
+			BaseSyncOptions: options.BaseSyncOptions,
 		}
 
 		// Use existing sync function but with pre-fetched hostname map
@@ -86,12 +76,7 @@ func UnifiedCaddySync(
 		logging.Info("Starting AdguardHome sync", "hostnames", len(hostnameMap))
 
 		adguardOptions := CaddyAdguardSyncOptions{
-			DryRun:             options.DryRun,
-			CaddyServerIP:      options.CaddyServerIP,
-			CaddyServerPort:    options.CaddyServerPort,
-			EntryDescription:   options.EntryDescription,
-			LegacyDescriptions: options.LegacyDescriptions,
-			Verbose:            options.Verbose,
+			BaseSyncOptions: options.BaseSyncOptions,
 		}
 
 		// Use existing sync function but with pre-fetched hostname map
@@ -137,25 +122,16 @@ func syncCaddyWithUnboundInternal(
 		return nil, fmt.Errorf("error fetching overrides: %w", err)
 	}
 
-	// Organize overrides for easier processing (copied from caddy.go)
-	syncCreatedOverrides := make(map[string]api.DNSOverride)
-	otherOverrides := make(map[string]api.DNSOverride)
-
-	for _, override := range existingOverrides {
-		key := fmt.Sprintf("%s.%s", override.Host, override.Domain)
-		if override.Description == options.EntryDescription ||
-			isLegacyDescription(override.Description, options.LegacyDescriptions) {
-			syncCreatedOverrides[key] = override
-		} else {
-			otherOverrides[key] = override
-		}
-	}
+	// Organize overrides for easier processing
+	syncCreatedOverrides, otherOverrides := OrganizeOverridesByOwnership(
+		existingOverrides, options.EntryDescription, options.LegacyDescriptions,
+	)
 
 	// Process changes (logic from caddy.go)
 	var toAdd, toUpdate, toUpdateDesc []string
 
 	for hostname, serverIP := range hostnameMap {
-		if !containsDot(hostname) {
+		if !IsFQDN(hostname) {
 			continue
 		}
 
@@ -249,7 +225,7 @@ func syncCaddyWithAdguardInternal(
 	addedDomains := make(map[string]bool)
 
 	for hostname, serverIP := range hostnameMap {
-		if !containsDot(hostname) || addedDomains[hostname] {
+		if !IsFQDN(hostname) || addedDomains[hostname] {
 			continue
 		}
 		addedDomains[hostname] = true
@@ -308,14 +284,4 @@ func syncCaddyWithAdguardInternal(
 		OtherRewrites:  otherRewrites,
 		ExistingCount:  len(existingRewrites),
 	}, nil
-}
-
-// Helper function to check if hostname contains a dot
-func containsDot(hostname string) bool {
-	for _, char := range hostname {
-		if char == '.' {
-			return true
-		}
-	}
-	return false
 }

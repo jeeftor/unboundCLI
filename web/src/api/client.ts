@@ -1,5 +1,6 @@
 import type {
   ApplyResponse,
+  AuthInventoryResponse,
   CaddyEntriesResponse,
   CaddyDiffResponse,
   CaddyPreviewResponse,
@@ -116,4 +117,7 @@ export const api = {
 
   // DNS probe via Cloudflare's public resolver (1.1.1.1)
   dnsProbe: (hostname: string) => getJSON<{ resolved: boolean; cname?: string; addresses?: string[]; error?: string }>(`/api/dns-probe?hostname=${encodeURIComponent(hostname)}`),
+
+  // Auth inventory
+  authInventory: (signal?: AbortSignal) => getJSON<AuthInventoryResponse>('/api/auth/inventory', signal),
 };

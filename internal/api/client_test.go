@@ -77,6 +77,8 @@ func TestClientMutatingEndpointsUseExpectedPaths(t *testing.T) {
 			fmt.Fprint(w, `{"result":"deleted"}`)
 		case "/api/unbound/service/reconfigure":
 			fmt.Fprint(w, `{"status":"ok"}`)
+		case "/api/core/firmware/backup":
+			fmt.Fprint(w, `{"status":"ok"}`)
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}

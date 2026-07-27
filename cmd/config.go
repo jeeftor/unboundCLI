@@ -32,10 +32,13 @@ The configuration will be saved to a file for future use.
 You can also use environment variables instead of a config file:
 
 UnboundDNS (OPNSense):
-  UNBOUND_CLI_API_KEY    - API key for OPNSense
-  UNBOUND_CLI_API_SECRET - API secret for OPNSense
-  UNBOUND_CLI_BASE_URL   - Base URL for OPNSense (e.g., https://10.0.0.1)
-  UNBOUND_CLI_INSECURE   - Set to "true" or "1" to skip SSL verification
+  CADDY_DNS_SYNC_API_KEY    - API key for OPNSense
+  CADDY_DNS_SYNC_API_SECRET - API secret for OPNSense
+  CADDY_DNS_SYNC_BASE_URL   - Base URL for OPNSense (e.g., https://10.0.0.1)
+  CADDY_DNS_SYNC_INSECURE   - Set to "true" or "1" to skip SSL verification
+
+  (Deprecated but still supported: UNBOUND_CLI_API_KEY, UNBOUND_CLI_API_SECRET,
+   UNBOUND_CLI_BASE_URL, UNBOUND_CLI_INSECURE)
 
 AdguardHome:
   ADGUARD_ENABLED        - Set to "true" to enable AdguardHome integration

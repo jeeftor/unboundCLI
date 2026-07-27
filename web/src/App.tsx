@@ -1,21 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell } from './components/Dashboard';
 import { api } from './api/client';
+import { setTabHash, tabFromHash } from './components/TabBar';
+import type { TabId } from './components/TabBar';
 import { useConfigForms } from './hooks/useConfigForms';
 import { useEntryFilters } from './hooks/useEntryFilters';
 import { useRuntimeData } from './hooks/useRuntimeData';
 import { useSyncPlan } from './hooks/useSyncPlan';
 import type { ServiceKey } from './types';
 
-type AppView = 'dashboard' | 'caddy-editor';
-
 export function App() {
-  const [view, setView] = useState<AppView>('dashboard');
+  const [view, setView] = useState<TabId>(() => tabFromHash());
   const [configOpen, setConfigOpen] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [tableScrolls, setTableScrolls] = useState(false);
   const e2eRan = useRef(false);
   const clearPlanRef = useRef<(() => void) | null>(null);
+
+  // Sync hash → view (browser back/forward, bookmarkable URLs).
+  const handleSetView = useCallback((v: TabId) => {
+    setTabHash(v);
+    setView(v);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => setView(tabFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const clearPlanForDataChange = useCallback(() => {
     clearPlanRef.current?.();
@@ -117,7 +129,7 @@ export function App() {
     >
       <AppShell
         view={view}
-        setView={setView}
+        setView={handleSetView}
         config={runtime.config}
         loading={runtime.loading}
         message={runtime.message}

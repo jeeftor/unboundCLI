@@ -134,7 +134,7 @@ func init() {
 
 	// Global flags
 	rootCmd.PersistentFlags().
-		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.caddy-dns-sync.yaml)")
+		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.caddy-dns-sync.json)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().
 		StringVar(&logLevel, "log-level", "info", "set logging level (debug, info, warn, error)")
@@ -162,7 +162,7 @@ func initConfig() {
 
 		// Search config in home directory with name ".caddy-dns-sync" (without extension)
 		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
+		viper.SetConfigType("json")
 		viper.SetConfigName(".caddy-dns-sync")
 	}
 
