@@ -144,7 +144,7 @@ const STATUS_INFO: Record<string, AuthMeta> = {
 const SECTION_META = {
   wan: { label: 'WAN Auth', subtitle: 'internet-facing traffic', icon: Globe, color: 'blue' },
   lan: { label: 'LAN Auth', subtitle: 'internal traffic', icon: Wifi, color: 'green' },
-  api: { label: 'API Auth', subtitle: 'machine-to-machine', icon: Terminal, color: 'purple' },
+  api: { label: 'API Auth', subtitle: 'scripts & automation — how non-browser clients authenticate', icon: Terminal, color: 'purple' },
   status: { label: 'Status', subtitle: 'overall health', icon: ShieldCheck, color: 'gray' },
 } as const;
 
@@ -536,7 +536,7 @@ export function AuthFlowsTab() {
                 <th><Network size={13} /> Hostname</th>
                 <th><Globe size={13} /> WAN Auth</th>
                 <th><Wifi size={13} /> LAN Auth</th>
-                <th><Terminal size={13} /> API Auth</th>
+                <th title="How scripts, automation, and other non-browser clients authenticate to this host's API. Different from browser login — uses tokens/keys instead of interactive login."><Terminal size={13} /> API Auth</th>
                 <th><ShieldCheck size={13} /> Status</th>
               </tr>
             </thead>
