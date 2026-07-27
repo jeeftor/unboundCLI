@@ -2,8 +2,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { ConfigResponse, EntriesResponse, Entry } from '../types';
 
+const CONFIG_CACHE_KEY = 'caddy-dns-sync:config';
+
+function loadCachedConfig(): ConfigResponse | null {
+  try {
+    const raw = sessionStorage.getItem(CONFIG_CACHE_KEY);
+    return raw ? JSON.parse(raw) as ConfigResponse : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedConfig(cfg: ConfigResponse) {
+  try {
+    sessionStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(cfg));
+  } catch {
+    // sessionStorage might be full or unavailable — non-fatal.
+  }
+}
+
 export function useRuntimeData(onDataChanged?: () => void) {
-  const [config, setConfig] = useState<ConfigResponse | null>(null);
+  const [config, setConfig] = useState<ConfigResponse | null>(() => loadCachedConfig());
   const [entries, setEntries] = useState<Entry[]>([]);
   const [report, setReport] = useState<EntriesResponse['report']>({});
   const [loading, setLoading] = useState(true);
@@ -14,6 +33,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
 
   const applyConfig = useCallback((nextConfig: ConfigResponse) => {
     setConfig(nextConfig);
+    saveCachedConfig(nextConfig);
   }, []);
 
   const shouldHoldLoadingForE2E = useCallback(() => {
@@ -40,6 +60,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
       ]);
       if (requestID !== sequence.current) return;
       setConfig(nextConfig);
+      saveCachedConfig(nextConfig);
       setEntries(data.entries || []);
       setReport(data.report || {});
       onDataChanged?.();
