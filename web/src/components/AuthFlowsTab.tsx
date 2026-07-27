@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   CheckCircle2,
+  ChevronDown,
   Cloud,
   Fingerprint,
   Globe,
@@ -11,6 +12,7 @@ import {
   LockKeyhole,
   Monitor,
   Network,
+  Pencil,
   RefreshCw,
   Route,
   Search,
@@ -30,8 +32,11 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
 import type {
+  APIAuthMode,
   AuthStatus,
   HostAuth,
+  LANAuthMode,
+  WANAuthMode,
 } from '../types';
 
 // ─── Auth type metadata ─────────────────────────────────────────────────────
@@ -165,6 +170,107 @@ function AuthBadge({ value, info, showIcon = true }: { value: string; info: Reco
   );
 }
 
+// ─── Pending changes tracking ────────────────────────────────────────────────
+
+type AuthField = 'wan_auth' | 'lan_auth' | 'api_auth';
+
+type PendingChange = {
+  hostname: string;
+  field: AuthField;
+  oldValue: string;
+  newValue: string;
+};
+
+function changesKey(hostname: string, field: AuthField) {
+  return `${hostname}::${field}`;
+}
+
+// ─── Editable auth badge with inline dropdown ────────────────────────────────
+
+function EditableAuthBadge({
+  hostname,
+  field,
+  value,
+  info,
+  disabled,
+  pendingValue,
+  onChange,
+}: {
+  hostname: string;
+  field: AuthField;
+  value: string;
+  info: Record<string, AuthMeta>;
+  disabled?: boolean;
+  pendingValue?: string;
+  onChange: (hostname: string, field: AuthField, newValue: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const displayValue = pendingValue ?? value;
+  const isPending = pendingValue !== undefined && pendingValue !== value;
+  const meta = info[displayValue] ?? { label: displayValue, desc: '', icon: HelpCircle, tone: 'gray' };
+  const Icon = meta.icon;
+  const cls = displayValue === 'none' ? 'auth-badge none' : `auth-badge ${displayValue.replace(/_/g, '-')}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  if (disabled) {
+    return <span className="auth-na" title="This host is not exposed to the internet (no Cloudflare tunnel). WAN auth doesn't apply.">Not exposed</span>;
+  }
+
+  return (
+    <span className="auth-badge-editable" ref={ref}>
+      <button
+        type="button"
+        className={`${cls} ${isPending ? 'pending' : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(o => !o);
+        }}
+        title={meta.desc + (isPending ? ' (pending change)' : '')}
+      >
+        <Icon size={12} className="auth-badge-icon" />
+        {meta.label}
+        {isPending && <span className="auth-badge-pending-dot" />}
+        <ChevronDown size={10} className="auth-badge-chevron" />
+      </button>
+      {open && (
+        <div className="auth-dropdown" onClick={e => e.stopPropagation()}>
+          {Object.entries(info).map(([key, m]) => {
+            const ItemIcon = m.icon;
+            const isSelected = key === displayValue;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`auth-dropdown-item ${isSelected ? 'selected' : ''}`}
+                onClick={() => {
+                  onChange(hostname, field, key);
+                  setOpen(false);
+                }}
+                title={m.desc}
+              >
+                <ItemIcon size={13} className="auth-dropdown-item-icon" />
+                <span className="auth-dropdown-item-label">{m.label}</span>
+                {isSelected && <CheckCircle2 size={12} className="auth-dropdown-item-check" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function StatusIcon({ status }: { status: AuthStatus }) {
   const meta = STATUS_INFO[status] ?? STATUS_INFO.unknown;
   const Icon = meta.icon;
@@ -274,7 +380,17 @@ function AuthLegend({ open, onToggle }: { open: boolean; onToggle: () => void })
 
 // ─── Host row ────────────────────────────────────────────────────────────────
 
-function HostRow({ host }: { host: HostAuth }) {
+function HostRow({
+  host,
+  pendingChanges,
+  onBadgeChange,
+  onEditHost,
+}: {
+  host: HostAuth;
+  pendingChanges: Map<string, PendingChange>;
+  onBadgeChange: (hostname: string, field: AuthField, newValue: string) => void;
+  onEditHost: (hostname: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const hasDetails = Boolean(
     host.cf_access_app_id ||
@@ -283,27 +399,55 @@ function HostRow({ host }: { host: HostAuth }) {
   );
 
   const isStale = host._stale;
+  const wanPending = pendingChanges.get(changesKey(host.hostname, 'wan_auth'))?.newValue;
+  const lanPending = pendingChanges.get(changesKey(host.hostname, 'lan_auth'))?.newValue;
+  const apiPending = pendingChanges.get(changesKey(host.hostname, 'api_auth'))?.newValue;
+  const hasPendingChanges = pendingChanges.size > 0 && Array.from(pendingChanges.values()).some(c => c.hostname === host.hostname);
 
   return (
     <>
-      <tr className={`auth-row ${isStale ? 'stale' : ''}`} onClick={() => hasDetails && setExpanded(e => !e)}>
-        <td className="auth-hostname">
+      <tr className={`auth-row ${isStale ? 'stale' : ''} ${hasPendingChanges ? 'has-pending' : ''}`}>
+        <td className="auth-hostname" onClick={() => hasDetails && setExpanded(e => !e)}>
           <span className="auth-expand">{hasDetails ? (expanded ? '▾' : '▸') : ''}</span>
           <Network size={13} className="auth-hostname-icon" />
           {host.hostname}
           {host.wan_exposed && <Globe size={12} className="auth-wan-icon" title="WAN-exposed" />}
           {isStale && <span className="auth-stale-tag">enriching…</span>}
+          {hasPendingChanges && <span className="auth-pending-tag" title="Has pending changes">{pendingChanges.size > 0 ? Array.from(pendingChanges.values()).filter(c => c.hostname === host.hostname).length : 0} pending</span>}
+          <button type="button" className="auth-edit-btn" onClick={(e) => { e.stopPropagation(); onEditHost(host.hostname); }} title="Edit auth configuration">
+            <Pencil size={12} />
+          </button>
         </td>
         <td className="auth-cell">
-          {host.wan_exposed
-            ? <AuthBadge value={host.wan_auth} info={WAN_AUTH_INFO} />
-            : <span className="auth-na" title="This host is not exposed to the internet (no Cloudflare tunnel). WAN auth doesn't apply.">Not exposed</span>}
+          <EditableAuthBadge
+            hostname={host.hostname}
+            field="wan_auth"
+            value={host.wan_auth}
+            info={WAN_AUTH_INFO}
+            disabled={!host.wan_exposed}
+            pendingValue={wanPending}
+            onChange={onBadgeChange}
+          />
         </td>
         <td className="auth-cell">
-          <AuthBadge value={host.lan_auth} info={LAN_AUTH_INFO} />
+          <EditableAuthBadge
+            hostname={host.hostname}
+            field="lan_auth"
+            value={host.lan_auth}
+            info={LAN_AUTH_INFO}
+            pendingValue={lanPending}
+            onChange={onBadgeChange}
+          />
         </td>
         <td className="auth-cell">
-          <AuthBadge value={host.api_auth} info={API_AUTH_INFO} />
+          <EditableAuthBadge
+            hostname={host.hostname}
+            field="api_auth"
+            value={host.api_auth}
+            info={API_AUTH_INFO}
+            pendingValue={apiPending}
+            onChange={onBadgeChange}
+          />
         </td>
         <td className="auth-cell">
           <span className={`auth-indicator ${host.status}`}>
@@ -366,6 +510,9 @@ export function AuthFlowsTab() {
   const [errors, setErrors] = useState<string[]>([]);
   const [legendOpen, setLegendOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(new Map());
+  const [editModalHost, setEditModalHost] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const load = useCallback(() => {
@@ -454,6 +601,57 @@ export function AuthFlowsTab() {
       }
     };
   }, [load]);
+
+  // ─── Pending changes handlers ──────────────────────────────────────────────
+
+  const handleBadgeChange = useCallback((hostname: string, field: AuthField, newValue: string) => {
+    setPendingChanges(prev => {
+      const next = new Map(prev);
+      const host = hosts.get(hostname);
+      if (!host) return prev;
+      const oldValue = host[field] as string;
+      const key = changesKey(hostname, field);
+      if (newValue === oldValue) {
+        next.delete(key);
+      } else {
+        next.set(key, { hostname, field, oldValue, newValue });
+      }
+      return next;
+    });
+  }, [hosts]);
+
+  const handleRevertChange = useCallback((hostname: string, field: AuthField) => {
+    setPendingChanges(prev => {
+      const next = new Map(prev);
+      next.delete(changesKey(hostname, field));
+      return next;
+    });
+  }, []);
+
+  const handleRevertAll = useCallback(() => {
+    setPendingChanges(new Map());
+  }, []);
+
+  const handleRevertHost = useCallback((hostname: string) => {
+    setPendingChanges(prev => {
+      const next = new Map(prev);
+      for (const [key, change] of next) {
+        if (change.hostname === hostname) next.delete(key);
+      }
+      return next;
+    });
+  }, []);
+
+  // "Deploy" is a no-op — this is UI-only, no actual commands issued.
+  const handleDeploy = useCallback(() => {
+    // In the future, this would POST pending changes to a backend endpoint.
+    // For now, just clear them with a confirmation message.
+    setPendingChanges(new Map());
+    setReviewOpen(false);
+  }, []);
+
+  const pendingChangesList = Array.from(pendingChanges.values());
+  const pendingHosts = new Set(pendingChangesList.map(c => c.hostname));
 
   // Sort hosts by hostname for display, filtered by search query.
   const sortedHosts = Array.from(hosts.values())
@@ -581,13 +779,282 @@ export function AuthFlowsTab() {
                     <td colSpan={5} className="auth-empty">No hosts match "{search}"</td>
                   </tr>
                 ) : (
-                  filteredHosts.map(host => <HostRow key={host.hostname} host={host} />)
+                  filteredHosts.map(host => (
+                    <HostRow
+                      key={host.hostname}
+                      host={host}
+                      pendingChanges={pendingChanges}
+                      onBadgeChange={handleBadgeChange}
+                      onEditHost={setEditModalHost}
+                    />
+                  ))
                 )}
               </tbody>
             </table>
           </div>
         </>
       )}
+
+      {/* Pending changes bar */}
+      {pendingChangesList.length > 0 && (
+        <div className="auth-pending-bar">
+          <div className="auth-pending-bar-info">
+            <AlertTriangle size={16} />
+            <span>
+              <strong>{pendingChangesList.length}</strong> pending change{pendingChangesList.length !== 1 ? 's' : ''} across{' '}
+              <strong>{pendingHosts.size}</strong> host{pendingHosts.size !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="auth-pending-bar-actions">
+            <button type="button" className="btn-sm" onClick={() => setReviewOpen(true)}>
+              Review Changes
+            </button>
+            <button type="button" className="btn-sm btn-warn" onClick={handleRevertAll}>
+              Discard All
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Review changes modal */}
+      {reviewOpen && pendingChangesList.length > 0 && (
+        <div className="auth-modal-overlay" onClick={() => setReviewOpen(false)}>
+          <div className="auth-modal" onClick={e => e.stopPropagation()}>
+            <div className="auth-modal-header">
+              <h3>Review Pending Changes</h3>
+              <button type="button" className="auth-modal-close" onClick={() => setReviewOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="auth-modal-body">
+              <table className="auth-review-table">
+                <thead>
+                  <tr>
+                    <th>Hostname</th>
+                    <th>Field</th>
+                    <th>Current</th>
+                    <th></th>
+                    <th>New</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingChangesList.map(change => {
+                    const fieldInfo = change.field === 'wan_auth' ? WAN_AUTH_INFO
+                      : change.field === 'lan_auth' ? LAN_AUTH_INFO
+                      : API_AUTH_INFO;
+                    const OldIcon = fieldInfo[change.oldValue]?.icon ?? HelpCircle;
+                    const NewIcon = fieldInfo[change.newValue]?.icon ?? HelpCircle;
+                    return (
+                      <tr key={changesKey(change.hostname, change.field)}>
+                        <td className="auth-review-host">{change.hostname}</td>
+                        <td className="auth-review-field">{change.field.replace('_', ' ')}</td>
+                        <td className="auth-review-old">
+                          <OldIcon size={12} /> {fieldInfo[change.oldValue]?.label ?? change.oldValue}
+                        </td>
+                        <td className="auth-review-arrow">→</td>
+                        <td className="auth-review-new">
+                          <NewIcon size={12} /> {fieldInfo[change.newValue]?.label ?? change.newValue}
+                        </td>
+                        <td className="auth-review-revert">
+                          <button type="button" className="btn-sm" onClick={() => handleRevertChange(change.hostname, change.field)}>
+                            <X size={12} /> Revert
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="auth-modal-note">
+                <HelpCircle size={14} />
+                <span>These changes are UI-only — no actual commands will be issued. Deploy is a placeholder that clears the pending list.</span>
+              </div>
+            </div>
+            <div className="auth-modal-footer">
+              <button type="button" className="btn-sm" onClick={handleRevertAll}>Discard All</button>
+              <button type="button" className="btn-sm btn-primary" onClick={handleDeploy}>
+                <CheckCircle2 size={14} /> Deploy (Preview)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal per host */}
+      {editModalHost && hosts.get(editModalHost) && (
+        <EditHostModal
+          host={hosts.get(editModalHost)!}
+          pendingChanges={pendingChanges}
+          onChange={handleBadgeChange}
+          onRevert={handleRevertHost}
+          onClose={() => setEditModalHost(null)}
+        />
+      )}
     </main>
+  );
+}
+
+// ─── Edit host modal ─────────────────────────────────────────────────────────
+
+function EditHostModal({
+  host,
+  pendingChanges,
+  onChange,
+  onRevert,
+  onClose,
+}: {
+  host: HostAuth;
+  pendingChanges: Map<string, PendingChange>;
+  onChange: (hostname: string, field: AuthField, newValue: string) => void;
+  onRevert: (hostname: string) => void;
+  onClose: () => void;
+}) {
+  const wanPending = pendingChanges.get(changesKey(host.hostname, 'wan_auth'))?.newValue;
+  const lanPending = pendingChanges.get(changesKey(host.hostname, 'lan_auth'))?.newValue;
+  const apiPending = pendingChanges.get(changesKey(host.hostname, 'api_auth'))?.newValue;
+  const hostPendingCount = Array.from(pendingChanges.values()).filter(c => c.hostname === host.hostname).length;
+
+  function FieldRow({
+    label,
+    field,
+    info,
+    value,
+    pendingValue,
+    disabled,
+  }: {
+    label: string;
+    field: AuthField;
+    info: Record<string, AuthMeta>;
+    value: string;
+    pendingValue?: string;
+    disabled?: boolean;
+  }) {
+    const isPending = pendingValue !== undefined && pendingValue !== value;
+    const displayValue = pendingValue ?? value;
+    return (
+      <div className={`auth-edit-field ${disabled ? 'disabled' : ''} ${isPending ? 'pending' : ''}`}>
+        <label>{label}</label>
+        <div className="auth-edit-field-control">
+          {disabled ? (
+            <span className="auth-na">Not exposed</span>
+          ) : (
+            <select
+              value={displayValue}
+              onChange={e => onChange(host.hostname, field, e.target.value)}
+              className="auth-edit-select"
+            >
+              {Object.entries(info).map(([key, m]) => (
+                <option key={key} value={key}>{m.label}</option>
+              ))}
+            </select>
+          )}
+          {isPending && (
+            <button type="button" className="btn-sm" onClick={() => onChange(host.hostname, field, value)}>
+              <X size={12} /> Revert
+            </button>
+          )}
+        </div>
+        {info[displayValue] && (
+          <p className="auth-edit-field-desc">{info[displayValue].desc}</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="auth-modal-overlay" onClick={onClose}>
+      <div className="auth-modal auth-modal-edit" onClick={e => e.stopPropagation()}>
+        <div className="auth-modal-header">
+          <h3>Edit Auth: {host.hostname}</h3>
+          <button type="button" className="auth-modal-close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="auth-modal-body">
+          <div className="auth-edit-host-info">
+            <span className={`auth-source-badge ${host.wan_exposed ? 'ok' : 'off'}`}>
+              <Globe size={12} /> {host.wan_exposed ? 'WAN-exposed' : 'LAN-only'}
+            </span>
+            {host.has_forward_auth && (
+              <span className="auth-source-badge ok"><Route size={12} /> Forward Auth</span>
+            )}
+            {host.cf_access_app_id && (
+              <span className="auth-source-badge ok"><Cloud size={12} /> CF Access</span>
+            )}
+            {host.authentik_provider_pk && (
+              <span className="auth-source-badge ok"><Fingerprint size={12} /> Authentik</span>
+            )}
+          </div>
+
+          <FieldRow
+            label="WAN Auth"
+            field="wan_auth"
+            info={WAN_AUTH_INFO}
+            value={host.wan_auth}
+            pendingValue={wanPending}
+            disabled={!host.wan_exposed}
+          />
+          <FieldRow
+            label="LAN Auth"
+            field="lan_auth"
+            info={LAN_AUTH_INFO}
+            value={host.lan_auth}
+            pendingValue={lanPending}
+          />
+          <FieldRow
+            label="API Auth"
+            field="api_auth"
+            info={API_AUTH_INFO}
+            value={host.api_auth}
+            pendingValue={apiPending}
+          />
+
+          {/* Current config details */}
+          {(host.cf_access_app_id || host.authentik_provider_pk) && (
+            <div className="auth-edit-current-config">
+              <h4>Current Configuration</h4>
+              {host.cf_access_app_id && (
+                <div className="auth-edit-config-row">
+                  <Cloud size={13} />
+                  <span>CF Access: {host.cf_access_app_domain} ({host.cf_access_app_type})</span>
+                </div>
+              )}
+              {host.authentik_provider_pk && (
+                <div className="auth-edit-config-row">
+                  <Fingerprint size={13} />
+                  <span>Authentik: {host.authentik_app_slug} ({host.authentik_provider_mode})</span>
+                </div>
+              )}
+              {host.cf_access_decisions && host.cf_access_decisions.length > 0 && (
+                <div className="auth-edit-config-row">
+                  <ShieldCheck size={13} />
+                  <span>Policies: {host.cf_access_decisions.join(', ')}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {host.notes && host.notes.length > 0 && (
+            <div className="auth-edit-notes">
+              <AlertTriangle size={14} />
+              <ul>
+                {host.notes.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+        <div className="auth-modal-footer">
+          {hostPendingCount > 0 && (
+            <button type="button" className="btn-sm btn-warn" onClick={() => onRevert(host.hostname)}>
+              Revert {hostPendingCount} change{hostPendingCount !== 1 ? 's' : ''}
+            </button>
+          )}
+          <button type="button" className="btn-sm btn-primary" onClick={onClose}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
