@@ -3697,3 +3697,87 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .btn-warn:hover {
   background: rgba(240, 168, 48, .25);
 }
+
+/* Confirm deploy modal */
+.auth-modal-confirm {
+  max-width: 480px;
+}
+
+.auth-confirm-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.auth-confirm-warning > svg {
+  color: #f0a830;
+  flex-shrink: 0;
+}
+
+.auth-confirm-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--text-1);
+  line-height: 1.4;
+}
+
+.auth-confirm-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.auth-confirm-changes {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  margin-bottom: 10px;
+}
+
+.auth-confirm-change-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.auth-confirm-change-row:last-child {
+  border-bottom: none;
+}
+
+.auth-confirm-host {
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+  min-width: 120px;
+}
+
+.auth-confirm-field {
+  color: var(--text-3);
+  text-transform: capitalize;
+  min-width: 60px;
+}
+
+.auth-confirm-old {
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.auth-confirm-arrow {
+  color: var(--text-3);
+}
+
+.auth-confirm-new {
+  color: var(--text-1);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
