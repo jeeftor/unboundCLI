@@ -2419,13 +2419,14 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--bg-1);
+  width: fit-content;
+  max-width: 100%;
 }
 
 .auth-table {
   width: auto;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 100%;
 }
 
 .auth-table thead {
