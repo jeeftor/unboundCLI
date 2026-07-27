@@ -288,7 +288,7 @@ function HostRow({ host }: { host: HostAuth }) {
     <>
       <tr className={`auth-row ${isStale ? 'stale' : ''}`} onClick={() => hasDetails && setExpanded(e => !e)}>
         <td className="auth-hostname">
-          {hasDetails && <span className="auth-expand">{expanded ? '▾' : '▸'}</span>}
+          <span className="auth-expand">{hasDetails ? (expanded ? '▾' : '▸') : ''}</span>
           <Network size={13} className="auth-hostname-icon" />
           {host.hostname}
           {host.wan_exposed && <Globe size={12} className="auth-wan-icon" title="WAN-exposed" />}
