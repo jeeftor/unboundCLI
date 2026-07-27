@@ -564,11 +564,11 @@ export function AuthFlowsTab() {
             <table className="auth-table">
               <thead>
                 <tr>
-                  <th><Network size={13} /> Hostname</th>
-                  <th><Globe size={13} /> WAN Auth</th>
-                  <th><Wifi size={13} /> LAN Auth</th>
-                  <th title="How scripts, automation, and other non-browser clients authenticate to this host's API. Different from browser login — uses tokens/keys instead of interactive login."><Terminal size={13} /> API Auth</th>
-                  <th><ShieldCheck size={13} /> Status</th>
+                  <th><Network size={13} /> Hostname <HelpCircle size={11} className="th-info" title="The hostname as configured in Caddy. Click rows with ▸ to see detailed auth config." /></th>
+                  <th><Globe size={13} /> WAN Auth <HelpCircle size={11} className="th-info" title="How browser traffic from the internet is authenticated. 'Not exposed' means the host has no Cloudflare tunnel and isn't reachable from the internet." /></th>
+                  <th><Wifi size={13} /> LAN Auth <HelpCircle size={11} className="th-info" title="How browser traffic from your local network is authenticated. 'None' means the app is directly accessible (it may have its own login). 'Forward Auth' means Caddy delegates to Authentik." /></th>
+                  <th><Terminal size={13} /> API Auth <HelpCircle size={11} className="th-info" title="How scripts, automation, and other non-browser clients authenticate. Uses tokens/keys instead of interactive login. 'None' means API calls use the same auth as browser traffic." /></th>
+                  <th><ShieldCheck size={13} /> Status <HelpCircle size={11} className="th-info" title="Overall auth health. OK = properly configured. Warning = works but non-ideal. Error = missing or broken auth (e.g., WAN-exposed with no auth, double-login risk)." /></th>
                 </tr>
               </thead>
               <tbody>
