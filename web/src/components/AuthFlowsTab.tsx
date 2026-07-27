@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   CheckCircle2,
   Cloud,
+  DoorOpen,
   Fingerprint,
   Globe,
   HelpCircle,
@@ -24,7 +25,6 @@ import {
   Unlock,
   UnlockKeyhole,
   Wifi,
-  WifiOff,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
@@ -70,7 +70,7 @@ const LAN_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No LAN authentication. The app is directly accessible on the LAN. This is normal for apps with their own login (app-native).',
-    icon: WifiOff,
+    icon: DoorOpen,
     tone: 'neutral',
   },
   forward_auth: {
