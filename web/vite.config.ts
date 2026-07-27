@@ -9,11 +9,11 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        entryFileNames: 'app.js',
-        chunkFileNames: '[name].js',
+        entryFileNames: 'app.[hash].js',
+        chunkFileNames: 'chunks/[name].[hash].js',
         assetFileNames: (assetInfo) => {
-          if (assetInfo.name?.endsWith('.css')) return 'styles.css';
-          return 'assets/[name][extname]';
+          if (assetInfo.name?.endsWith('.css')) return 'styles.[hash].css';
+          return 'assets/[name].[hash][extname]';
         }
       }
     }

@@ -508,14 +508,27 @@ func TestConfigTestRouteRequiresTokenAndRejectsUnavailableService(t *testing.T) 
 func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 
+	// First, fetch the index.html to discover the hashed asset filenames.
+	idxReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	idxRec := httptest.NewRecorder()
+	server.ServeHTTP(idxRec, idxReq)
+	if idxRec.Code != http.StatusOK {
+		t.Fatalf("/ : expected 200, got %d: %s", idxRec.Code, idxRec.Body.String())
+	}
+	idxBody := idxRec.Body.String()
+
+	// Extract the hashed app.js and styles.css paths from the index.html.
+	appJSPath := extractAssetPath(t, idxBody, "app.", ".js")
+	cssPath := extractAssetPath(t, idxBody, "styles.", ".css")
+
 	tests := []struct {
 		path        string
 		contentType string
 		contains    []byte
 	}{
 		{path: "/", contentType: "text/html; charset=utf-8", contains: []byte(`<div id="root"`)},
-		{path: "/static/app.js", contentType: "text/javascript; charset=utf-8", contains: []byte("data-e2e")},
-		{path: "/static/styles.css", contentType: "text/css; charset=utf-8", contains: []byte(".status-chip")},
+		{path: appJSPath, contentType: "text/javascript; charset=utf-8", contains: []byte("data-e2e")},
+		{path: cssPath, contentType: "text/css; charset=utf-8", contains: []byte(".status-chip")},
 	}
 
 	for _, tt := range tests {
@@ -532,6 +545,24 @@ func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
 			t.Fatalf("%s: response missing %q", tt.path, tt.contains)
 		}
 	}
+}
+
+// extractAssetPath finds a /static/ asset path from index.html by searching
+// for a prefix (e.g. "app.") and extension (e.g. ".js").
+func extractAssetPath(t *testing.T, html string, prefix, ext string) string {
+	t.Helper()
+	// Look for src="/static/app.HASH.js" or href="/static/styles.HASH.css"
+	search := `/static/` + prefix
+	idx := strings.Index(html, search)
+	if idx < 0 {
+		t.Fatalf("could not find %q in index.html", search)
+	}
+	rest := html[idx:]
+	extIdx := strings.Index(rest, ext)
+	if extIdx < 0 {
+		t.Fatalf("could not find extension %q after %q in index.html", ext, search)
+	}
+	return rest[:extIdx+len(ext)]
 }
 
 func TestPlanRouteSupportsServiceSelection(t *testing.T) {
