@@ -513,6 +513,7 @@ export function AuthFlowsTab() {
   const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(new Map());
   const [editModalHost, setEditModalHost] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [confirmDeploy, setConfirmDeploy] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const load = useCallback(() => {
@@ -642,12 +643,21 @@ export function AuthFlowsTab() {
     });
   }, []);
 
-  // "Deploy" is a no-op — this is UI-only, no actual commands issued.
+  // "Deploy" opens a confirmation modal — UI-only, no actual commands issued.
   const handleDeploy = useCallback(() => {
+    setConfirmDeploy(true);
+  }, []);
+
+  const handleConfirmDeploy = useCallback(() => {
     // In the future, this would POST pending changes to a backend endpoint.
-    // For now, just clear them with a confirmation message.
+    // For now, just clear them.
     setPendingChanges(new Map());
+    setConfirmDeploy(false);
     setReviewOpen(false);
+  }, []);
+
+  const handleCancelDeploy = useCallback(() => {
+    setConfirmDeploy(false);
   }, []);
 
   const pendingChangesList = Array.from(pendingChanges.values());
@@ -875,6 +885,62 @@ export function AuthFlowsTab() {
               <button type="button" className="btn-sm" onClick={handleRevertAll}>Discard All</button>
               <button type="button" className="btn-sm btn-primary" onClick={handleDeploy}>
                 <CheckCircle2 size={14} /> Deploy (Preview)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deploy confirmation modal */}
+      {confirmDeploy && pendingChangesList.length > 0 && (
+        <div className="auth-modal-overlay" onClick={handleCancelDeploy}>
+          <div className="auth-modal auth-modal-confirm" onClick={e => e.stopPropagation()}>
+            <div className="auth-modal-header">
+              <h3>Confirm Deploy</h3>
+              <button type="button" className="auth-modal-close" onClick={handleCancelDeploy}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="auth-modal-body">
+              <div className="auth-confirm-warning">
+                <AlertTriangle size={28} />
+                <div>
+                  <p className="auth-confirm-title">
+                    Apply <strong>{pendingChangesList.length}</strong> auth change{pendingChangesList.length !== 1 ? 's' : ''} to{' '}
+                    <strong>{pendingHosts.size}</strong> host{pendingHosts.size !== 1 ? 's' : ''}?
+                  </p>
+                  <p className="auth-confirm-subtitle">
+                    This will modify Caddy and/or Cloudflare Access configurations.
+                  </p>
+                </div>
+              </div>
+              <div className="auth-confirm-changes">
+                {pendingChangesList.map(change => {
+                  const fieldInfo = change.field === 'wan_auth' ? WAN_AUTH_INFO
+                    : change.field === 'lan_auth' ? LAN_AUTH_INFO
+                    : API_AUTH_INFO;
+                  const OldIcon = fieldInfo[change.oldValue]?.icon ?? HelpCircle;
+                  const NewIcon = fieldInfo[change.newValue]?.icon ?? HelpCircle;
+                  return (
+                    <div key={changesKey(change.hostname, change.field)} className="auth-confirm-change-row">
+                      <span className="auth-confirm-host">{change.hostname}</span>
+                      <span className="auth-confirm-field">{change.field.replace('_', ' ')}</span>
+                      <span className="auth-confirm-old"><OldIcon size={12} /> {fieldInfo[change.oldValue]?.label ?? change.oldValue}</span>
+                      <span className="auth-confirm-arrow">→</span>
+                      <span className="auth-confirm-new"><NewIcon size={12} /> {fieldInfo[change.newValue]?.label ?? change.newValue}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="auth-modal-note">
+                <HelpCircle size={14} />
+                <span>Preview mode — no actual commands will be issued. This is a UI demonstration only.</span>
+              </div>
+            </div>
+            <div className="auth-modal-footer">
+              <button type="button" className="btn-sm" onClick={handleCancelDeploy}>Cancel</button>
+              <button type="button" className="btn-sm btn-primary" onClick={handleConfirmDeploy}>
+                <CheckCircle2 size={14} /> Confirm & Deploy
               </button>
             </div>
           </div>
