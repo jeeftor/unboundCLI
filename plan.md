@@ -1,5 +1,15 @@
 # Cloudflare Tunnel Sync — Implementation Plan
 
+> **Status: Superseded / completed.** This plan tracked the Cloudflare tunnel
+> push-sync feature. The implementation landed: `cmd/caddy-push-cloudflare.go`
+> and `internal/exec/sync/caddy_push_cloudflare.go` exist and are wired up, and
+> `internal/api/cloudflare.go` has the full read/write method set
+> (`SetTunnelIngress`, `EnsureDNSRecord`, `DeleteDNSRecord`,
+> `ListManagedDNSRecords`). This file is kept as a historical design reference;
+> the "TODO" markers below are no longer accurate.
+
+
+
 ## Background & Context
 
 ### Current state (as of commit dbf6479)

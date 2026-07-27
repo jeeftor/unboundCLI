@@ -180,3 +180,38 @@ export type CaddyValidateResult = {
 export type CaddyDeployEvent =
   | { line: string; done?: undefined }
   | { done: true; status: 'ok' | 'error' };
+
+// ─── Auth inventory types ───────────────────────────────────────────────────
+
+export type WANAuthMode = 'none' | 'cf_access' | 'forward_auth' | 'app_native';
+export type LANAuthMode = 'none' | 'forward_auth' | 'app_native';
+export type APIAuthMode = 'none' | 'cf_service_token' | 'authentik_bearer' | 'app_native_key';
+export type AuthStatus = 'ok' | 'warning' | 'error' | 'unknown';
+
+export type HostAuth = {
+  hostname: string;
+  wan_auth: WANAuthMode;
+  lan_auth: LANAuthMode;
+  api_auth: APIAuthMode;
+  status: AuthStatus;
+  cf_access_app_id?: string;
+  cf_access_app_domain?: string;
+  cf_access_policy_ids?: string[];
+  cf_access_decisions?: string[];
+  cf_access_app_type?: string;
+  authentik_provider_pk?: number;
+  authentik_app_slug?: string;
+  authentik_provider_mode?: string;
+  authentik_outpost_uuid?: string;
+  has_forward_auth: boolean;
+  wan_exposed: boolean;
+  notes?: string[];
+};
+
+export type AuthInventoryResponse = {
+  hosts: HostAuth[];
+  sources: {
+    cloudflare_access: boolean;
+    authentik: boolean;
+  };
+};

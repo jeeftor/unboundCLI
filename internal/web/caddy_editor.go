@@ -16,6 +16,24 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
 
+// gitCommitAndPush runs git add + commit + (optional) push for a Caddyfile
+// change, logging any errors instead of silently swallowing them.
+func gitCommitAndPush(cfg caddyeditor.EditorConfig, msg string) {
+	if err := caddyeditor.GitAdd(cfg); err != nil {
+		logging.Error("git add failed", "error", err)
+		return
+	}
+	if err := caddyeditor.GitCommit(cfg, msg); err != nil {
+		logging.Error("git commit failed", "error", err)
+		return
+	}
+	if cfg.GitAutoPush {
+		if err := caddyeditor.GitPush(cfg); err != nil {
+			logging.Error("git push failed", "error", err)
+		}
+	}
+}
+
 // CaddyEntryRequest is the payload for POST/PUT caddy entry endpoints.
 type CaddyEntryRequest struct {
 	Hostname      string            `json:"hostname"`
@@ -222,11 +240,7 @@ func (s *Server) createCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		if msg == "" {
 			msg = fmt.Sprintf("caddy: add %s", req.Hostname)
 		}
-		_ = caddyeditor.GitAdd(cfg)
-		_ = caddyeditor.GitCommit(cfg, msg)
-		if cfg.GitAutoPush {
-			_ = caddyeditor.GitPush(cfg)
-		}
+		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": req.Hostname})
 }
@@ -279,11 +293,7 @@ func (s *Server) updateCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		if msg == "" {
 			msg = fmt.Sprintf("caddy: update %s", hostname)
 		}
-		_ = caddyeditor.GitAdd(cfg)
-		_ = caddyeditor.GitCommit(cfg, msg)
-		if cfg.GitAutoPush {
-			_ = caddyeditor.GitPush(cfg)
-		}
+		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": hostname})
 }
@@ -309,11 +319,7 @@ func (s *Server) deleteCaddyEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	if cfg.GitAutoCommit {
 		msg := fmt.Sprintf("caddy: remove %s", hostname)
-		_ = caddyeditor.GitAdd(cfg)
-		_ = caddyeditor.GitCommit(cfg, msg)
-		if cfg.GitAutoPush {
-			_ = caddyeditor.GitPush(cfg)
-		}
+		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": hostname})
 }
@@ -328,8 +334,14 @@ func (s *Server) handleCaddyDiff(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	diff, _ := caddyeditor.GitDiff(cfg)
-	status, _ := caddyeditor.GitStatus(cfg)
+	diff, err := caddyeditor.GitDiff(cfg)
+	if err != nil {
+		logging.Warn("git diff failed", "error", err)
+	}
+	status, err := caddyeditor.GitStatus(cfg)
+	if err != nil {
+		logging.Warn("git status failed", "error", err)
+	}
 	writeJSON(w, http.StatusOK, CaddyDiffResponse{Diff: diff, Status: status})
 }
 

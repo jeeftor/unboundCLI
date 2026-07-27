@@ -1,6 +1,10 @@
 package sync
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
+)
 
 // SyncOptions contains all sync configuration
 type SyncOptions struct {
@@ -34,7 +38,7 @@ func DefaultSyncOptions() *SyncOptions {
 		DryRun:           false,
 		CaddyServerIP:    "192.168.1.15",
 		CaddyServerPort:  2019,
-		EntryDescription: "Entry created by CaddySync",
+		EntryDescription: app.CurrentUnboundDescription,
 		Verbose:          false,
 		UnboundOnly:      false,
 		AdguardOnly:      false,

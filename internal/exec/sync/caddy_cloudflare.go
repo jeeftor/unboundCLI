@@ -10,16 +10,11 @@ import (
 
 // CaddyCloudflareSyncOptions contains options for the Caddy-Cloudflare sync operation
 type CaddyCloudflareSyncOptions struct {
-	DryRun             bool
-	CaddyServerIP      string
-	CaddyServerPort    int
-	EntryDescription   string
-	LegacyDescriptions []string
-	DirectSubdomain    string
-	CaddySubdomain     string
-	SyncDirect         bool
-	SyncCaddy          bool
-	Verbose            bool
+	BaseSyncOptions
+	DirectSubdomain string
+	CaddySubdomain  string
+	SyncDirect      bool
+	SyncCaddy       bool
 }
 
 // CaddyCloudflareSyncResult contains the result of the Caddy-Cloudflare sync operation
@@ -67,18 +62,9 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 	}
 
 	// Organize overrides for easier processing
-	syncCreatedOverrides := make(map[string]api.DNSOverride)
-	otherOverrides := make(map[string]api.DNSOverride)
-
-	for _, override := range existingOverrides {
-		key := fmt.Sprintf("%s.%s", override.Host, override.Domain)
-		if override.Description == options.EntryDescription ||
-			isLegacyDescription(override.Description, options.LegacyDescriptions) {
-			syncCreatedOverrides[key] = override
-		} else {
-			otherOverrides[key] = override
-		}
-	}
+	syncCreatedOverrides, otherOverrides := OrganizeOverridesByOwnership(
+		existingOverrides, options.EntryDescription, options.LegacyDescriptions,
+	)
 	remainingSyncOverrides := make(map[string]api.DNSOverride, len(syncCreatedOverrides))
 	for key, override := range syncCreatedOverrides {
 		remainingSyncOverrides[key] = override
@@ -251,13 +237,9 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 
 // parseHostnameToDNSEntry converts a hostname to a CloudflareEntry
 func parseHostnameToDNSEntry(hostname, ip, description, mode string) CloudflareEntry {
-	// Split hostname into host and domain parts
-	parts := strings.SplitN(hostname, ".", 2)
-	host := parts[0]
-	domain := "local" // default
-
-	if len(parts) > 1 {
-		domain = parts[1]
+	host, domain := SplitHostname(hostname)
+	if domain == "" {
+		domain = "local" // default
 	}
 
 	return CloudflareEntry{

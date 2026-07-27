@@ -331,8 +331,8 @@ func init() {
 	syncCmd.PersistentFlags().BoolVar(&syncDryRun, "dry-run", false, "Show what would be changed without applying")
 	syncCmd.PersistentFlags().StringVar(&syncCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "Caddy server IP")
 	syncCmd.PersistentFlags().IntVar(&syncCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Caddy admin API port")
-	syncCmd.PersistentFlags().StringVar(&syncEntryDescription, "description", "Entry created by CaddySync", "Description for DNS entries")
-	syncCmd.PersistentFlags().StringVar(&syncLegacyDescriptions, "legacy-desc", "Route via Caddy", "Comma-separated legacy descriptions")
+	syncCmd.PersistentFlags().StringVar(&syncEntryDescription, "description", runtimeapp.CurrentUnboundDescription, "Description for DNS entries")
+	syncCmd.PersistentFlags().StringVar(&syncLegacyDescriptions, "legacy-desc", "Entry created by unboundCLI caddy-sync-all,Entry created by unboundCLI sync,Entry created by unboundCLI caddy-sync-unbound,Entry created by unboundCLI caddy-sync-cloudflare,Entry created by CaddySync,Route via Caddy", "Comma-separated legacy descriptions")
 	syncCmd.PersistentFlags().BoolVar(&syncPrompt, "prompt", false, "Prompt before each API call")
 
 	// Target selection flags (only for 'all' subcommand)

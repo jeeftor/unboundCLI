@@ -26,6 +26,9 @@ type Entry struct {
 	CloudflareOriginMode     string
 	CloudflareHTTPHostHeader string
 
+	// Auth (populated by the auth discovery layer)
+	Auth *HostAuth
+
 	// Computed Status
 	OverallStatus SyncStatus // Overall sync state
 	DataSource    string     // Where this entry came from

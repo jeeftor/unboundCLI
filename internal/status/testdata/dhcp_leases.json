@@ -5,7 +5,7 @@
       "address": "10.0.0.5",
       "hwaddr": "00:11:22:33:44:55",
       "expire": 0,
-      "is_reserved": "0",
+      "is_reserved": [],
       "mac_info": "fixture"
     },
     {
@@ -13,7 +13,7 @@
       "address": "10.0.0.6",
       "hwaddr": "66:55:44:33:22:11",
       "expire": 0,
-      "is_reserved": "1",
+      "is_reserved": ["hwaddr"],
       "mac_info": "fixture"
     }
   ],

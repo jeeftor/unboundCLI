@@ -12,7 +12,7 @@ func TestNewRuntimeFromConfigsBuildsCoreClientsWithDefaults(t *testing.T) {
 		APIKey:    "key",
 		APISecret: "secret",
 		BaseURL:   "https://opnsense.example",
-	}, config.AdguardConfig{}, config.CloudflareConfig{}, RuntimeOptions{
+	}, config.AdguardConfig{}, config.CloudflareConfig{}, config.AuthentikConfig{}, RuntimeOptions{
 		IncludeUnbound: true,
 		IncludeDNSMasq: true,
 	})
@@ -43,7 +43,7 @@ func TestNewRuntimeFromConfigsBuildsCoreClientsWithDefaults(t *testing.T) {
 func TestNewRuntimeFromConfigsUsesCaddyOverridesAndCloudflareServiceURL(t *testing.T) {
 	runtime, err := NewRuntimeFromConfigs(api.Config{}, config.AdguardConfig{}, config.CloudflareConfig{
 		CaddyServiceURL: "http://caddy.internal:8080",
-	}, RuntimeOptions{
+	}, config.AuthentikConfig{}, RuntimeOptions{
 		CaddyServerIP:   "10.0.0.10",
 		CaddyServerPort: 2020,
 	})
@@ -68,7 +68,7 @@ func TestNewRuntimeFromConfigsBuildsOptionalAdguardWhenComplete(t *testing.T) {
 		BaseURL:  "http://adguard.example",
 		Username: "user",
 		Password: "pass",
-	}, config.CloudflareConfig{}, RuntimeOptions{
+	}, config.CloudflareConfig{}, config.AuthentikConfig{}, RuntimeOptions{
 		IncludeAdguard: true,
 	})
 	if err != nil {
@@ -84,7 +84,7 @@ func TestNewRuntimeFromConfigsRequiresAdguardWhenRequested(t *testing.T) {
 	_, err := NewRuntimeFromConfigs(api.Config{}, config.AdguardConfig{
 		Enabled: true,
 		BaseURL: "http://adguard.example",
-	}, config.CloudflareConfig{}, RuntimeOptions{
+	}, config.CloudflareConfig{}, config.AuthentikConfig{}, RuntimeOptions{
 		IncludeAdguard: true,
 		RequireAdguard: true,
 	})
@@ -100,7 +100,7 @@ func TestNewRuntimeFromConfigsBuildsCloudflareFromCredentials(t *testing.T) {
 		AccountID: "account-id",
 		ZoneID:    "zone-id",
 		TunnelID:  "tunnel-id",
-	}, RuntimeOptions{
+	}, config.AuthentikConfig{}, RuntimeOptions{
 		IncludeCloudflare: true,
 	})
 	if err != nil {
@@ -119,7 +119,7 @@ func TestNewRuntimeFromConfigsSkipsDisabledCloudflare(t *testing.T) {
 		AccountID: "account-id",
 		ZoneID:    "zone-id",
 		TunnelID:  "tunnel-id",
-	}, RuntimeOptions{
+	}, config.AuthentikConfig{}, RuntimeOptions{
 		IncludeCloudflare: true,
 	})
 	if err != nil {

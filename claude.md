@@ -84,7 +84,7 @@ make release-dry-run   # Test GoReleaser config without publishing
 ```go
 options.EntryDescription = "Entry created by CaddySync"
 // Legacy descriptions supported for upgrade paths
-options.LegacyDescriptions = []string{"Entry created by unboundCLI caddy-sync-unbound"}
+options.LegacyDescriptions = []string{"Entry created by caddy-dns-sync caddy-sync-unbound"}
 ```
 
 **Three-Phase Sync**: identify changes (add/update/remove) → apply changes → reconfigure service (`client.ApplyChanges()` for UnboundDNS).
@@ -104,13 +104,16 @@ options.LegacyDescriptions = []string{"Entry created by unboundCLI caddy-sync-un
 
 **Environment Variables**:
 ```bash
+# Primary (preferred):
+CADDY_DNS_SYNC_API_KEY, CADDY_DNS_SYNC_API_SECRET, CADDY_DNS_SYNC_BASE_URL, CADDY_DNS_SYNC_INSECURE
+# Deprecated but still accepted as fallbacks:
 UNBOUND_CLI_API_KEY, UNBOUND_CLI_API_SECRET, UNBOUND_CLI_BASE_URL, UNBOUND_CLI_INSECURE
 ADGUARD_ENABLED, ADGUARD_USERNAME, ADGUARD_PASSWORD, ADGUARD_BASE_URL, ADGUARD_INSECURE
-CF_ENABLED, CF_API_TOKEN, CF_ACCOUNT_ID, CF_ZONE_ID, CF_TUNNEL_ID, CF_CADDY_SERVICE_URL  # planned
+CF_ENABLED, CF_API_TOKEN, CF_ACCOUNT_ID, CF_ZONE_ID, CF_TUNNEL_ID, CF_CADDY_SERVICE_URL, CF_INSECURE
 ```
 
 **Config structs** (`internal/config/config.go`):
-- `ExtendedConfig` embeds `api.Config` (Unbound) + `CaddyConfig` + `AdguardConfig`; `CloudflareConfig` is planned
+- `ExtendedConfig` embeds `api.Config` (Unbound) + `CaddyConfig` + `AdguardConfig` + `CloudflareConfig` + `caddyeditor.EditorConfig`
 - `LoadConfig()` / `LoadAdguardConfig()` / `LoadExtendedConfig()` follow the same env → viper → file pattern
 
 ### Version Information
@@ -139,9 +142,9 @@ Two distinct Cloudflare-related sync directions exist:
 
 1. **`caddy-sync-cloudflare`** (existing): Reads Caddy hostnames, writes *local* UnboundDNS entries with `dev`/`caddy` subdomain variants to enable split-horizon routing alongside an existing CF tunnel. Does **not** write to Cloudflare.
 
-2. **`caddy-push-cloudflare`** (planned): Reads Caddy hostnames, writes to the **Cloudflare tunnel** ingress rules and creates CF DNS CNAME records. This is the "push" direction. Implementation tracked in `plan.md`.
+2. **`caddy-push-cloudflare`** (implemented): Reads Caddy hostnames, writes to the **Cloudflare tunnel** ingress rules and creates CF DNS CNAME records. This is the "push" direction. See `cmd/caddy-push-cloudflare.go` and `internal/exec/sync/caddy_push_cloudflare.go`.
 
-The `cloudflare-go` SDK is already a dependency. `internal/api/cloudflare.go` has read support; write methods need implementation.
+The `cloudflare-go` SDK is a dependency. `internal/api/cloudflare.go` has full read/write support (`SetTunnelIngress`, `EnsureDNSRecord`, `DeleteDNSRecord`, `ListManagedDNSRecords`).
 
 ### Testing
 

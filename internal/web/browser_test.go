@@ -20,8 +20,10 @@ import (
 )
 
 func TestBrowserSmokeWithFakeData(t *testing.T) {
-	if os.Getenv("UNBOUNDCLI_BROWSER_TESTS") != "1" {
-		t.Skip("set UNBOUNDCLI_BROWSER_TESTS=1 to run browser smoke checks")
+	// CADDY_DNS_SYNC_BROWSER_TESTS is the preferred flag; UNBOUNDCLI_BROWSER_TESTS
+	// remains supported as a deprecated alias.
+	if os.Getenv("CADDY_DNS_SYNC_BROWSER_TESTS") != "1" && os.Getenv("UNBOUNDCLI_BROWSER_TESTS") != "1" {
+		t.Skip("set CADDY_DNS_SYNC_BROWSER_TESTS=1 to run browser smoke checks")
 	}
 
 	chromePath := chromeHeadlessShellPath(t)
@@ -72,6 +74,8 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 			fmt.Fprint(w, `{"result":"saved","uuid":"new-uuid"}`)
 		case "/api/unbound/service/reconfigure":
 			fmt.Fprint(w, `{"result":"saved"}`)
+		case "/api/core/firmware/backup":
+			fmt.Fprint(w, `{"status":"ok"}`)
 		default:
 			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
 		}

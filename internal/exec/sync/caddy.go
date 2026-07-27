@@ -2,7 +2,6 @@ package sync
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
@@ -10,12 +9,7 @@ import (
 
 // CaddySyncOptions contains options for the Caddy sync operation
 type CaddySyncOptions struct {
-	DryRun             bool
-	CaddyServerIP      string
-	CaddyServerPort    int
-	EntryDescription   string
-	LegacyDescriptions []string
-	Verbose            bool
+	BaseSyncOptions
 }
 
 // SyncResult contains the results of the sync operation
@@ -81,37 +75,26 @@ func syncHostnamesWithUnbound(
 	}
 
 	// Organize overrides for easier processing
-	syncCreatedOverrides := make(map[string]api.DNSOverride)
-	otherOverrides := make(map[string]api.DNSOverride)
-
-	for _, override := range existingOverrides {
-		// Create a key from host and domain for easier comparison
-		key := fmt.Sprintf("%s.%s", override.Host, override.Domain)
-
-		// Check if this was created by sync command or has one of the legacy descriptions
-		if override.Description == options.EntryDescription ||
-			isLegacyDescription(override.Description, options.LegacyDescriptions) {
-			syncCreatedOverrides[key] = override
-		} else {
-			otherOverrides[key] = override
-		}
-	}
+	syncCreatedOverrides, otherOverrides := OrganizeOverridesByOwnership(
+		existingOverrides, options.EntryDescription, options.LegacyDescriptions,
+	)
 
 	// Process each hostname from the source.
 	var toAdd, toUpdate, toUpdateDesc []string
 
 	for hostname, serverIP := range hostnameMap {
 		// Skip if hostname doesn't contain a dot (not a FQDN)
-		if !strings.Contains(hostname, ".") {
+		if !IsFQDN(hostname) {
 			continue
 		}
 
 		// Split hostname into host and domain parts
-		parts := strings.SplitN(hostname, ".", 2)
-		if len(parts) != 2 {
+		host, domain := SplitHostname(hostname)
+		if domain == "" {
 			logging.Warn("Skipping invalid hostname", "hostname", hostname)
 			continue
 		}
+		_ = host // host is used by applyUnboundChanges via SplitHostname again
 
 		// Check if this hostname already exists in Unbound
 		override, existsInSync := syncCreatedOverrides[hostname]
@@ -196,8 +179,7 @@ func applyUnboundChanges(
 
 	// Add new entries
 	for _, hostname := range toAdd {
-		parts := strings.SplitN(hostname, ".", 2)
-		host, domain := parts[0], parts[1]
+		host, domain := SplitHostname(hostname)
 		serverIP := hostnameMap[hostname]
 
 		logging.Info("Adding DNS override", "host", host, "domain", domain, "ip", serverIP)
@@ -327,14 +309,4 @@ func applyUnboundChanges(
 	}
 
 	return changesApplied
-}
-
-// isLegacyDescription checks if the description is one of the legacy ones
-func isLegacyDescription(desc string, legacyDescriptions []string) bool {
-	for _, legacyDesc := range legacyDescriptions {
-		if desc == legacyDesc {
-			return true
-		}
-	}
-	return false
 }

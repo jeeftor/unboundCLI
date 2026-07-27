@@ -37,12 +37,14 @@ func (e *SyncExecutor) SyncToUnbound() (*execsync.SyncResult, error) {
 
 	// Convert options to the format expected by exec/sync
 	opts := execsync.CaddySyncOptions{
-		DryRun:             e.options.DryRun,
-		CaddyServerIP:      e.options.CaddyServerIP,
-		CaddyServerPort:    e.options.CaddyServerPort,
-		EntryDescription:   e.options.EntryDescription,
-		LegacyDescriptions: e.options.LegacyDescriptions,
-		Verbose:            e.options.Verbose,
+		BaseSyncOptions: execsync.BaseSyncOptions{
+			DryRun:             e.options.DryRun,
+			CaddyServerIP:      e.options.CaddyServerIP,
+			CaddyServerPort:    e.options.CaddyServerPort,
+			EntryDescription:   e.options.EntryDescription,
+			LegacyDescriptions: e.options.LegacyDescriptions,
+			Verbose:            e.options.Verbose,
+		},
 	}
 
 	return execsync.SyncCaddyWithUnbound(e.unboundClient, opts)
@@ -56,12 +58,14 @@ func (e *SyncExecutor) SyncToAdguard() (*execsync.AdguardSyncResult, error) {
 
 	// Convert options to the format expected by exec/sync
 	opts := execsync.CaddyAdguardSyncOptions{
-		DryRun:             e.options.DryRun,
-		CaddyServerIP:      e.options.CaddyServerIP,
-		CaddyServerPort:    e.options.CaddyServerPort,
-		EntryDescription:   e.options.EntryDescription,
-		LegacyDescriptions: e.options.LegacyDescriptions,
-		Verbose:            e.options.Verbose,
+		BaseSyncOptions: execsync.BaseSyncOptions{
+			DryRun:             e.options.DryRun,
+			CaddyServerIP:      e.options.CaddyServerIP,
+			CaddyServerPort:    e.options.CaddyServerPort,
+			EntryDescription:   e.options.EntryDescription,
+			LegacyDescriptions: e.options.LegacyDescriptions,
+			Verbose:            e.options.Verbose,
+		},
 	}
 
 	return execsync.SyncCaddyWithAdguard(e.adguardClient, opts)
@@ -83,12 +87,14 @@ func (e *SyncExecutor) SyncAll() (*execsync.UnifiedSyncResult, error) {
 
 	// Convert options to the format expected by exec/sync
 	opts := execsync.CommonSyncOptions{
-		DryRun:             e.options.DryRun,
-		CaddyServerIP:      e.options.CaddyServerIP,
-		CaddyServerPort:    e.options.CaddyServerPort,
-		EntryDescription:   e.options.EntryDescription,
-		LegacyDescriptions: e.options.LegacyDescriptions,
-		Verbose:            e.options.Verbose,
+		BaseSyncOptions: execsync.BaseSyncOptions{
+			DryRun:             e.options.DryRun,
+			CaddyServerIP:      e.options.CaddyServerIP,
+			CaddyServerPort:    e.options.CaddyServerPort,
+			EntryDescription:   e.options.EntryDescription,
+			LegacyDescriptions: e.options.LegacyDescriptions,
+			Verbose:            e.options.Verbose,
+		},
 	}
 
 	return execsync.UnifiedCaddySync(unboundClient, adguardClient, opts)

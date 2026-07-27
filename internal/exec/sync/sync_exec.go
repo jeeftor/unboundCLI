@@ -68,10 +68,10 @@ func (ui *SyncUI) RenderAddEntries(result *SyncResult) string {
 	sb.WriteString("\n")
 
 	for _, hostname := range result.ToAdd {
-		parts := strings.SplitN(hostname, ".", 2)
+		host, domain := SplitHostname(hostname)
 		sb.WriteString("  ")
 		sb.WriteString(ui.Styles.Add.Render("ADD "))
-		sb.WriteString(ui.Styles.Hostname.Render(fmt.Sprintf("%s.%s", parts[0], parts[1])))
+		sb.WriteString(ui.Styles.Hostname.Render(fmt.Sprintf("%s.%s", host, domain)))
 		sb.WriteString(" → ")
 		sb.WriteString(ui.Styles.IP.Render(result.HostnameMap[hostname]))
 		sb.WriteString("\n")
@@ -186,10 +186,10 @@ func (ui *SyncUI) RenderChanges(result *SyncResult, entryDescription string) str
 		sb.WriteString("\n")
 
 		for _, hostname := range result.ToAdd {
-			parts := strings.SplitN(hostname, ".", 2)
+			host, domain := SplitHostname(hostname)
 			sb.WriteString("  ")
 			sb.WriteString(ui.Styles.Add.Render("ADD "))
-			sb.WriteString(ui.Styles.Hostname.Render(fmt.Sprintf("%s.%s", parts[0], parts[1])))
+			sb.WriteString(ui.Styles.Hostname.Render(fmt.Sprintf("%s.%s", host, domain)))
 			sb.WriteString(" → ")
 			sb.WriteString(ui.Styles.IP.Render(result.HostnameMap[hostname]))
 			sb.WriteString("\n")

@@ -7,6 +7,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { api } from '../api/client';
+import { AuthFlowsTab } from './AuthFlowsTab';
 import { CaddyEditor } from './CaddyEditor';
 import { CFRepairBanner } from './CloudflarePanel';
 import { ConfigModal } from './ConfigModal';
@@ -17,10 +18,9 @@ import { MetricGrid } from './MetricCards';
 import { OperationsHeader } from './OperationsHeader';
 import { SyncModal } from './SyncModal';
 import { Topbar } from './Topbar';
+import type { TabId } from './TabBar';
 import type { CaddyEditorForm, ConfigForms, TestResults } from '../hooks/useConfigForms';
 import type { ConfigResponse, EntriesResponse, Entry, ServiceKey, SyncAction } from '../types';
-
-type AppView = 'dashboard' | 'caddy-editor';
 
 export function AppShell({
   view,
@@ -69,8 +69,8 @@ export function AppShell({
   onSaveCaddyEditor,
   onTestConfig
 }: {
-  view: AppView;
-  setView: (v: AppView) => void;
+  view: TabId;
+  setView: (v: TabId) => void;
   config: ConfigResponse | null;
   loading: boolean;
   message: string;
@@ -205,10 +205,12 @@ export function AppShell({
         )}
 
         <div className="console-scroll">
-          {view === 'caddy-editor' ? (
+          {view === 'caddyfile' ? (
             <main className="dashboard-shell caddy-editor-shell">
               <CaddyEditor mutationEnabled={mutationEnabled} remoteStatus={remoteStatus} remoteChecking={remoteChecking} pulling={pulling} onPull={handlePull} onCheckRemote={checkRemote} />
             </main>
+          ) : view === 'auth' ? (
+            <AuthFlowsTab />
           ) : (
             <main className="dashboard-shell">
               <OperationsHeader

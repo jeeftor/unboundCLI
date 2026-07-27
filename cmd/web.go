@@ -49,6 +49,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		IncludeDNSMasq:    true,
 		IncludeAdguard:    true,
 		IncludeCloudflare: true,
+		IncludeAuthentik:  true,
 	})
 	if err != nil {
 		return err

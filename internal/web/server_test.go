@@ -614,6 +614,14 @@ func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
 					"config": {"ingress": [{"service": "http_status:404"}]}
 				}
 			}`)
+		case "/client/v4/zones/test-zone/dns_records":
+			fmt.Fprint(w, `{
+				"success": true,
+				"errors": [],
+				"messages": [],
+				"result": [],
+				"result_info": {"page": 1, "per_page": 100, "total_pages": 1, "count": 0, "total_count": 0}
+			}`)
 		default:
 			t.Fatalf("unexpected Cloudflare path %s", r.URL.Path)
 		}
@@ -960,6 +968,8 @@ func TestMutatingApplyUsesServerIssuedPlanActions(t *testing.T) {
 		case "/api/unbound/service/reconfigure":
 			reconfigured = true
 			fmt.Fprint(w, `{"result":"saved"}`)
+		case "/api/core/firmware/backup":
+			fmt.Fprint(w, `{"status":"ok"}`)
 		default:
 			t.Fatalf("unexpected OPNSense path %s", r.URL.Path)
 		}

@@ -64,16 +64,18 @@ func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 	syncCaddy := !cfDirectOnly
 
 	options := sync2.CaddyCloudflareSyncOptions{
-		DryRun:             cfDryRun,
-		CaddyServerIP:      cfCaddyServerIP,
-		CaddyServerPort:    cfCaddyServerPort,
-		EntryDescription:   cfEntryDescription,
-		LegacyDescriptions: cfLegacyDescriptions,
-		DirectSubdomain:    cfDirectSubdomain,
-		CaddySubdomain:     cfCaddySubdomain,
-		SyncDirect:         syncDirect,
-		SyncCaddy:          syncCaddy,
-		Verbose:            verbose,
+		BaseSyncOptions: sync2.BaseSyncOptions{
+			DryRun:             cfDryRun,
+			CaddyServerIP:      cfCaddyServerIP,
+			CaddyServerPort:    cfCaddyServerPort,
+			EntryDescription:   cfEntryDescription,
+			LegacyDescriptions: cfLegacyDescriptions,
+			Verbose:            verbose,
+		},
+		DirectSubdomain: cfDirectSubdomain,
+		CaddySubdomain:  cfCaddySubdomain,
+		SyncDirect:      syncDirect,
+		SyncCaddy:       syncCaddy,
 	}
 
 	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareHeader(syncDirect, syncCaddy))
