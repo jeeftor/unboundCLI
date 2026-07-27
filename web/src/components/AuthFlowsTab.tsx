@@ -16,12 +16,12 @@ import {
   Server,
   ShieldAlert,
   ShieldCheck,
-  ShieldOff,
   ShieldQuestion,
   ShieldX,
   Smartphone,
   Terminal,
   Ticket,
+  Unlock,
   UnlockKeyhole,
   Wifi,
   WifiOff,
@@ -43,7 +43,7 @@ const WAN_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No WAN authentication. If WAN-exposed, this is a security risk — the host is reachable from the internet without any auth barrier.',
-    icon: ShieldOff,
+    icon: Unlock,
     tone: 'danger',
   },
   cf_access: {

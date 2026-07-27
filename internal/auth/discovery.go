@@ -75,9 +75,23 @@ func DiscoverStream(
 	}
 
 	// Classify base auth and emit immediately.
+	// For WAN-exposed hosts, we can't determine WAN auth until CF Access
+	// enrichment completes (a wildcard CF Access app may cover them).
+	// So we set status to "unknown" and leave WAN auth as "none" to indicate
+	// "not yet classified" — the enrich event will re-classify with full data.
 	baseHosts := make([]*models.HostAuth, 0, len(authMap))
 	for _, ha := range authMap {
-		classifyAuth(ha)
+		if ha.WANExposed && cfClient != nil {
+			// Don't classify WAN auth yet — CF Access data is pending.
+			// Set LAN auth (known from Caddy) and mark status as unknown.
+			if ha.HasForwardAuth {
+				ha.LANAuth = models.LANAuthForwardAuth
+			}
+			ha.Status = models.AuthStatusUnknown
+			ha.Notes = []string{"Awaiting CF Access enrichment…"}
+		} else {
+			classifyAuth(ha)
+		}
 		baseHosts = append(baseHosts, ha)
 	}
 	emit(StreamEvent{Type: "base", Hosts: baseHosts})
@@ -99,12 +113,25 @@ func DiscoverStream(
 			if err != nil {
 				logging.Warn("CF Access discovery failed", "error", err)
 				emit(StreamEvent{Type: "error", Source: "cloudflare", Error: err.Error()})
+				// Still re-classify all hosts that were pending (unknown status).
+				updated := collectUpdatedHosts(authMap, func(ha *models.HostAuth) bool {
+					return ha.Status == models.AuthStatusUnknown
+				})
+				for _, ha := range updated {
+					classifyAuth(ha)
+				}
+				if len(updated) > 0 {
+					emit(StreamEvent{Type: "enrich", Source: "cloudflare", Hosts: updated})
+				}
 				return
 			}
-			// Enrich and emit updated hosts.
+			// Enrich and emit ALL hosts — even if a host doesn't match a CF
+			// Access app, it needs re-classification from "unknown" to its
+			// final state (e.g., app_native with no CF Access).
 			enrichWithCFAccess(authMap, cfApps, cfPolicies)
 			updated := collectUpdatedHosts(authMap, func(ha *models.HostAuth) bool {
-				return ha.CFAccessAppID != ""
+				// Send all WAN-exposed hosts (they were marked unknown in base).
+				return ha.WANExposed
 			})
 			for _, ha := range updated {
 				classifyAuth(ha)
