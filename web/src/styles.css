@@ -3078,6 +3078,18 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   opacity: 0.6;
 }
 
+.auth-table th .th-info {
+  margin-left: 4px;
+  margin-right: 0;
+  opacity: 0.35;
+  cursor: help;
+  vertical-align: middle;
+}
+
+.auth-table th .th-info:hover {
+  opacity: 0.8;
+}
+
 /* Hostname cell icons */
 .auth-hostname-icon {
   vertical-align: middle;
