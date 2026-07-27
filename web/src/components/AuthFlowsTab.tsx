@@ -3,7 +3,6 @@ import {
   ArrowLeftRight,
   CheckCircle2,
   Cloud,
-  DoorOpen,
   Fingerprint,
   Globe,
   HelpCircle,
@@ -70,7 +69,7 @@ const LAN_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No LAN authentication. The app is directly accessible on the LAN. This is normal for apps with their own login (app-native).',
-    icon: DoorOpen,
+    icon: Unlock,
     tone: 'neutral',
   },
   forward_auth: {
