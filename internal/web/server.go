@@ -318,6 +318,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/caddy/preview", s.handleCaddyPreview)
 	// Auth inventory
 	s.mux.HandleFunc("/api/auth/inventory", s.handleAuthInventory)
+	s.mux.HandleFunc("/api/auth/inventory/stream", s.handleAuthInventoryStream)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -1645,6 +1646,59 @@ func sortHostAuthByName(hosts []models.HostAuth) {
 			hosts[j-1], hosts[j] = hosts[j], hosts[j-1]
 		}
 	}
+}
+
+// handleAuthInventoryStream streams auth discovery results via Server-Sent Events.
+// GET /api/auth/inventory/stream — sends events as each discovery phase completes:
+//   - event: base   (all hosts with Caddy-derived auth, instant)
+//   - event: enrich (updated hosts after CF Access or Authentik data arrives)
+//   - event: error  (if a source API call fails)
+//   - event: done   (discovery complete)
+func (s *Server) handleAuthInventoryStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+
+	// SSE headers.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // Disable Nginx/Caddy buffering
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("streaming not supported"))
+		return
+	}
+
+	ctx := r.Context()
+	runtime := s.runtimeSnapshot()
+
+	// Load entries (Caddy + CF tunnel state) as the base for auth discovery.
+	entries, _, err := s.loadEntries(ctx)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"loading entries: %s\"}\n\n", escapeJSONString(err.Error()))
+		flusher.Flush()
+		return
+	}
+
+	// Stream discovery events.
+	auth.DiscoverStream(ctx, entries, runtime.Clients.Cloudflare, runtime.Clients.Authentik, func(ev auth.StreamEvent) {
+		data, err := json.Marshal(ev)
+		if err != nil {
+			logging.Warn("Failed to marshal auth stream event", "error", err)
+			return
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, data)
+		flusher.Flush()
+	})
+}
+
+// escapeJSONString escapes a string for safe embedding in JSON.
+func escapeJSONString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 func validPlanService(service string) bool {

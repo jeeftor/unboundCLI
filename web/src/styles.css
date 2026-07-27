@@ -2618,3 +2618,187 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
     gap: 14px;
   }
 }
+
+/* ============================================================
+   Auth Flows — streaming + legend additions
+   ============================================================ */
+
+.auth-phase-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-3);
+  color: var(--text-2);
+  margin-left: 8px;
+}
+
+.auth-phase-tag.enriching {
+  background: rgba(240, 159, 60, .12);
+  color: #f09f3c;
+  border: 1px solid rgba(240, 159, 60, .2);
+}
+
+.auth-phase-tag.done {
+  background: rgba(63, 185, 113, .12);
+  color: #3fb971;
+  border: 1px solid rgba(63, 185, 113, .2);
+}
+
+/* Stale rows (awaiting enrichment) */
+.auth-row.stale {
+  opacity: 0.65;
+}
+
+.auth-stale-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(240, 159, 60, .12);
+  color: #f09f3c;
+  border: 1px solid rgba(240, 159, 60, .2);
+}
+
+/* Badge help icon */
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+}
+
+.auth-badge-help {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.auth-badge:hover .auth-badge-help {
+  opacity: 0.9;
+}
+
+/* Legend panel */
+.auth-legend {
+  margin-bottom: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+
+.auth-legend-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.auth-legend-toggle:hover {
+  background: var(--bg-3);
+}
+
+.auth-legend-chevron {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.auth-legend-content {
+  padding: 0 14px 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 14px;
+}
+
+.auth-legend-section h4 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-2);
+}
+
+.auth-legend-subtitle {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.auth-legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.auth-legend-item .auth-badge {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.auth-legend-desc {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* Status badge in legend */
+.auth-badge.ok {
+  background: rgba(63, 185, 113, .12);
+  color: #3fb971;
+  border: 1px solid rgba(63, 185, 113, .2);
+}
+
+.auth-badge.warning {
+  background: rgba(240, 168, 48, .12);
+  color: #f0a830;
+  border: 1px solid rgba(240, 168, 48, .2);
+}
+
+.auth-badge.error {
+  background: rgba(240, 80, 110, .12);
+  color: #f0506e;
+  border: 1px solid rgba(240, 80, 110, .2);
+}
+
+.auth-badge.unknown {
+  background: var(--bg-3);
+  color: var(--text-3);
+}
+
+/* Error list in auth error banner */
+.auth-error ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.auth-error strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Mobile: legend stacks */
+@media (max-width: 760px) {
+  .auth-legend-content {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}
