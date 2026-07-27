@@ -1,23 +1,30 @@
 import {
   AlertTriangle,
+  ArrowLeftRight,
   CheckCircle2,
   Cloud,
+  Fingerprint,
   Globe,
   HelpCircle,
-  Key,
+  KeyRound,
   Loader2,
-  Lock,
+  LockKeyhole,
   Monitor,
   Network,
   RefreshCw,
+  Route,
   Server,
   ShieldAlert,
   ShieldCheck,
+  ShieldOff,
+  ShieldQuestion,
   ShieldX,
+  Smartphone,
   Terminal,
-  Unlock,
-  UserCheck,
+  Ticket,
+  UnlockKeyhole,
   Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentType } from 'react';
@@ -27,6 +34,8 @@ import type {
 } from '../types';
 
 // ─── Auth type metadata ─────────────────────────────────────────────────────
+// Each auth type has a UNIQUE icon — no two types share the same icon.
+// This makes every badge instantly recognizable in both the legend and table.
 
 type AuthMeta = { label: string; desc: string; icon: ComponentType<{ size?: number }>; tone: string };
 
@@ -34,7 +43,7 @@ const WAN_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No WAN authentication. If WAN-exposed, this is a security risk — the host is reachable from the internet without any auth barrier.',
-    icon: Unlock,
+    icon: ShieldOff,
     tone: 'danger',
   },
   cf_access: {
@@ -46,13 +55,13 @@ const WAN_AUTH_INFO: Record<string, AuthMeta> = {
   forward_auth: {
     label: 'Forward Auth',
     desc: "Caddy's forward_auth directive delegates authentication to Authentik. CF Access (if present) must have a bypass policy to avoid double-login.",
-    icon: UserCheck,
+    icon: ArrowLeftRight,
     tone: 'blue',
   },
   app_native: {
     label: 'App-Native',
     desc: 'The application handles its own authentication (e.g., Jellyfin, Audiobookshelf have built-in login). No external auth layer is enforced.',
-    icon: Lock,
+    icon: LockKeyhole,
     tone: 'green',
   },
 };
@@ -61,19 +70,19 @@ const LAN_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No LAN authentication. The app is directly accessible on the LAN. This is normal for apps with their own login (app-native).',
-    icon: Unlock,
+    icon: WifiOff,
     tone: 'neutral',
   },
   forward_auth: {
     label: 'Forward Auth',
     desc: "Caddy's forward_auth delegates to Authentik even on LAN requests. Users must authenticate via Authentik before reaching the app.",
-    icon: UserCheck,
+    icon: Route,
     tone: 'blue',
   },
   app_native: {
     label: 'App-Native',
     desc: 'The application handles its own authentication on LAN traffic.',
-    icon: Lock,
+    icon: Monitor,
     tone: 'green',
   },
 };
@@ -82,25 +91,25 @@ const API_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No API-specific authentication. API calls use the same auth as browser traffic (or none if WAN/LAN is none).',
-    icon: Unlock,
+    icon: UnlockKeyhole,
     tone: 'neutral',
   },
   cf_service_token: {
     label: 'CF Service Token',
     desc: 'Cloudflare Access service token. Machine-to-machine calls send CF-Access-Client-Id and CF-Access-Client-Secret headers. Browsers are unaffected.',
-    icon: Key,
+    icon: Ticket,
     tone: 'orange',
   },
   authentik_bearer: {
     label: 'Authentik Bearer',
     desc: 'Authentik bearer token. API calls send Authorization: Bearer <token>. The Authentik proxy provider validates the token.',
-    icon: Key,
+    icon: Fingerprint,
     tone: 'blue',
   },
   app_native_key: {
     label: 'App-Native Key',
     desc: 'The application has its own API key mechanism (e.g., Jellyfin API keys). No external auth layer for API access.',
-    icon: Key,
+    icon: KeyRound,
     tone: 'green',
   },
 };
@@ -127,7 +136,7 @@ const STATUS_INFO: Record<string, AuthMeta> = {
   unknown: {
     label: 'Unknown',
     desc: "Auth state couldn't be determined (e.g., Authentik/CF Access API unavailable).",
-    icon: ShieldAlert,
+    icon: ShieldQuestion,
     tone: 'gray',
   },
 };
@@ -142,11 +151,13 @@ const SECTION_META = {
 
 // ─── Badge component with tooltip ────────────────────────────────────────────
 
-function AuthBadge({ value, info }: { value: string; info: Record<string, AuthMeta> }) {
+function AuthBadge({ value, info, showIcon = true }: { value: string; info: Record<string, AuthMeta>; showIcon?: boolean }) {
   const meta = info[value] ?? { label: value, desc: '', icon: HelpCircle, tone: 'gray' };
   const cls = value === 'none' ? 'auth-badge none' : `auth-badge ${value.replace(/_/g, '-')}`;
+  const Icon = meta.icon;
   return (
     <span className={cls} title={meta.desc}>
+      {showIcon && <Icon size={12} className="auth-badge-icon" />}
       {meta.label}
       <HelpCircle size={11} className="auth-badge-help" />
     </span>
@@ -155,16 +166,8 @@ function AuthBadge({ value, info }: { value: string; info: Record<string, AuthMe
 
 function StatusIcon({ status }: { status: AuthStatus }) {
   const meta = STATUS_INFO[status] ?? STATUS_INFO.unknown;
-  switch (status) {
-    case 'ok':
-      return <ShieldCheck size={16} className="auth-status-icon ok" title={meta.desc} />;
-    case 'warning':
-      return <AlertTriangle size={16} className="auth-status-icon warning" title={meta.desc} />;
-    case 'error':
-      return <ShieldX size={16} className="auth-status-icon error" title={meta.desc} />;
-    default:
-      return <ShieldAlert size={16} className="auth-status-icon unknown" title={meta.desc} />;
-  }
+  const Icon = meta.icon;
+  return <Icon size={16} className={`auth-status-icon ${status}`} title={meta.desc} />;
 }
 
 // ─── Legend section card ────────────────────────────────────────────────────
@@ -285,7 +288,9 @@ function HostRow({ host }: { host: HostAuth }) {
       <tr className={`auth-row ${isStale ? 'stale' : ''}`} onClick={() => hasDetails && setExpanded(e => !e)}>
         <td className="auth-hostname">
           {hasDetails && <span className="auth-expand">{expanded ? '▾' : '▸'}</span>}
+          <Network size={13} className="auth-hostname-icon" />
           {host.hostname}
+          {host.wan_exposed && <Globe size={12} className="auth-wan-icon" title="WAN-exposed" />}
           {isStale && <span className="auth-stale-tag">enriching…</span>}
         </td>
         <td className="auth-cell">
@@ -529,11 +534,11 @@ export function AuthFlowsTab() {
           <table className="auth-table">
             <thead>
               <tr>
-                <th>Hostname</th>
-                <th>WAN Auth</th>
-                <th>LAN Auth</th>
-                <th>API Auth</th>
-                <th>Status</th>
+                <th><Network size={13} /> Hostname</th>
+                <th><Globe size={13} /> WAN Auth</th>
+                <th><Wifi size={13} /> LAN Auth</th>
+                <th><Terminal size={13} /> API Auth</th>
+                <th><ShieldCheck size={13} /> Status</th>
               </tr>
             </thead>
             <tbody>
