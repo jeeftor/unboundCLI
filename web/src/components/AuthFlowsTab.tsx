@@ -1,14 +1,26 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  Cloud,
+  Globe,
   HelpCircle,
+  Key,
   Loader2,
+  Lock,
+  Monitor,
+  Network,
   RefreshCw,
+  Server,
   ShieldAlert,
   ShieldCheck,
   ShieldX,
+  Terminal,
+  Unlock,
+  UserCheck,
+  Wifi,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ComponentType } from 'react';
 import type {
   AuthStatus,
   HostAuth,
@@ -16,82 +28,122 @@ import type {
 
 // ─── Auth type metadata ─────────────────────────────────────────────────────
 
-const WAN_AUTH_INFO: Record<string, { label: string; desc: string }> = {
+type AuthMeta = { label: string; desc: string; icon: ComponentType<{ size?: number }>; tone: string };
+
+const WAN_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No WAN authentication. If WAN-exposed, this is a security risk — the host is reachable from the internet without any auth barrier.',
+    icon: Unlock,
+    tone: 'danger',
   },
   cf_access: {
     label: 'CF Access',
     desc: 'Cloudflare Access sits at the edge and requires IdP login before traffic reaches the tunnel. This is the standard edge-auth pattern.',
+    icon: Cloud,
+    tone: 'orange',
   },
   forward_auth: {
     label: 'Forward Auth',
     desc: "Caddy's forward_auth directive delegates authentication to Authentik. CF Access (if present) must have a bypass policy to avoid double-login.",
+    icon: UserCheck,
+    tone: 'blue',
   },
   app_native: {
     label: 'App-Native',
     desc: 'The application handles its own authentication (e.g., Jellyfin, Audiobookshelf have built-in login). No external auth layer is enforced.',
+    icon: Lock,
+    tone: 'green',
   },
 };
 
-const LAN_AUTH_INFO: Record<string, { label: string; desc: string }> = {
+const LAN_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No LAN authentication. The app is directly accessible on the LAN. This is normal for apps with their own login (app-native).',
+    icon: Unlock,
+    tone: 'neutral',
   },
   forward_auth: {
     label: 'Forward Auth',
     desc: "Caddy's forward_auth delegates to Authentik even on LAN requests. Users must authenticate via Authentik before reaching the app.",
+    icon: UserCheck,
+    tone: 'blue',
   },
   app_native: {
     label: 'App-Native',
     desc: 'The application handles its own authentication on LAN traffic.',
+    icon: Lock,
+    tone: 'green',
   },
 };
 
-const API_AUTH_INFO: Record<string, { label: string; desc: string }> = {
+const API_AUTH_INFO: Record<string, AuthMeta> = {
   none: {
     label: 'None',
     desc: 'No API-specific authentication. API calls use the same auth as browser traffic (or none if WAN/LAN is none).',
+    icon: Unlock,
+    tone: 'neutral',
   },
   cf_service_token: {
     label: 'CF Service Token',
     desc: 'Cloudflare Access service token. Machine-to-machine calls send CF-Access-Client-Id and CF-Access-Client-Secret headers. Browsers are unaffected.',
+    icon: Key,
+    tone: 'orange',
   },
   authentik_bearer: {
     label: 'Authentik Bearer',
     desc: 'Authentik bearer token. API calls send Authorization: Bearer <token>. The Authentik proxy provider validates the token.',
+    icon: Key,
+    tone: 'blue',
   },
   app_native_key: {
     label: 'App-Native Key',
     desc: 'The application has its own API key mechanism (e.g., Jellyfin API keys). No external auth layer for API access.',
+    icon: Key,
+    tone: 'green',
   },
 };
 
-const STATUS_INFO: Record<string, { label: string; desc: string }> = {
+const STATUS_INFO: Record<string, AuthMeta> = {
   ok: {
     label: 'OK',
     desc: 'Auth is properly configured for this host.',
+    icon: ShieldCheck,
+    tone: 'green',
   },
   warning: {
     label: 'Warning',
     desc: 'Auth works but has a non-ideal configuration (e.g., split WAN/LAN modes, forward_auth without CF bypass).',
+    icon: AlertTriangle,
+    tone: 'yellow',
   },
   error: {
     label: 'Error',
     desc: 'Auth is missing or broken (e.g., WAN-exposed host with no auth, double-login risk from CF Access + forward_auth without bypass).',
+    icon: ShieldX,
+    tone: 'red',
   },
   unknown: {
     label: 'Unknown',
     desc: "Auth state couldn't be determined (e.g., Authentik/CF Access API unavailable).",
+    icon: ShieldAlert,
+    tone: 'gray',
   },
 };
 
+// Section metadata — color-coded by traffic type
+const SECTION_META = {
+  wan: { label: 'WAN Auth', subtitle: 'internet-facing traffic', icon: Globe, color: 'blue' },
+  lan: { label: 'LAN Auth', subtitle: 'internal traffic', icon: Wifi, color: 'green' },
+  api: { label: 'API Auth', subtitle: 'machine-to-machine', icon: Terminal, color: 'purple' },
+  status: { label: 'Status', subtitle: 'overall health', icon: ShieldCheck, color: 'gray' },
+} as const;
+
 // ─── Badge component with tooltip ────────────────────────────────────────────
 
-function AuthBadge({ value, info }: { value: string; info: Record<string, { label: string; desc: string }> }) {
-  const meta = info[value] ?? { label: value, desc: '' };
+function AuthBadge({ value, info }: { value: string; info: Record<string, AuthMeta> }) {
+  const meta = info[value] ?? { label: value, desc: '', icon: HelpCircle, tone: 'gray' };
   const cls = value === 'none' ? 'auth-badge none' : `auth-badge ${value.replace(/_/g, '-')}`;
   return (
     <span className={cls} title={meta.desc}>
@@ -115,6 +167,82 @@ function StatusIcon({ status }: { status: AuthStatus }) {
   }
 }
 
+// ─── Legend section card ────────────────────────────────────────────────────
+
+function LegendSection({ sectionKey, info }: { sectionKey: keyof typeof SECTION_META; info: Record<string, AuthMeta> }) {
+  const meta = SECTION_META[sectionKey];
+  const SectionIcon = meta.icon;
+  return (
+    <div className={`auth-legend-card color-${meta.color}`}>
+      <div className="auth-legend-card-header">
+        <span className="auth-legend-card-icon"><SectionIcon size={18} /></span>
+        <div>
+          <h4>{meta.label}</h4>
+          <span className="auth-legend-subtitle">{meta.subtitle}</span>
+        </div>
+      </div>
+      <div className="auth-legend-items">
+        {Object.entries(info).map(([key, authMeta]) => {
+          const Icon = authMeta.icon;
+          return (
+            <div key={key} className={`auth-legend-item tone-${authMeta.tone}`}>
+              <span className="auth-legend-item-icon"><Icon size={14} /></span>
+              <div className="auth-legend-item-content">
+                <AuthBadge value={key} info={info} />
+                <span className="auth-legend-desc">{authMeta.desc}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Visual flow diagram ────────────────────────────────────────────────────
+
+function FlowDiagram() {
+  return (
+    <div className="auth-flow-diagram">
+      <div className="auth-flow-row">
+        <div className="auth-flow-node wan">
+          <Globe size={20} />
+          <span>Internet</span>
+        </div>
+        <div className="auth-flow-arrow">
+          <span className="auth-flow-label">CF Access</span>
+          <span className="auth-flow-line">→</span>
+        </div>
+        <div className="auth-flow-node cf">
+          <Cloud size={20} />
+          <span>Cloudflare Tunnel</span>
+        </div>
+        <div className="auth-flow-arrow">
+          <span className="auth-flow-label">Forward Auth</span>
+          <span className="auth-flow-line">→</span>
+        </div>
+        <div className="auth-flow-node caddy">
+          <Server size={20} />
+          <span>Caddy</span>
+        </div>
+        <div className="auth-flow-arrow">
+          <span className="auth-flow-label">App-Native</span>
+          <span className="auth-flow-line">→</span>
+        </div>
+        <div className="auth-flow-node app">
+          <Monitor size={20} />
+          <span>Application</span>
+        </div>
+      </div>
+      <div className="auth-flow-explanation">
+        <p><strong>WAN traffic</strong> flows: Internet → Cloudflare (CF Access login) → Tunnel → Caddy (forward_auth / Authentik) → App (own login)</p>
+        <p><strong>LAN traffic</strong> flows: LAN device → Caddy (forward_auth / Authentik) → App (own login). No Cloudflare in the path.</p>
+        <p><strong>API traffic</strong> uses service tokens (CF) or bearer tokens (Authentik) instead of browser login flows.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Legend / help panel ────────────────────────────────────────────────────
 
 function AuthLegend({ open, onToggle }: { open: boolean; onToggle: () => void }) {
@@ -127,43 +255,12 @@ function AuthLegend({ open, onToggle }: { open: boolean; onToggle: () => void })
       </button>
       {open && (
         <div className="auth-legend-content">
-          <div className="auth-legend-section">
-            <h4>WAN Auth <span className="auth-legend-subtitle">(internet-facing traffic)</span></h4>
-            {Object.entries(WAN_AUTH_INFO).map(([key, meta]) => (
-              <div key={key} className="auth-legend-item">
-                <AuthBadge value={key} info={WAN_AUTH_INFO} />
-                <span className="auth-legend-desc">{meta.desc}</span>
-              </div>
-            ))}
-          </div>
-          <div className="auth-legend-section">
-            <h4>LAN Auth <span className="auth-legend-subtitle">(internal traffic)</span></h4>
-            {Object.entries(LAN_AUTH_INFO).map(([key, meta]) => (
-              <div key={key} className="auth-legend-item">
-                <AuthBadge value={key} info={LAN_AUTH_INFO} />
-                <span className="auth-legend-desc">{meta.desc}</span>
-              </div>
-            ))}
-          </div>
-          <div className="auth-legend-section">
-            <h4>API Auth <span className="auth-legend-subtitle">(machine-to-machine)</span></h4>
-            {Object.entries(API_AUTH_INFO).map(([key, meta]) => (
-              <div key={key} className="auth-legend-item">
-                <AuthBadge value={key} info={API_AUTH_INFO} />
-                <span className="auth-legend-desc">{meta.desc}</span>
-              </div>
-            ))}
-          </div>
-          <div className="auth-legend-section">
-            <h4>Status</h4>
-            {Object.entries(STATUS_INFO).map(([key, meta]) => (
-              <div key={key} className="auth-legend-item">
-                <span className={`auth-badge ${key}`}>
-                  {meta.label}
-                </span>
-                <span className="auth-legend-desc">{meta.desc}</span>
-              </div>
-            ))}
+          <FlowDiagram />
+          <div className="auth-legend-grid">
+            <LegendSection sectionKey="wan" info={WAN_AUTH_INFO} />
+            <LegendSection sectionKey="lan" info={LAN_AUTH_INFO} />
+            <LegendSection sectionKey="api" info={API_AUTH_INFO} />
+            <LegendSection sectionKey="status" info={STATUS_INFO} />
           </div>
         </div>
       )}
