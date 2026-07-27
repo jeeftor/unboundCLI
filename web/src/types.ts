@@ -85,6 +85,13 @@ export type EntriesResponse = {
   };
 };
 
+export type ProgressEvent = {
+  service: string;   // "caddy", "unbound", "adguard", "dhcp", "cloudflare", "dns"
+  status: string;    // "pending", "loaded", "skipped", "failed"
+  count: number;
+  error?: string;
+};
+
 export type SyncAction = {
   type: string;
   service: string;

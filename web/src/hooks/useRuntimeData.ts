@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { ConfigResponse, EntriesResponse, Entry } from '../types';
+import type { ConfigResponse, EntriesResponse, Entry, ProgressEvent } from '../types';
 
 const CONFIG_CACHE_KEY = 'caddy-dns-sync:config';
 
@@ -21,6 +21,16 @@ function saveCachedConfig(cfg: ConfigResponse) {
   }
 }
 
+// Service display metadata for progress indicators.
+export const SERVICE_META: Record<string, { label: string; icon: string }> = {
+  caddy:      { label: 'Caddy',      icon: '🌐' },
+  unbound:    { label: 'Unbound',    icon: '📋' },
+  adguard:    { label: 'AdGuard',    icon: '🛡️' },
+  dhcp:       { label: 'DHCP',       icon: '📡' },
+  cloudflare: { label: 'Cloudflare', icon: '☁️' },
+  dns:        { label: 'DNS Resolve', icon: '🔍' },
+};
+
 export function useRuntimeData(onDataChanged?: () => void) {
   const [config, setConfig] = useState<ConfigResponse | null>(() => loadCachedConfig());
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -28,8 +38,11 @@ export function useRuntimeData(onDataChanged?: () => void) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('Loading service status...');
   const [messageKind, setMessageKind] = useState<'info' | 'error' | 'ok'>('info');
+  // Per-service progress: service → { status, count, error }
+  const [progress, setProgress] = useState<Record<string, ProgressEvent>>({});
   const sequence = useRef(0);
-  const abortRef = useRef<AbortController | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const configFetchedRef = useRef(false);
 
   const applyConfig = useCallback((nextConfig: ConfigResponse) => {
     setConfig(nextConfig);
@@ -43,44 +56,111 @@ export function useRuntimeData(onDataChanged?: () => void) {
   }, []);
 
   const refreshEntries = useCallback(async () => {
-    // Abort any in-flight request
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    // Close any existing SSE connection.
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
 
     const requestID = sequence.current + 1;
     sequence.current = requestID;
     setLoading(true);
+    setProgress({});
     setMessage('Loading service status...');
     setMessageKind('info');
-    try {
-      const [nextConfig, data] = await Promise.all([
-        api.config(controller.signal),
-        api.entries(controller.signal),
-      ]);
+
+    // Fetch config in parallel via regular API (fast, cached).
+    // Only fetch if we don't already have it from cache.
+    const configPromise = (configFetchedRef.current
+      ? Promise.resolve(null)
+      : api.config().then(cfg => {
+          if (requestID !== sequence.current) return null;
+          setConfig(cfg);
+          saveCachedConfig(cfg);
+          configFetchedRef.current = true;
+          return cfg;
+        }).catch(() => null)
+    );
+
+    // Stream entries via SSE.
+    const es = new EventSource('/api/entries/stream');
+    eventSourceRef.current = es;
+
+    es.addEventListener('progress', (e: MessageEvent) => {
       if (requestID !== sequence.current) return;
-      setConfig(nextConfig);
-      saveCachedConfig(nextConfig);
-      setEntries(data.entries || []);
-      setReport(data.report || {});
-      onDataChanged?.();
-      setMessage((data.entries || []).length ? 'Loaded service status.' : 'No entries found.');
-      setMessageKind('info');
-    } catch (err) {
-      if (controller.signal.aborted) return;
+      try {
+        const ev = JSON.parse(e.data) as ProgressEvent;
+        setProgress(prev => ({ ...prev, [ev.service]: ev }));
+        // Update message to show what's happening.
+        const meta = SERVICE_META[ev.service];
+        if (meta) {
+          if (ev.status === 'loaded') {
+            setMessage(`Loaded ${meta.label} (${ev.count} entries)`);
+          } else if (ev.status === 'failed') {
+            setMessage(`${meta.label} failed: ${ev.error || 'unknown'}`);
+          }
+        }
+      } catch {
+        // Ignore malformed progress events.
+      }
+    });
+
+    es.addEventListener('done', (e: MessageEvent) => {
       if (requestID !== sequence.current) return;
-      const text = err instanceof Error ? err.message : String(err);
-      setMessage(text);
-      setMessageKind('error');
-    } finally {
-      if (requestID === sequence.current && !shouldHoldLoadingForE2E()) setLoading(false);
-    }
+      try {
+        const data = JSON.parse(e.data) as EntriesResponse;
+        setEntries(data.entries || []);
+        setReport(data.report || {});
+        onDataChanged?.();
+        setMessage((data.entries || []).length ? 'Loaded service status.' : 'No entries found.');
+        setMessageKind('info');
+      } catch {
+        setMessage('Failed to parse entries response');
+        setMessageKind('error');
+      } finally {
+        if (requestID === sequence.current && !shouldHoldLoadingForE2E()) setLoading(false);
+        es.close();
+        eventSourceRef.current = null;
+      }
+    });
+
+    es.addEventListener('error', (e: MessageEvent) => {
+      // Server-sent error event (has data) vs native ES error (no data).
+      if (e.data) {
+        try {
+          const data = JSON.parse(e.data);
+          if (requestID === sequence.current) {
+            setMessage(data.error || 'Stream error');
+            setMessageKind('error');
+          }
+        } catch {
+          // Ignore malformed error events.
+        }
+        return;
+      }
+      // Native ES error — connection failed or server closed.
+      // If we haven't received "done" yet, this is a real error.
+      if (requestID === sequence.current && es.readyState === EventSource.CLOSED) {
+        // If we still have entries from a previous load, don't error out.
+        setMessage('Connection lost — retry');
+        setMessageKind('error');
+        if (requestID === sequence.current && !shouldHoldLoadingForE2E()) setLoading(false);
+      }
+      es.close();
+      eventSourceRef.current = null;
+    });
+
+    // Wait for config promise (non-blocking — entries come via SSE).
+    void configPromise;
   }, [onDataChanged, shouldHoldLoadingForE2E]);
 
   useEffect(() => {
     void refreshEntries();
     return () => {
-      abortRef.current?.abort();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
     };
   }, [refreshEntries]);
 
@@ -91,6 +171,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
     loading,
     message,
     messageKind,
+    progress,
     applyConfig,
     refreshEntries
   };

@@ -99,6 +99,13 @@ func (d *DataLoader) WithCloudflareClient(c *api.CloudflareClient) {
 	d.cfClient = c
 }
 
+// WithProgress sets a callback that's invoked as each service loads.
+// The callback receives a ProgressEvent with the service name, status
+// (pending/loaded/failed/skipped), count, and any error message.
+func (d *DataLoader) WithProgress(fn func(ProgressEvent)) {
+	d.progress = fn
+}
+
 // NewDataLoader creates a new data loader
 func NewDataLoader(
 	caddyClient *api.CaddyClient,
