@@ -2464,6 +2464,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   color: var(--text-1);
   padding: 6px 8px;
   white-space: nowrap;
+  line-height: 1.4;
+  vertical-align: middle;
 }
 
 .auth-expand {
@@ -2472,11 +2474,15 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   color: var(--text-3);
   font-size: 10px;
   margin-right: 4px;
+  vertical-align: middle;
+  line-height: 1;
 }
 
 .auth-cell {
   padding: 6px 8px;
   white-space: nowrap;
+  line-height: 1.4;
+  vertical-align: middle;
 }
 
 .auth-na {
@@ -2665,6 +2671,8 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   background: rgba(240, 159, 60, .12);
   color: #f09f3c;
   border: 1px solid rgba(240, 159, 60, .2);
+  vertical-align: middle;
+  line-height: 1.2;
 }
 
 /* Badge help icon */
@@ -3075,6 +3083,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   margin-right: 6px;
   color: var(--text-3);
   flex-shrink: 0;
+  line-height: 1;
 }
 
 .auth-wan-icon {
@@ -3082,6 +3091,7 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
   margin-left: 6px;
   color: #7aa2f7;
   opacity: 0.7;
+  line-height: 1;
 }
 
 /* Status icon tones in table */
