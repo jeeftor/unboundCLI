@@ -150,6 +150,22 @@ func (c *CaddyClient) extractHostsFromMatch(match interface{}, hostnames *[]stri
 			for _, host := range hosts {
 				hostStr, ok := host.(string)
 				if ok {
+					// Sanitize: strip trailing commas/whitespace that result
+					// from Caddyfile syntax errors (e.g. `host foo.com, bar.com`
+					// — Caddy keeps the comma as part of the hostname).
+					original := hostStr
+					hostStr = strings.TrimRight(hostStr, ", \t\r\n")
+					if hostStr != original {
+						logging.Warn("Stripped invalid trailing characters from hostname",
+							"original", original, "cleaned", hostStr,
+							"hint", "Check Caddyfile host matchers — use spaces, not commas, to separate hostnames")
+					}
+
+					// Skip empty after sanitization
+					if hostStr == "" {
+						continue
+					}
+
 					// Skip wildcard entries
 					if strings.HasPrefix(hostStr, "*.") {
 						continue
