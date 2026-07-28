@@ -44,6 +44,8 @@ type Options struct {
 	EnableTestHooks bool
 	ConfigPath      string
 	Version         string // build version, e.g. "v1.2.3" or "dev"
+	Commit          string // git commit hash
+	BuildDate       string // build timestamp
 }
 
 type Server struct {
@@ -292,6 +294,8 @@ func (s *Server) routes() {
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler(http.FileServer(http.FS(staticRoot)))))
 	s.mux.HandleFunc("/api/config", s.handleConfig)
 	s.mux.HandleFunc("/api/config/raw", s.handleConfigRaw)
+	s.mux.HandleFunc("/api/health", s.handleHealth)
+	s.mux.HandleFunc("/api/version", s.handleVersion)
 	s.mux.HandleFunc("/api/config/test", s.handleConfigTest)
 	s.mux.HandleFunc("/api/cloudflare/discover", s.handleCloudflareDiscover)
 	s.mux.HandleFunc("/api/cloudflare/tunnels", s.handleCloudflareTunnels)
@@ -342,6 +346,33 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	body = []byte(strings.Replace(string(body), "</head>", s.clientConfigScript()+"\n</head>", 1))
 	_, _ = w.Write(body)
+}
+
+// GET /api/health — returns service health and build version info.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":     "ok",
+		"version":    s.options.Version,
+		"commit":     s.options.Commit,
+		"build_date": s.options.BuildDate,
+	})
+}
+
+// GET /api/version — returns build version.
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version":    s.options.Version,
+		"commit":     s.options.Commit,
+		"build_date": s.options.BuildDate,
+	})
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
