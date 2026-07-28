@@ -60,57 +60,145 @@
   }
 }
 
-/* ── Config table ── */
-.visualize-config-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
+/* ── Bottom panels: Auth Config + Service Status ── */
+.visualize-bottom-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
-.visualize-config-table th {
-  text-align: left;
-  padding: 6px 10px;
-  font-size: 10px;
+.visualize-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+}
+
+.visualize-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--text-2);
+}
+
+.visualize-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Auth pills */
+.auth-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  border: 1px solid;
+  transition: opacity .15s;
+}
+
+.auth-pill-ok {
+  border-color: rgba(63, 185, 113, .3);
+  background: rgba(63, 185, 113, .06);
+}
+
+.auth-pill-off {
+  border-color: var(--border-subtle);
+  background: var(--bg-2);
+  opacity: .6;
+}
+
+.auth-pill-label {
+  font-weight: 700;
   text-transform: uppercase;
+  font-size: 9px;
   letter-spacing: .04em;
   color: var(--text-3);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
-.visualize-config-table td {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.visualize-config-table tr:last-child td {
-  border-bottom: none;
-}
-
-.config-label {
-  font-weight: 600;
+.auth-pill-value {
+  font-weight: 500;
   color: var(--text-1);
-  white-space: nowrap;
 }
 
-.config-value {
-  color: var(--text-2);
-  font-family: var(--font-mono, monospace);
+.auth-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.auth-pill-ok .auth-pill-dot {
+  background: #3fb971;
+}
+
+.auth-pill-off .auth-pill-dot {
+  background: var(--text-3);
+}
+
+/* Service pills */
+.svc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
   font-size: 11px;
+  border: 1px solid;
 }
 
-.config-status {
-  text-align: center;
+.svc-pill-ok {
+  border-color: rgba(122, 162, 247, .3);
+  background: rgba(122, 162, 247, .06);
+}
+
+.svc-pill-off {
+  border-color: var(--border-subtle);
+  background: var(--bg-2);
+  opacity: .6;
+}
+
+.svc-pill-label {
   font-weight: 700;
-  width: 40px;
-}
-
-.config-status.ok {
-  color: #3fb971;
-}
-
-.config-status.missing {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: .04em;
   color: var(--text-3);
+}
+
+.svc-pill-value {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--text-1);
+}
+
+.svc-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.svc-pill-ok .svc-pill-dot {
+  background: #7aa2f7;
+}
+
+.svc-pill-off .svc-pill-dot {
+  background: var(--text-3);
+}
+
+/* Mobile: stack panels */
+@media (max-width: 760px) {
+  .visualize-bottom-panels {
+    grid-template-columns: 1fr;
+  }
 }
 
 .visualize-mobile-note {
