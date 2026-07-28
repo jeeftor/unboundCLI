@@ -81,6 +81,8 @@ func serveWeb(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHo
 			AllowedOrigin:  allowedOrigin,
 			BoundHost:      boundHost,
 			Version:        Version,
+			Commit:         Commit,
+			BuildDate:      Date,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
