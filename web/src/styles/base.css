@@ -230,3 +230,123 @@ tr:hover .copy-btn,
 .inspector-line:hover .copy-btn {
   opacity: 1;
 }
+
+/* ── Flow diagram (shared: AuthFlowsTab legend + per-entry VisualizeModal) ── */
+.auth-flow-diagram {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.auth-flow-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.auth-flow-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  min-width: 90px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.auth-flow-node svg {
+  color: var(--text-2);
+}
+
+.auth-flow-node.inactive {
+  opacity: .35;
+  border-style: dashed;
+}
+
+.auth-flow-node-sub {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.auth-flow-node.wan { border-color: rgba(122, 162, 247, .3); }
+.auth-flow-node.wan svg { color: #7aa2f7; }
+
+.auth-flow-node.cf { border-color: rgba(240, 159, 60, .3); }
+.auth-flow-node.cf svg { color: #f09f3c; }
+
+.auth-flow-node.caddy { border-color: rgba(63, 185, 113, .3); }
+.auth-flow-node.caddy svg { color: #3fb971; }
+
+.auth-flow-node.app { border-color: rgba(187, 154, 247, .3); }
+.auth-flow-node.app svg { color: #bb9af7; }
+
+.auth-flow-node.dns { border-color: rgba(122, 162, 247, .3); }
+.auth-flow-node.dns svg { color: #7aa2f7; }
+
+.auth-flow-node.upstream { border-color: rgba(63, 185, 113, .3); }
+.auth-flow-node.upstream svg { color: #3fb971; }
+
+.auth-flow-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 2px;
+  min-width: 60px;
+}
+
+.auth-flow-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-3);
+  margin-bottom: 1px;
+}
+
+.auth-flow-line {
+  font-size: 16px;
+  color: var(--text-3);
+}
+
+.auth-flow-explanation {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+.auth-flow-explanation p {
+  margin: 2px 0;
+}
+
+.auth-flow-explanation strong {
+  color: var(--text-1);
+}
+
+/* Mobile: flow diagram wraps */
+@media (max-width: 760px) {
+  .auth-flow-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .auth-flow-arrow {
+    flex-direction: row;
+    gap: 6px;
+    min-width: auto;
+  }
+
+  .auth-flow-line {
+    transform: rotate(90deg);
+  }
+}

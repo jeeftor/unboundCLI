@@ -17,7 +17,6 @@ import {
   RefreshCw,
   Route,
   Search,
-  Server,
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
@@ -39,6 +38,7 @@ import type {
   LANAuthMode,
   WANAuthMode,
 } from '../types';
+import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
 
 // ─── Auth type metadata ─────────────────────────────────────────────────────
 // Each auth type has a UNIQUE icon — no two types share the same icon.
@@ -315,41 +315,20 @@ function LegendSection({ sectionKey, info }: { sectionKey: keyof typeof SECTION_
 function FlowDiagram() {
   return (
     <div className="auth-flow-diagram">
-      <div className="auth-flow-row">
-        <div className="auth-flow-node wan">
-          <Globe size={20} />
-          <span>Internet</span>
-        </div>
-        <div className="auth-flow-arrow">
-          <span className="auth-flow-label">CF Access</span>
-          <span className="auth-flow-line">→</span>
-        </div>
-        <div className="auth-flow-node cf">
-          <Cloud size={20} />
-          <span>Cloudflare Tunnel</span>
-        </div>
-        <div className="auth-flow-arrow">
-          <span className="auth-flow-label">Forward Auth</span>
-          <span className="auth-flow-line">→</span>
-        </div>
-        <div className="auth-flow-node caddy">
-          <Server size={20} />
-          <span>Caddy</span>
-        </div>
-        <div className="auth-flow-arrow">
-          <span className="auth-flow-label">App-Native</span>
-          <span className="auth-flow-line">→</span>
-        </div>
-        <div className="auth-flow-node app">
-          <Monitor size={20} />
-          <span>Application</span>
-        </div>
-      </div>
-      <div className="auth-flow-explanation">
+      <FlowRow>
+        <FlowNode variant="wan" label="Internet" />
+        <FlowArrow label="CF Access" />
+        <FlowNode variant="cf" label="Cloudflare Tunnel" />
+        <FlowArrow label="Forward Auth" />
+        <FlowNode variant="caddy" label="Caddy" />
+        <FlowArrow label="App-Native" />
+        <FlowNode variant="app" label="Application" />
+      </FlowRow>
+      <FlowExplanation>
         <p><strong>WAN traffic</strong> flows: Internet → Cloudflare (CF Access login) → Tunnel → Caddy (forward_auth / Authentik) → App (own login)</p>
         <p><strong>LAN traffic</strong> flows: LAN device → Caddy (forward_auth / Authentik) → App (own login). No Cloudflare in the path.</p>
         <p><strong>API traffic</strong> uses service tokens (CF) or bearer tokens (Authentik) instead of browser login flows.</p>
-      </div>
+      </FlowExplanation>
     </div>
   );
 }

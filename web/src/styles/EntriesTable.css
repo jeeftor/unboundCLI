@@ -342,6 +342,19 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 }
 .row-modify-btn:hover { background: rgba(79, 168, 255, .14); border-color: rgba(79, 168, 255, .5); }
 
+.row-visualize-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-color: rgba(187, 154, 247, .32);
+  background: rgba(187, 154, 247, .07);
+  color: #bb9af7;
+}
+.row-visualize-btn:hover { background: rgba(187, 154, 247, .14); border-color: rgba(187, 154, 247, .5); }
+
 .row-remove-btn {
   padding: 4px 10px;
   font-size: 12px;
