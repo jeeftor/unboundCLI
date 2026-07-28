@@ -2047,6 +2047,13 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	for _, e := range resp {
 		hostname := e.Hostname
 
+		// ── Skip wildcard / root domain entries (e.g. ".vookie.net", "*.vookie.net").
+		// These are catch-all DNS overrides, not real hosts — DNS "failure" and
+		// "stale" status are expected for them.
+		if strings.HasPrefix(hostname, ".") || strings.HasPrefix(hostname, "*.") || hostname == "" {
+			continue
+		}
+
 		// ── Invalid hostname (trailing comma, whitespace, etc.)
 		if strings.ContainsAny(hostname, ", \t") || hostname == "" {
 			issues = append(issues, DiagnosticIssue{
