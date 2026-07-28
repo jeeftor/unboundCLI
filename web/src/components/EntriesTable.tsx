@@ -10,6 +10,7 @@ import {
 } from '../lib/services';
 import type { Entry, ServiceKey } from '../types';
 import { CloudflareDetails } from './CloudflarePanel';
+import { CopyButton } from './CopyButton';
 
 export function EntriesTable({
   entries,
@@ -123,7 +124,7 @@ function EntryRow({
       </td>
       <td data-label="Status"><StatusChip entry={entry} /><span className="status-subtext">{statusDetail}</span></td>
       <td data-label="Services"><ServiceBadges entry={entry} /></td>
-      <td data-label="Caddy upstream"><span>{entry.caddy_upstream || '-'}</span><span className="subtle">admin {entry.caddy_ip || '-'}</span><span className="protocol-pill">HTTP</span></td>
+      <td data-label="Caddy upstream"><span>{entry.caddy_upstream || '-'}{entry.caddy_upstream && <CopyButton value={entry.caddy_upstream} label="upstream" />}</span><span className="subtle">admin {entry.caddy_ip || '-'}</span><span className="protocol-pill">HTTP</span></td>
       <td data-label="DNS"><span className={`dns-result ${dnsResultClass(entry.dns_resolved)}`}>{entry.dns_resolved || 'FAIL'}</span><span className="status-subtext">{dnsOK ? 'A record' : 'NXDOMAIN'}</span></td>
       <td data-label="Cloudflare route"><CloudflareDetails status={entry.cloudflare_status} hostname={entry.hostname} /></td>
       <td data-label="Actions">
