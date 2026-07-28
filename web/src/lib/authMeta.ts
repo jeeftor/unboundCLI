@@ -220,3 +220,109 @@ export function detectAuthPattern(auth: {
 
   return null;
 }
+
+// ── Request flow steps (what happens when a user hits the service) ──
+
+export type FlowStep = {
+  step: number;
+  actor: string;
+  action: string;
+  result: string;
+  warn?: boolean;
+};
+
+export function buildWanRequestFlow(auth: {
+  wan_exposed: boolean;
+  wan_auth: string;
+  has_forward_auth: boolean;
+  cf_access_app_id?: string;
+  cf_access_decisions?: string[];
+  authentik_provider_mode?: string;
+  authentik_app_slug?: string;
+  hostname: string;
+  upstream: string;
+}): FlowStep[] {
+  if (!auth.wan_exposed) {
+    return [{
+      step: 1,
+      actor: '—',
+      action: 'Not WAN-exposed',
+      result: 'No Cloudflare tunnel. Requests from the internet cannot reach this host.',
+    }];
+  }
+
+  const hasCF = Boolean(auth.cf_access_app_id);
+  const hasBypass = auth.cf_access_decisions?.includes('bypass') ?? false;
+  const hasFA = auth.has_forward_auth;
+  const steps: FlowStep[] = [];
+  let n = 1;
+
+  steps.push({ step: n++, actor: 'User', action: `Requests https://${auth.hostname}`, result: 'Browser sends HTTPS request' });
+
+  if (hasCF) {
+    steps.push({ step: n++, actor: 'Cloudflare', action: 'Intercepts request at edge', result: 'Checks for CF_Authorization JWT cookie' });
+    if (hasBypass) {
+      steps.push({ step: n++, actor: 'CF Access', action: 'Bypass policy matches', result: 'No challenge — traffic passes through' });
+    } else {
+      steps.push({ step: n++, actor: 'CF Access', action: 'No JWT cookie found', result: '302 redirect to IdP login (Google/GitHub/etc.)' });
+      steps.push({ step: n++, actor: 'IdP', action: 'User authenticates', result: 'IdP redirects back to CF with auth code' });
+      steps.push({ step: n++, actor: 'CF Access', action: 'Exchanges code, sets JWT cookie', result: 'CF_Authorization cookie set, request continues' });
+    }
+    steps.push({ step: n++, actor: 'Cloudflare Tunnel', action: 'Forwards to origin', result: `Encrypted tunnel to Caddy (${auth.hostname})` });
+  }
+
+  steps.push({ step: n++, actor: 'Caddy', action: 'Receives request', result: 'Processes route handler' });
+
+  if (hasFA) {
+    const isDoubleLogin = hasCF && !hasBypass;
+    const mode = auth.authentik_provider_mode || 'forward_single';
+
+    steps.push({ step: n++, actor: 'Caddy', action: `forward_auth subrequest to Authentik`, result: `Checks session cookie with Authentik outpost (${mode})` });
+
+    if (isDoubleLogin) {
+      steps.push({ step: n++, actor: 'Authentik', action: 'No Authentik session cookie', result: '302 redirect to Authentik login', warn: true });
+      steps.push({ step: n++, actor: 'Authentik', action: 'User logs in AGAIN', result: 'Session cookie set, redirect back to Caddy', warn: true });
+    } else {
+      steps.push({ step: n++, actor: 'Authentik', action: 'Validates session cookie', result: '200 OK (authenticated) or 302 to login' });
+      steps.push({ step: n++, actor: 'Authentik', action: 'If no session: redirect to login', result: `User authenticates at Authentik (${auth.authentik_app_slug || 'app'}), cookie set` });
+    }
+
+    steps.push({ step: n++, actor: 'Caddy', action: 'forward_auth returned 200', result: 'Forwards request to upstream' });
+  } else {
+    steps.push({ step: n++, actor: 'Caddy', action: 'No forward_auth configured', result: 'Forwards directly to upstream' });
+  }
+
+  steps.push({ step: n++, actor: 'Service', action: `Receives request at ${auth.upstream}`, result: 'Serves content' });
+
+  return steps;
+}
+
+export function buildLanRequestFlow(auth: {
+  has_forward_auth: boolean;
+  authentik_provider_mode?: string;
+  authentik_app_slug?: string;
+  hostname: string;
+  upstream: string;
+  dns_resolved: string;
+  unbound_ip?: string;
+}): FlowStep[] {
+  const steps: FlowStep[] = [];
+  let n = 1;
+
+  steps.push({ step: n++, actor: 'LAN Client', action: `Requests https://${auth.hostname}`, result: 'Browser sends request' });
+  steps.push({ step: n++, actor: 'Unbound DNS', action: `Resolves ${auth.hostname}`, result: auth.dns_resolved ? `→ ${auth.dns_resolved}` : 'NXDOMAIN (not in DNS)' });
+  steps.push({ step: n++, actor: 'Caddy', action: 'Receives request', result: 'Processes route handler' });
+
+  if (auth.has_forward_auth) {
+    const mode = auth.authentik_provider_mode || 'forward_single';
+    steps.push({ step: n++, actor: 'Caddy', action: `forward_auth subrequest to Authentik`, result: `Checks session cookie (${mode})` });
+    steps.push({ step: n++, actor: 'Authentik', action: 'Validates session', result: '200 OK or 302 to Authentik login' });
+    steps.push({ step: n++, actor: 'Caddy', action: 'forward_auth returned 200', result: 'Forwards to upstream' });
+  } else {
+    steps.push({ step: n++, actor: 'Caddy', action: 'No forward_auth', result: 'Forwards directly to upstream' });
+  }
+
+  steps.push({ step: n++, actor: 'Service', action: `Receives request at ${auth.upstream}`, result: 'Serves content' });
+
+  return steps;
+}
