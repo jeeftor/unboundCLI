@@ -247,3 +247,20 @@ export type DiagnosticsResponse = {
   issues: DiagnosticIssue[];
   summary: Record<string, number>;
 };
+
+// ─── Prune types ────────────────────────────────────────────────────────────
+
+export type PruneAction = {
+  hostname: string;
+  service: 'unbound' | 'adguard' | 'cloudflare_tunnel' | 'cloudflare_dns';
+  action: string;
+  detail: string;
+  success?: boolean;
+  error?: string;
+};
+
+export type PruneResponse = {
+  dry_run: boolean;
+  total: number;
+  actions: PruneAction[];
+};

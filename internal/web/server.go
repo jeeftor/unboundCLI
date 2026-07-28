@@ -303,6 +303,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/dns-probe", s.handleDNSProbe)
 	s.mux.HandleFunc("/api/diagnostics", s.handleDiagnostics)
+	s.mux.HandleFunc("/api/diagnostics/prune", s.handleDiagnosticsPrune)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
@@ -2196,4 +2197,202 @@ func (s *Server) caddyServerIP() string {
 		return rt.CaddyEndpoint.ServerIP
 	}
 	return "192.168.1.15" // fallback
+}
+
+// ─── Diagnostics Prune ──────────────────────────────────────────────────────
+
+// PruneAction describes a single cleanup action that would be/was performed.
+type PruneAction struct {
+	Hostname string `json:"hostname"`
+	Service  string `json:"service"`  // "unbound", "adguard", "cloudflare_tunnel", "cloudflare_dns"
+	Action   string `json:"action"`   // "delete"
+	Detail   string `json:"detail"`
+	Success  bool   `json:"success,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// PruneResponse is the result of POST /api/diagnostics/prune.
+type PruneResponse struct {
+	DryRun  bool          `json:"dry_run"`
+	Total   int           `json:"total"`
+	Actions []PruneAction `json:"actions"`
+}
+
+// POST /api/diagnostics/prune
+// Body: {"dry_run": true, "hostname": "optional.example.com"}
+// Finds stale entries (in DNS/Cloudflare but NOT in Caddy) and optionally
+// removes them from Unbound, AdGuard, Cloudflare tunnel, and Cloudflare DNS.
+// If hostname is omitted, all stale entries are pruned.
+// If dry_run is true (default), only reports what would be deleted.
+func (s *Server) handleDiagnosticsPrune(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req struct {
+		DryRun   bool   `json:"dry_run"`
+		Hostname string `json:"hostname"` // optional: prune only this hostname
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+		// dry_run defaults to true if not specified
+	} else {
+		req.DryRun = true
+	}
+
+	entries, _, err := s.loadEntries(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to load entries: %w", err))
+		return
+	}
+
+	resp := entryResponses(entries)
+	runtime := s.runtimeSnapshot()
+	actions := []PruneAction{}
+
+	for _, e := range resp {
+		hostname := e.Hostname
+
+		// Skip wildcard/root entries
+		if strings.HasPrefix(hostname, ".") || strings.HasPrefix(hostname, "*.") || hostname == "" {
+			continue
+		}
+
+		// If a specific hostname was requested, skip others
+		if req.Hostname != "" && !strings.EqualFold(hostname, req.Hostname) {
+			continue
+		}
+
+		// Only prune stale entries (no Caddy upstream)
+		if e.CaddyUpstream != "" {
+			continue
+		}
+
+		// ── Unbound override
+		if e.UnboundStatus.Configured && runtime.Clients.Unbound != nil {
+			action := PruneAction{
+				Hostname: hostname,
+				Service:  "unbound",
+				Action:   "delete",
+				Detail:   fmt.Sprintf("Remove Unbound DNS override for %s (→ %s)", hostname, e.UnboundStatus.IP),
+			}
+			if !req.DryRun {
+				parts := strings.SplitN(hostname, ".", 2)
+				if len(parts) == 2 {
+					overrides, err := runtime.Clients.Unbound.GetOverrides()
+					if err == nil {
+						deleted := 0
+						for _, o := range overrides {
+							if strings.EqualFold(o.Host, parts[0]) && strings.EqualFold(o.Domain, parts[1]) {
+								if delErr := runtime.Clients.Unbound.DeleteOverride(o.UUID); delErr == nil {
+									deleted++
+								}
+							}
+						}
+						if deleted > 0 {
+							_ = runtime.Clients.Unbound.ApplyChanges()
+							action.Success = true
+							action.Detail = fmt.Sprintf("Deleted %d Unbound override(s) for %s", deleted, hostname)
+						} else {
+							action.Error = "no matching override found"
+						}
+					} else {
+						action.Error = err.Error()
+					}
+				}
+			}
+			actions = append(actions, action)
+		}
+
+		// ── AdGuard rewrite
+		if e.AdguardStatus.Configured && runtime.Clients.Adguard != nil {
+			action := PruneAction{
+				Hostname: hostname,
+				Service:  "adguard",
+				Action:   "delete",
+				Detail:   fmt.Sprintf("Remove AdGuard DNS rewrite for %s (→ %s)", hostname, e.AdguardStatus.IP),
+			}
+			if !req.DryRun {
+				rewrites, err := runtime.Clients.Adguard.GetRewritesForDomain(hostname)
+				if err == nil {
+					deleted := 0
+					for _, rw := range rewrites {
+						if delErr := runtime.Clients.Adguard.DeleteRewrite(rw.Domain, rw.Answer); delErr == nil {
+							deleted++
+						}
+					}
+					if deleted > 0 {
+						action.Success = true
+						action.Detail = fmt.Sprintf("Deleted %d AdGuard rewrite(s) for %s", deleted, hostname)
+					} else {
+						action.Error = "no matching rewrite found"
+					}
+				} else {
+					action.Error = err.Error()
+				}
+			}
+			actions = append(actions, action)
+		}
+
+		// ── Cloudflare tunnel route
+		if e.CloudflareStatus.Configured && runtime.Clients.Cloudflare != nil {
+			tunnelName := e.CloudflareStatus.TunnelName
+			action := PruneAction{
+				Hostname: hostname,
+				Service:  "cloudflare_tunnel",
+				Action:   "delete",
+				Detail:   fmt.Sprintf("Remove CF tunnel route for %s on tunnel %s (→ %s)", hostname, tunnelName, e.CloudflareStatus.Service),
+			}
+			if !req.DryRun {
+				// Use DeleteTunnelRuleInTunnel with the specific tunnel ID
+				tunnelID := e.CloudflareStatus.TunnelID
+				if tunnelID != "" {
+					if delErr := runtime.Clients.Cloudflare.DeleteTunnelRuleInTunnel(hostname, tunnelID); delErr == nil {
+						action.Success = true
+						action.Detail = fmt.Sprintf("Deleted CF tunnel route for %s on tunnel %s", hostname, tunnelName)
+					} else {
+						action.Error = delErr.Error()
+					}
+				} else {
+					// Fallback: try default tunnel
+					if delErr := runtime.Clients.Cloudflare.DeleteTunnelRule(hostname); delErr == nil {
+						action.Success = true
+						action.Detail = fmt.Sprintf("Deleted CF tunnel route for %s", hostname)
+					} else {
+						action.Error = delErr.Error()
+					}
+				}
+			}
+			actions = append(actions, action)
+		}
+
+		// ── Cloudflare DNS CNAME
+		if e.CloudflareStatus.HasDNSRecord && runtime.Clients.Cloudflare != nil {
+			action := PruneAction{
+				Hostname: hostname,
+				Service:  "cloudflare_dns",
+				Action:   "delete",
+				Detail:   fmt.Sprintf("Remove CF DNS CNAME record for %s", hostname),
+			}
+			if !req.DryRun {
+				if delErr := runtime.Clients.Cloudflare.DeleteDNSRecord(hostname); delErr == nil {
+					action.Success = true
+					action.Detail = fmt.Sprintf("Deleted CF DNS CNAME for %s", hostname)
+				} else {
+					action.Error = delErr.Error()
+				}
+			}
+			actions = append(actions, action)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, PruneResponse{
+		DryRun:  req.DryRun,
+		Total:   len(actions),
+		Actions: actions,
+	})
 }
