@@ -1,11 +1,11 @@
 import { ArrowLeftRight, Cloud, Globe, LockKeyhole, Monitor, Server, ShieldCheck, ShieldX, Unlock } from 'lucide-react';
-import type { ComponentType } from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 // ── Flow diagram primitives (shared between AuthFlowsTab legend and per-entry VisualizeModal) ──
 
 export type FlowNodeVariant = 'wan' | 'cf' | 'caddy' | 'app' | 'dns' | 'upstream' | 'cf_access' | 'authentik' | 'app_auth';
 
-const NODE_ICONS: Record<FlowNodeVariant, ComponentType<{ size?: number }>> = {
+const NODE_ICONS: Record<FlowNodeVariant, LucideIcon> = {
   wan: Globe,
   cf: Cloud,
   caddy: Server,

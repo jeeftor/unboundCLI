@@ -163,7 +163,7 @@ function EditableAuthBadge({
 function StatusIcon({ status }: { status: AuthStatus }) {
   const meta = STATUS_INFO[status] ?? STATUS_INFO.unknown;
   const Icon = meta.icon;
-  return <Icon size={16} className={`auth-status-icon ${status}`} title={meta.desc} />;
+  return <span title={meta.desc}><Icon size={16} className={`auth-status-icon ${status}`} /></span>;
 }
 
 // ─── Legend section card ────────────────────────────────────────────────────
@@ -279,7 +279,7 @@ function HostRow({
           <span className="auth-expand">{hasDetails ? (expanded ? '▾' : '▸') : ''}</span>
           <Network size={13} className="auth-hostname-icon" />
           {host.hostname}
-          {host.wan_exposed && <Globe size={12} className="auth-wan-icon" title="WAN-exposed" />}
+          {host.wan_exposed && <span title="WAN-exposed"><Globe size={12} className="auth-wan-icon" /></span>}
           {isStale && <span className="auth-stale-tag">enriching…</span>}
           {hasPendingChanges && <span className="auth-pending-tag" title="Has pending changes">{pendingChanges.size > 0 ? Array.from(pendingChanges.values()).filter(c => c.hostname === host.hostname).length : 0} pending</span>}
           <button type="button" className="auth-edit-btn" onClick={(e) => { e.stopPropagation(); onEditHost(host.hostname); }} title="Edit auth configuration">
@@ -640,11 +640,11 @@ export function AuthFlowsTab() {
             <table className="auth-table">
               <thead>
                 <tr>
-                  <th><Network size={13} /> Hostname <HelpCircle size={11} className="th-info" title="The hostname as configured in Caddy. Click rows with ▸ to see detailed auth config." /></th>
-                  <th><Globe size={13} /> WAN Auth <HelpCircle size={11} className="th-info" title="How browser traffic from the internet is authenticated. 'Not exposed' means the host has no Cloudflare tunnel and isn't reachable from the internet." /></th>
-                  <th><Wifi size={13} /> LAN Auth <HelpCircle size={11} className="th-info" title="How browser traffic from your local network is authenticated. 'None' means the app is directly accessible (it may have its own login). 'Forward Auth' means Caddy delegates to Authentik." /></th>
-                  <th><Terminal size={13} /> API Auth <HelpCircle size={11} className="th-info" title="How scripts, automation, and other non-browser clients authenticate. Uses tokens/keys instead of interactive login. 'None' means API calls use the same auth as browser traffic." /></th>
-                  <th><ShieldCheck size={13} /> Status <HelpCircle size={11} className="th-info" title="Overall auth health. OK = properly configured. Warning = works but non-ideal. Error = missing or broken auth (e.g., WAN-exposed with no auth, double-login risk)." /></th>
+                  <th><Network size={13} /> Hostname <span title="The hostname as configured in Caddy. Click rows with ▸ to see detailed auth config."><HelpCircle size={11} className="th-info" /></span></th>
+                  <th><Globe size={13} /> WAN Auth <span title="How browser traffic from the internet is authenticated. 'Not exposed' means the host has no Cloudflare tunnel and isn't reachable from the internet."><HelpCircle size={11} className="th-info" /></span></th>
+                  <th><Wifi size={13} /> LAN Auth <span title="How browser traffic from your local network is authenticated. 'None' means the app is directly accessible (it may have its own login). 'Forward Auth' means Caddy delegates to Authentik."><HelpCircle size={11} className="th-info" /></span></th>
+                  <th><Terminal size={13} /> API Auth <span title="How scripts, automation, and other non-browser clients authenticate. Uses tokens/keys instead of interactive login. 'None' means API calls use the same auth as browser traffic."><HelpCircle size={11} className="th-info" /></span></th>
+                  <th><ShieldCheck size={13} /> Status <span title="Overall auth health. OK = properly configured. Warning = works but non-ideal. Error = missing or broken auth (e.g., WAN-exposed with no auth, double-login risk)."><HelpCircle size={11} className="th-info" /></span></th>
                 </tr>
               </thead>
               <tbody>
