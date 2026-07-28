@@ -1,7 +1,8 @@
 import '../styles/VisualizeModal.css';
-import { Globe, Loader2, Network, Server, Smartphone, Wifi, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertTriangle, Globe, Loader2, Network, Server, ShieldCheck, ShieldX, Smartphone, Wifi, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
+import { detectAuthPattern } from '../lib/authMeta';
 import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
 import type { Entry, HostAuth } from '../types';
 
@@ -43,6 +44,20 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   const authentikMode = auth?.authentik_provider_mode;
   const authNotes = auth?.notes;
 
+  // Detect auth pattern (double-login, no auth, normal, etc.)
+  const pattern = useMemo(() => {
+    if (!auth) return null;
+    return detectAuthPattern({
+      wan_exposed: auth.wan_exposed,
+      wan_auth: auth.wan_auth,
+      lan_auth: auth.lan_auth,
+      has_forward_auth: auth.has_forward_auth,
+      cf_access_app_id: auth.cf_access_app_id,
+      cf_access_decisions: auth.cf_access_decisions,
+      notes: auth.notes,
+    });
+  }, [auth]);
+
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal visualize-modal">
@@ -51,6 +66,22 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
           <button type="button" className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="modal-body visualize-body">
+
+          {/* ── Auth pattern analysis ── */}
+          {pattern && (
+            <div className={`visualize-auth-verdict ${pattern.verdict}`}>
+              <div className="visualize-auth-verdict-icon">
+                {pattern.verdict === 'ok' && <ShieldCheck size={18} />}
+                {pattern.verdict === 'warning' && <AlertTriangle size={18} />}
+                {pattern.verdict === 'error' && <ShieldX size={18} />}
+              </div>
+              <div className="visualize-auth-verdict-content">
+                <div className="visualize-auth-verdict-name">{pattern.name}</div>
+                <div className="visualize-auth-verdict-summary">{pattern.summary}</div>
+                <div className="visualize-auth-verdict-detail">{pattern.detail}</div>
+              </div>
+            </div>
+          )}
 
           {/* ── WAN path ── */}
           <div className="visualize-section">

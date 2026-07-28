@@ -93,6 +93,63 @@
   opacity: .6;
 }
 
+/* Auth pattern verdict box */
+.visualize-auth-verdict {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid;
+}
+
+.visualize-auth-verdict.ok {
+  border-color: rgba(63, 185, 113, .3);
+  background: rgba(63, 185, 113, .06);
+}
+
+.visualize-auth-verdict.warning {
+  border-color: rgba(249, 115, 22, .3);
+  background: rgba(249, 115, 22, .06);
+}
+
+.visualize-auth-verdict.error {
+  border-color: rgba(239, 89, 111, .3);
+  background: rgba(239, 89, 111, .06);
+}
+
+.visualize-auth-verdict-icon {
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.visualize-auth-verdict.ok .visualize-auth-verdict-icon { color: #3fb971; }
+.visualize-auth-verdict.warning .visualize-auth-verdict-icon { color: #f97316; }
+.visualize-auth-verdict.error .visualize-auth-verdict-icon { color: #ef596f; }
+
+.visualize-auth-verdict-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.visualize-auth-verdict-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 2px;
+}
+
+.visualize-auth-verdict-summary {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.visualize-auth-verdict-detail {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
 /* Auth detail panels (CF Access policy, Authentik provider) */
 .visualize-auth-detail {
   margin-top: 6px;

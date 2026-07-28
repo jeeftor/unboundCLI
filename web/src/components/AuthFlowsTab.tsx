@@ -1,152 +1,40 @@
 import '../styles/AuthFlowsTab.css';
 import {
   AlertTriangle,
-  ArrowLeftRight,
   CheckCircle2,
   ChevronDown,
   Cloud,
   Fingerprint,
   Globe,
   HelpCircle,
-  KeyRound,
   Loader2,
-  LockKeyhole,
-  Monitor,
   Network,
   Pencil,
   RefreshCw,
   Route,
   Search,
-  ShieldAlert,
   ShieldCheck,
-  ShieldQuestion,
   ShieldX,
-  Smartphone,
   Terminal,
-  Ticket,
-  Unlock,
-  UnlockKeyhole,
   Wifi,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ComponentType } from 'react';
 import type {
-  APIAuthMode,
   AuthStatus,
   HostAuth,
-  LANAuthMode,
-  WANAuthMode,
 } from '../types';
 import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
+import {
+  WAN_AUTH_INFO,
+  LAN_AUTH_INFO,
+  API_AUTH_INFO,
+  STATUS_INFO,
+} from '../lib/authMeta';
+import type { AuthMeta } from '../lib/authMeta';
 
-// ─── Auth type metadata ─────────────────────────────────────────────────────
-// Each auth type has a UNIQUE icon — no two types share the same icon.
-// This makes every badge instantly recognizable in both the legend and table.
-
-type AuthMeta = { label: string; desc: string; icon: ComponentType<{ size?: number }>; tone: string };
-
-const WAN_AUTH_INFO: Record<string, AuthMeta> = {
-  none: {
-    label: 'None',
-    desc: 'No WAN authentication. If WAN-exposed, this is a security risk — the host is reachable from the internet without any auth barrier.',
-    icon: Unlock,
-    tone: 'danger',
-  },
-  cf_access: {
-    label: 'CF Access',
-    desc: 'Cloudflare Access sits at the edge and requires IdP login before traffic reaches the tunnel. This is the standard edge-auth pattern.',
-    icon: Cloud,
-    tone: 'orange',
-  },
-  forward_auth: {
-    label: 'Forward Auth',
-    desc: "Caddy's forward_auth directive delegates authentication to Authentik. CF Access (if present) must have a bypass policy to avoid double-login.",
-    icon: ArrowLeftRight,
-    tone: 'blue',
-  },
-  app_native: {
-    label: 'App-Native',
-    desc: 'The application handles its own authentication (e.g., Jellyfin, Audiobookshelf have built-in login). No external auth layer is enforced.',
-    icon: LockKeyhole,
-    tone: 'green',
-  },
-};
-
-const LAN_AUTH_INFO: Record<string, AuthMeta> = {
-  none: {
-    label: 'None',
-    desc: 'No LAN authentication. The app is directly accessible on the LAN. This is normal for apps with their own login (app-native).',
-    icon: Unlock,
-    tone: 'neutral',
-  },
-  forward_auth: {
-    label: 'Forward Auth',
-    desc: "Caddy's forward_auth delegates to Authentik even on LAN requests. Users must authenticate via Authentik before reaching the app.",
-    icon: Route,
-    tone: 'blue',
-  },
-  app_native: {
-    label: 'App-Native',
-    desc: 'The application handles its own authentication on LAN traffic.',
-    icon: Monitor,
-    tone: 'green',
-  },
-};
-
-const API_AUTH_INFO: Record<string, AuthMeta> = {
-  none: {
-    label: 'None',
-    desc: 'No API-specific authentication. API calls use the same auth as browser traffic (or none if WAN/LAN is none).',
-    icon: UnlockKeyhole,
-    tone: 'neutral',
-  },
-  cf_service_token: {
-    label: 'CF Service Token',
-    desc: 'Cloudflare Access service token. Machine-to-machine calls send CF-Access-Client-Id and CF-Access-Client-Secret headers. Browsers are unaffected.',
-    icon: Ticket,
-    tone: 'orange',
-  },
-  authentik_bearer: {
-    label: 'Authentik Bearer',
-    desc: 'Authentik bearer token. API calls send Authorization: Bearer <token>. The Authentik proxy provider validates the token.',
-    icon: Fingerprint,
-    tone: 'blue',
-  },
-  app_native_key: {
-    label: 'App-Native Key',
-    desc: 'The application has its own API key mechanism (e.g., Jellyfin API keys). No external auth layer for API access.',
-    icon: KeyRound,
-    tone: 'green',
-  },
-};
-
-const STATUS_INFO: Record<string, AuthMeta> = {
-  ok: {
-    label: 'OK',
-    desc: 'Auth is properly configured for this host.',
-    icon: ShieldCheck,
-    tone: 'green',
-  },
-  warning: {
-    label: 'Warning',
-    desc: 'Auth works but has a non-ideal configuration (e.g., split WAN/LAN modes, forward_auth without CF bypass).',
-    icon: AlertTriangle,
-    tone: 'yellow',
-  },
-  error: {
-    label: 'Error',
-    desc: 'Auth is missing or broken (e.g., WAN-exposed host with no auth, double-login risk from CF Access + forward_auth without bypass).',
-    icon: ShieldX,
-    tone: 'red',
-  },
-  unknown: {
-    label: 'Unknown',
-    desc: "Auth state couldn't be determined (e.g., Authentik/CF Access API unavailable).",
-    icon: ShieldQuestion,
-    tone: 'gray',
-  },
-};
+// Re-export for local use (AuthBadge, EditableAuthBadge, etc. use these)
+// Auth type metadata now lives in lib/authMeta.ts (shared with VisualizeModal)
 
 // Section metadata — color-coded by traffic type
 const SECTION_META = {
