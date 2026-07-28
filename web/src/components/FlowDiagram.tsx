@@ -41,7 +41,7 @@ export function FlowNode({
 export function FlowArrow({ label, active = true }: { label?: string; active?: boolean }) {
   return (
     <div className="auth-flow-arrow">
-      {label && <span className="auth-flow-label">{label}</span>}
+      {label ? <span className="auth-flow-label">{label}</span> : null}
       <span className="auth-flow-line">{active ? '→' : '·'}</span>
     </div>
   );

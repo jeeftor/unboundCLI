@@ -95,21 +95,20 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
 
     const steps: Step[] = [
       { node: { variant: 'wan', label: 'Internet' } },
+      { arrowLabel: '' },
       { node: { variant: 'cf', label: 'Cloudflare', sublabel: cf?.tunnel_name || undefined } },
     ];
 
     if (hasCFAccess) {
-      // CF Access is a node in the flow — show whether it challenges or bypasses
       const accessLabel = hasBypass ? 'CF Access (bypass)' : 'CF Access (login)';
       steps.push({ arrowLabel: hasBypass ? 'bypass' : 'IdP login' });
       steps.push({ node: { variant: 'cf_access', label: accessLabel, sublabel: cfAppDomain || undefined } });
     }
 
-    // After CF, traffic reaches Caddy
+    steps.push({ arrowLabel: '' });
     steps.push({ node: { variant: 'caddy', label: 'Caddy', sublabel: entry.caddy_ip || undefined } });
 
     if (hasForwardAuth) {
-      // Forward auth is a node — Authentik challenges before reaching the app
       const isDoubleLogin = hasCFAccess && !hasBypass;
       steps.push({ arrowLabel: 'forward_auth' });
       steps.push({
@@ -120,15 +119,10 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
           active: !isDoubleLogin,
         },
       });
-      if (isDoubleLogin) {
-        // Mark as double-login — the Authentik node shows a warning
-        steps.push({ arrowLabel: 'login again!' });
-      } else {
-        steps.push({ arrowLabel: 'authorized' });
-      }
+      steps.push({ arrowLabel: isDoubleLogin ? 'login again!' : 'authorized' });
     }
 
-    // Final destination
+    steps.push({ arrowLabel: '' });
     steps.push({ node: { variant: 'upstream', label: 'Service', sublabel: upstream } });
 
     return steps;
@@ -143,6 +137,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       { node: { variant: 'app', label: 'LAN Client', sublabel: entry.dns_resolved || undefined, active: hasDNS } },
       { arrowLabel: 'DNS', arrowActive: hasDNS },
       { node: { variant: 'dns', label: 'Unbound', sublabel: entry.unbound_status?.ip || undefined, active: hasDNS } },
+      { arrowLabel: '' },
       { node: { variant: 'caddy', label: 'Caddy', sublabel: entry.caddy_ip || undefined } },
     ];
 
@@ -152,6 +147,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       steps.push({ arrowLabel: 'authorized' });
     }
 
+    steps.push({ arrowLabel: '' });
     steps.push({ node: { variant: 'upstream', label: 'Service', sublabel: upstream } });
 
     return steps;
