@@ -373,7 +373,8 @@ func (s *Server) routes() {
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	// Serve index.html for "/" and "/visualize/*" (SPA deep links).
+	if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/visualize/") {
 		http.NotFound(w, r)
 		return
 	}
