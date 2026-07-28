@@ -469,9 +469,17 @@ func classifyAuth(ha *models.HostAuth) {
 	if ha.WANExposed {
 		hasCFAccess := ha.CFAccessAppID != ""
 		hasBypassPolicy := hasPolicyDecision(ha, "bypass")
+		hasAllowPolicy := hasPolicyDecision(ha, "allow")
 		hasServiceAuthPolicy := hasPolicyDecision(ha, "service_auth")
 
 		switch {
+		case hasCFAccess && !ha.HasForwardAuth && hasBypassPolicy && !hasAllowPolicy && !hasServiceAuthPolicy:
+			// CRITICAL: CF Access has only bypass policies and no forward_auth.
+			// This means the host is WIDE OPEN to the internet with zero auth.
+			ha.WANAuth = models.WANAuthNone
+			notes = append(notes, "CRITICAL: CF Access bypass-only with no forward_auth — host is OPEN to the internet")
+			ha.Status = models.AuthStatusError
+
 		case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && !ha.ConditionalForwardAuth:
 			// Pattern F: CF Access + forward_auth without bypass = double login
 			ha.WANAuth = models.WANAuthCFAccess
