@@ -1,10 +1,10 @@
 import '../styles/VisualizeModal.css';
 import { AlertTriangle, Globe, Loader2, Network, Server, ShieldCheck, ShieldX, Smartphone, Wifi, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { api } from '../api/client';
+import { useMemo } from 'react';
 import { buildLanRequestFlow, buildWanRequestFlow, detectAuthPattern } from '../lib/authMeta';
 import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
-import type { Entry, HostAuth } from '../types';
+import { useStore } from '../store';
+import type { Entry } from '../types';
 
 export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () => void }) {
   const cf = entry.cloudflare_status;
@@ -13,24 +13,9 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   const hasDNS = Boolean(entry.dns_resolved && entry.dns_resolved !== 'FAIL');
   const upstream = entry.caddy_upstream || 'unknown';
 
-  // Fetch rich auth data (CF Access policies, Authentik providers)
-  const [auth, setAuth] = useState<HostAuth | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setAuthLoading(true);
-    setAuth(null);
-    api.authInventory()
-      .then((res) => {
-        if (cancelled) return;
-        const match = res.hosts.find((h) => h.hostname === entry.hostname);
-        setAuth(match ?? null);
-      })
-      .catch(() => { /* auth inventory may not be configured */ })
-      .finally(() => { if (!cancelled) setAuthLoading(false); });
-    return () => { cancelled = true; };
-  }, [entry.hostname]);
+  // Auth data from store (cached, fetched once at startup)
+  const auth = useStore((s) => s.authHosts.get(entry.hostname) ?? null);
+  const authLoading = useStore((s) => s.authLoading);
 
   // Enriched auth info
   const hasCFAccess = auth?.cf_access_app_id !== undefined && auth.cf_access_app_id !== '';

@@ -6,6 +6,7 @@ import type {
   ConfigResponse,
   EntriesResponse,
   Entry,
+  HostAuth,
   ProgressEvent,
   ServiceKey,
   SyncAction,
@@ -67,6 +68,12 @@ type AppState = {
   messageKind: 'info' | 'error' | 'ok';
   progress: Record<string, ProgressEvent>;
 
+  // ── Auth inventory (cached, shared across components) ──
+  authHosts: Map<string, HostAuth>;
+  authLoading: boolean;
+  authError: string | null;
+  authSources: { cloudflare_access: boolean; authentik: boolean } | null;
+
   // ── Filters ──
   statusFilter: string;
   serviceFilter: string;
@@ -119,6 +126,13 @@ type AppState = {
   setProgress: (progress: Record<string, ProgressEvent>) => void;
   updateProgress: (service: string, ev: ProgressEvent) => void;
 
+  // Auth inventory actions
+  setAuthHosts: (hosts: Map<string, HostAuth>) => void;
+  setAuthLoading: (loading: boolean) => void;
+  setAuthError: (error: string | null) => void;
+  setAuthSources: (sources: { cloudflare_access: boolean; authentik: boolean } | null) => void;
+  refreshAuth: () => Promise<void>;
+
   // Filter actions
   setStatusFilter: (filter: string) => void;
   setServiceFilter: (filter: string) => void;
@@ -170,6 +184,12 @@ export const useStore = create<AppState>((set, get) => ({
   message: 'Loading service status...',
   messageKind: 'info',
   progress: {},
+
+  // Auth inventory
+  authHosts: new Map(),
+  authLoading: false,
+  authError: null,
+  authSources: null,
 
   // ── Filters ──
   statusFilter: 'all',
@@ -228,6 +248,23 @@ export const useStore = create<AppState>((set, get) => ({
   setProgress: (progress) => set({ progress }),
   updateProgress: (service, ev) =>
     set((state) => ({ progress: { ...state.progress, [service]: ev } })),
+
+  // ── Actions: Auth inventory ──
+  setAuthHosts: (hosts) => set({ authHosts: hosts }),
+  setAuthLoading: (loading) => set({ authLoading: loading }),
+  setAuthError: (error) => set({ authError: error }),
+  setAuthSources: (sources) => set({ authSources: sources }),
+  refreshAuth: async () => {
+    set({ authLoading: true, authError: null });
+    try {
+      const res = await api.authInventory();
+      const map = new Map<string, HostAuth>();
+      for (const h of res.hosts) map.set(h.hostname, h);
+      set({ authHosts: map, authLoading: false, authSources: res.sources });
+    } catch (e) {
+      set({ authLoading: false, authError: e instanceof Error ? e.message : String(e) });
+    }
+  },
 
   // ── Actions: Filters ──
   setStatusFilter: (filter) => set({ statusFilter: filter }),
@@ -564,6 +601,7 @@ export async function syncNow(): Promise<void> {
     store.setSyncLog(`${data.result.message}\nadded=${data.result.items_added} updated=${data.result.items_updated} deleted=${data.result.items_deleted}`);
     store.clearPlan();
     await refreshEntries();
+    void useStore.getState().refreshAuth();
   } catch (err) {
     store.setSyncLog(err instanceof Error ? err.message : String(err));
   } finally {
@@ -574,6 +612,7 @@ export async function syncNow(): Promise<void> {
 export async function removeEntry(hostname: string, service: 'all' | 'unbound' | 'adguard' = 'all'): Promise<void> {
   await api.removeEntry(hostname, service);
   await refreshEntries();
+  void useStore.getState().refreshAuth();
 }
 
 export async function syncAll(): Promise<void> {
@@ -581,6 +620,7 @@ export async function syncAll(): Promise<void> {
   if (ok) {
     await syncNow();
     await refreshEntries();
+    void useStore.getState().refreshAuth();
   }
 }
 
