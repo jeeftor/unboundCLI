@@ -2,22 +2,18 @@
 
 .react-flow-container {
   width: 100%;
-  height: 200px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--bg-1);
   overflow: hidden;
+  position: relative;
 }
 
 .react-flow-container .react-flow {
   background: var(--bg-1);
 }
 
-.react-flow-container .react-flow__background {
-  background: var(--bg-1);
-}
-
-/* Hide controls we don't need */
+/* Hide attribution */
 .react-flow__attribution {
   display: none;
 }
@@ -42,8 +38,8 @@
 }
 
 .rf-node-warn {
-  border-color: rgba(239, 89, 111, .4) !important;
-  background: rgba(239, 89, 111, .06) !important;
+  border-color: rgba(239, 89, 111, .5) !important;
+  background: rgba(239, 89, 111, .08) !important;
 }
 
 .rf-node-icon {
@@ -71,35 +67,51 @@
   white-space: nowrap;
 }
 
-/* Edges */
+/* Edges — make them clearly visible */
 .react-flow__edge-path {
   stroke: var(--text-3);
-  stroke-width: 1.5;
+  stroke-width: 2;
+  fill: none;
 }
 
 .react-flow__edge.animated .react-flow__edge-path {
   stroke: #ef596f;
-  stroke-width: 2;
-  stroke-dasharray: 5;
+  stroke-width: 2.5;
+  stroke-dasharray: 6;
   animation: dashdraw .5s linear infinite;
 }
 
 @keyframes dashdraw {
-  to { stroke-dashoffset: -10; }
+  to { stroke-dashoffset: -12; }
 }
 
 .rf-edge-warn .react-flow__edge-path {
   stroke: #ef596f;
 }
 
+/* Edge labels */
 .react-flow__edge-text {
-  fill: var(--text-3);
-  font-size: 10px;
+  fill: var(--text-2);
+  font-size: 11px;
   font-weight: 600;
 }
 
 .react-flow__edge-textbg {
   fill: var(--bg-1);
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+
+/* Arrowheads — make them visible */
+.react-flow__edge .react-flow__edge-path + path {
+  stroke: var(--text-3);
+  fill: var(--text-3);
+  stroke-width: 1;
+}
+
+.react-flow__edge.animated .react-flow__edge-path + path {
+  stroke: #ef596f;
+  fill: #ef596f;
 }
 
 /* Controls */

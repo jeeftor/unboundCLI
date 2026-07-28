@@ -45,6 +45,7 @@ export type FlowNodeData = {
   sublabel?: string;
   inactive?: boolean;
   warn?: boolean;
+  vertical?: boolean;
 };
 
 function FlowNodeComponent({ data }: { data: FlowNodeData }) {
@@ -59,7 +60,7 @@ function FlowNodeComponent({ data }: { data: FlowNodeData }) {
         background: cfg.bg,
       }}
     >
-      <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
+      <Handle type="target" position={data.vertical ? Position.Top : Position.Left} style={{ opacity: 0 }} />
       <div className="rf-node-icon" style={{ color: cfg.color }}>
         <Icon size={16} />
       </div>
@@ -67,7 +68,7 @@ function FlowNodeComponent({ data }: { data: FlowNodeData }) {
         <div className="rf-node-label">{data.label}</div>
         {data.sublabel && <div className="rf-node-sub">{data.sublabel}</div>}
       </div>
-      <Handle type="source" position={Position.Right} style={{ opacity: 0 }} />
+      <Handle type="source" position={data.vertical ? Position.Bottom : Position.Right} style={{ opacity: 0 }} />
     </div>
   );
 }
@@ -91,6 +92,7 @@ export type DiagramEdge = {
   animated?: boolean;
   type?: string;
   className?: string;
+  markerEnd?: string;
 };
 
 export type Step = {
@@ -104,7 +106,7 @@ export type Step = {
   arrowWarn?: boolean;
 };
 
-export function stepsToNodesEdges(steps: Step[]): { nodes: DiagramNode[]; edges: DiagramEdge[] } {
+export function stepsToNodesEdges(steps: Step[], vertical = false): { nodes: DiagramNode[]; edges: DiagramEdge[] } {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
 
@@ -123,6 +125,7 @@ export function stepsToNodesEdges(steps: Step[]): { nodes: DiagramNode[]; edges:
           sublabel: step.sublabel,
           inactive: step.inactive,
           warn: step.warn,
+          vertical,
         },
         position: { x: 0, y: 0 },
       });
@@ -135,6 +138,7 @@ export function stepsToNodesEdges(steps: Step[]): { nodes: DiagramNode[]; edges:
           label: step.arrowLabel || undefined,
           animated: step.arrowWarn,
           className: step.arrowWarn ? 'rf-edge-warn' : undefined,
+          markerEnd: 'arrowclosed',
         });
       }
 
