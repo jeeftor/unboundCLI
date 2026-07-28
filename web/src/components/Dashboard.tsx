@@ -8,6 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { isIssue } from '../lib/hostnameDecision';
+import type { ServiceKey } from '../types';
 import { AuthFlowsTab } from './AuthFlowsTab';
 import { CaddyEditor } from './CaddyEditor';
 import { CFRepairBanner } from './CloudflarePanel';
@@ -48,6 +49,7 @@ export function AppShell() {
   const syncLoading = useStore((s) => s.syncLoading);
   const syncProgress = useStore((s) => s.syncProgress);
   const syncLog = useStore((s) => s.syncLog);
+  const plan = useStore((s) => s.plan);
   const configOpen = useStore((s) => s.configOpen);
   const forms = useStore((s) => s.forms);
   const savedForms = useStore((s) => s.savedForms);
@@ -94,7 +96,7 @@ export function AppShell() {
   );
   const canSyncNow = mutationEnabled && plan.planID !== '' && plan.actionIDs.length > 0;
   const plannedActions = plan.actions;
-  const enabledServices = config?.enabled || {};
+  const enabledServices = config?.enabled ?? ({} as Partial<Record<ServiceKey, boolean>>);
 
   // ── Actions from store ──
   const setView = useStore((s) => s.setView);
@@ -183,18 +185,18 @@ export function AppShell() {
         />
 
         {showRemoteBanner && (
-          <div className={`git-remote-banner global ${remoteStatus!.fetch_error ? 'error' : 'warn'}`}>
+          <div className={`git-remote-banner global ${remoteStatus.fetch_error ? 'error' : 'warn'}`}>
             <GitBranch size={14} />
-            {remoteStatus!.fetch_error ? (
-              <span>Caddy repo: could not reach remote — {remoteStatus!.fetch_error}</span>
+            {remoteStatus.fetch_error ? (
+              <span>Caddy repo: could not reach remote — {remoteStatus.fetch_error}</span>
             ) : (
               <span>
-                Caddy repo: remote <strong>{remoteStatus!.remote}/{remoteStatus!.branch}</strong> is{' '}
-                <strong>{remoteStatus!.remote_ahead}</strong> commit{remoteStatus!.remote_ahead !== 1 ? 's' : ''} ahead — pull before deploying
+                Caddy repo: remote <strong>{remoteStatus.remote}/{remoteStatus.branch}</strong> is{' '}
+                <strong>{remoteStatus.remote_ahead}</strong> commit{remoteStatus.remote_ahead !== 1 ? 's' : ''} ahead — pull before deploying
               </span>
             )}
             <div className="git-remote-banner-actions">
-              {remoteStatus!.remote_ahead > 0 && mutationEnabled && (
+              {remoteStatus.remote_ahead > 0 && mutationEnabled && (
                 <button type="button" className="btn-sm btn-warn" onClick={() => void handlePull()} disabled={pulling}>
                   {pulling ? <><Loader2 size={12} className="spin" /> Pulling…</> : '⬇ Pull'}
                 </button>
@@ -306,7 +308,7 @@ export function AppShell() {
         forms={forms}
         setForms={(updater) => {
           if (typeof updater === 'function') {
-            setForms((updater as (prev: ConfigForms) => ConfigForms)(useStore.getState().forms));
+            setForms((updater)(useStore.getState().forms));
           } else {
             setForms(updater);
           }

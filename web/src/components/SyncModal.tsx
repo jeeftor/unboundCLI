@@ -116,7 +116,7 @@ export function SyncModal({
             logCursorRef.current = data.cursor;
             setLiveLog(prev => {
               const newLines = data.lines.map(l => `[${l.level}] ${l.message}`).join('\n');
-              return prev ? prev + '\n' + newLines : newLines;
+              return prev ? `${prev  }\n${  newLines}` : newLines;
             });
           }
         } catch { /* ignore */ }

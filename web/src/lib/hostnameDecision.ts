@@ -50,12 +50,12 @@ function cfNoDNSWarning(entry: Entry): HostnameWarning | null {
     summary: `${entry.hostname} has a tunnel ingress rule but no CNAME in Cloudflare DNS — it won't resolve publicly.`,
     facts: [
       'Tunnel ingress rule exists (cloudflared knows where to route traffic)',
-      'No CNAME record found: ' + entry.hostname + ' → <tunnel-id>.cfargotunnel.com',
+      `No CNAME record found: ${  entry.hostname  } → <tunnel-id>.cfargotunnel.com`,
       'External DNS returns NXDOMAIN — the tunnel is unreachable from the internet'
     ],
     actions: [
       { label: 'Fix automatically', description: 'Use "Via Caddy" or "Switch to Direct" in the Cloudflare panel to re-save the route — it will now also create the DNS record.' },
-      { label: 'Fix manually', description: 'In Cloudflare DNS, add a proxied CNAME: ' + entry.hostname + ' → <your-tunnel-id>.cfargotunnel.com' }
+      { label: 'Fix manually', description: `In Cloudflare DNS, add a proxied CNAME: ${  entry.hostname  } → <your-tunnel-id>.cfargotunnel.com` }
     ]
   };
 }
