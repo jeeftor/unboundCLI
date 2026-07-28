@@ -35,10 +35,7 @@ async function layoutNodes(
   nodes: DiagramNode[],
   edges: DiagramEdge[]
 ): Promise<{ nodes: DiagramNode[]; edges: DiagramEdge[] }> {
-  const useVertical = nodes.length > 4;
-  const opts = useVertical
-    ? { ...elkOptions, 'elk.direction': 'DOWN', 'elk.layered.spacing.nodeNodeBetweenLayers': '25' }
-    : elkOptions;
+  const opts = { ...elkOptions, 'elk.direction': 'DOWN', 'elk.layered.spacing.nodeNodeBetweenLayers': '25' };
 
   const graph = {
     id: 'root',
@@ -157,7 +154,8 @@ function ArrowEdge({
 const edgeTypes = { arrow: ArrowEdge };
 
 function FlowDiagramInner({ steps, height }: { steps: Step[]; height: number }) {
-  const useVertical = steps.filter(s => s.nodeType).length > 4;
+  // Always use vertical layout — reads top-to-bottom alongside the step list
+  const useVertical = true;
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () => stepsToNodesEdges(steps, useVertical),
     [steps, useVertical]
