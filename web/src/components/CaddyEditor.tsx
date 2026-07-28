@@ -438,7 +438,7 @@ export function EntryModal({
                 onClick={() => setUpstream(u => {
                   if (u.startsWith('https://')) return u.replace('https://', 'http://');
                   if (u.startsWith('http://')) return u.replace('http://', 'https://');
-                  return 'http://' + u;
+                  return `http://${  u}`;
                 })}
                 title="Toggle http/https"
               >

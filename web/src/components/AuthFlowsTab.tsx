@@ -844,9 +844,9 @@ export function AuthFlowsTab() {
                     <th>Hostname</th>
                     <th>Field</th>
                     <th>Current</th>
-                    <th></th>
+                    <th />
                     <th>New</th>
-                    <th></th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
