@@ -318,61 +318,45 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
           </div>
 
-          {/* ── Auth configuration table ── */}
-          <div className="visualize-section">
-            <div className="visualize-section-title">
-              <Network size={13} /> Auth Configuration
-              {authLoading && <Loader2 size={12} className="visualize-loading-spin" />}
-            </div>
-            <table className="visualize-config-table">
-              <thead>
-                <tr>
-                  <th>Layer</th>
-                  <th>Method</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <ConfigRow label="WAN" value={auth?.wan_auth ? auth.wan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.wan_auth !== undefined && auth.wan_auth !== 'none'} />
-                <ConfigRow label="LAN" value={auth?.lan_auth ? auth.lan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.lan_auth !== undefined && auth.lan_auth !== 'none'} />
-                <ConfigRow label="API" value={auth?.api_auth ? auth.api_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.api_auth !== undefined && auth.api_auth !== 'none'} />
-                <ConfigRow label="CF Access" value={hasCFAccess ? 'configured' : 'none'} ok={hasCFAccess} />
-                <ConfigRow label="Forward Auth" value={hasForwardAuth ? 'authentik' : 'none'} ok={hasForwardAuth} />
-                <ConfigRow label="WAN Exposed" value={wanExposed ? 'yes' : (authLoading ? '…' : 'no')} ok={wanExposed} />
-              </tbody>
-            </table>
-
-            {/* Auth notes */}
-            {authNotes && authNotes.length > 0 && (
-              <div className="visualize-auth-notes">
-                <strong>Notes</strong>
-                <ul>
-                  {authNotes.map((n, i) => <li key={i}>{n}</li>)}
-                </ul>
+          {/* ── Auth configuration + Service status ── */}
+          <div className="visualize-bottom-panels">
+            {/* Auth Configuration */}
+            <div className="visualize-panel">
+              <div className="visualize-panel-title">
+                <Network size={13} /> Auth Configuration
+                {authLoading && <Loader2 size={12} className="visualize-loading-spin" />}
               </div>
-            )}
-          </div>
+              <div className="visualize-badges">
+                <AuthBadge label="WAN" value={auth?.wan_auth ? auth.wan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.wan_auth !== undefined && auth.wan_auth !== 'none'} />
+                <AuthBadge label="LAN" value={auth?.lan_auth ? auth.lan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.lan_auth !== undefined && auth.lan_auth !== 'none'} />
+                <AuthBadge label="API" value={auth?.api_auth ? auth.api_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.api_auth !== undefined && auth.api_auth !== 'none'} />
+                <AuthBadge label="CF Access" value={hasCFAccess ? 'configured' : 'none'} ok={hasCFAccess} />
+                <AuthBadge label="Forward Auth" value={hasForwardAuth ? 'authentik' : 'none'} ok={hasForwardAuth} />
+                <AuthBadge label="WAN Exposed" value={wanExposed ? 'yes' : (authLoading ? '…' : 'no')} ok={wanExposed} />
+              </div>
 
-          {/* ── Service status table ── */}
-          <div className="visualize-section">
-            <div className="visualize-section-title">
-              <Server size={13} /> Service Status
+              {/* Auth notes */}
+              {authNotes && authNotes.length > 0 && (
+                <div className="visualize-auth-notes">
+                  <ul>
+                    {authNotes.map((n, i) => <li key={i}>{n}</li>)}
+                  </ul>
+                </div>
+              )}
             </div>
-            <table className="visualize-config-table">
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Detail</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <ConfigRow label="DNS (Unbound)" value={entry.unbound_status?.ip || 'not configured'} ok={entry.unbound_status?.configured ?? false} />
-                <ConfigRow label="AdGuard" value={entry.adguard_status?.ip || 'not configured'} ok={entry.adguard_status?.configured ?? false} />
-                <ConfigRow label="DHCP" value={entry.dhcp_status?.ip || 'not configured'} ok={entry.dhcp_status?.configured ?? false} />
-                <ConfigRow label="Cloudflare" value={cf?.configured ? cf.tunnel_name : 'not configured'} ok={cf?.configured ?? false} />
-              </tbody>
-            </table>
+
+            {/* Service Status */}
+            <div className="visualize-panel">
+              <div className="visualize-panel-title">
+                <Server size={13} /> Service Status
+              </div>
+              <div className="visualize-badges">
+                <ServiceBadge label="DNS" value={entry.unbound_status?.ip || '—'} ok={entry.unbound_status?.configured ?? false} />
+                <ServiceBadge label="AdGuard" value={entry.adguard_status?.ip || '—'} ok={entry.adguard_status?.configured ?? false} />
+                <ServiceBadge label="DHCP" value={entry.dhcp_status?.ip || '—'} ok={entry.dhcp_status?.configured ?? false} />
+                <ServiceBadge label="Cloudflare" value={cf?.configured ? cf.tunnel_name : '—'} ok={cf?.configured ?? false} />
+              </div>
+            </div>
           </div>
 
         </div>
@@ -381,15 +365,23 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   );
 }
 
-function ConfigRow({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+function AuthBadge({ label, value, ok }: { label: string; value: string; ok: boolean }) {
   return (
-    <tr>
-      <td className="config-label">{label}</td>
-      <td className="config-value">{value}</td>
-      <td className={`config-status ${ok ? 'ok' : 'missing'}`}>
-        {ok ? '✓' : '—'}
-      </td>
-    </tr>
+    <div className={`auth-pill ${ok ? 'auth-pill-ok' : 'auth-pill-off'}`}>
+      <span className="auth-pill-label">{label}</span>
+      <span className="auth-pill-value">{value}</span>
+      <span className="auth-pill-dot" />
+    </div>
+  );
+}
+
+function ServiceBadge({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className={`svc-pill ${ok ? 'svc-pill-ok' : 'svc-pill-off'}`}>
+      <span className="svc-pill-label">{label}</span>
+      <span className="svc-pill-value">{value}</span>
+      <span className="svc-pill-dot" />
+    </div>
   );
 }
 
