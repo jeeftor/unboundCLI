@@ -44,6 +44,14 @@ repos:
         # Process only changed files
         pass_filenames: true
 
+      - id: web-lint
+        name: web lint (eslint)
+        entry: bash -c 'cd web && npm run lint -- --quiet'
+        language: system
+        types: [ts, tsx]
+        pass_filenames: false
+        files: ^web/src/
+
   # GitHub Actions workflow linter
   - repo: https://github.com/rhysd/actionlint
     rev: v1.6.27
