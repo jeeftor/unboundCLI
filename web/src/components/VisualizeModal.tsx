@@ -200,7 +200,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
             {wanSteps ? (
               <>
-                <ReactFlowDiagram steps={wanSteps} height={140} />
+                <ReactFlowDiagram steps={wanSteps} height={350} />
                 {hasCFAccess && !hasBypass && hasForwardAuth && (
                   <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
                     Double-login: users authenticate at CF Access, then again at Authentik.
@@ -248,7 +248,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             <div className="visualize-section-title">
               <Wifi size={13} /> LAN Path (Internal → Service)
             </div>
-            <ReactFlowDiagram steps={lanSteps} height={140} />
+            <ReactFlowDiagram steps={lanSteps} height={350} />
             <div className="visualize-section-sub" style={{ marginTop: 6 }}>
               Client resolves <code>{entry.hostname}</code>
               {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
