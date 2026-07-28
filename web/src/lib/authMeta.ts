@@ -188,8 +188,17 @@ export function detectAuthPattern(auth: {
     };
   }
 
-  // Pattern A/B: CF Access only
+  // Pattern A/B: CF Access only (but check for bypass-only)
   if (hasCF && !hasFA) {
+    if (hasBypass) {
+      // CF Access has a bypass policy and no forward_auth — effectively no auth
+      return {
+        name: 'CF Access Bypass (No Auth)',
+        verdict: 'warning',
+        summary: 'CF Access bypass policy lets traffic through without challenge, and no forward_auth is configured',
+        detail: 'Cloudflare Access has a bypass policy for this host, so it lets all traffic through without requiring login. No forward_auth is configured either. The host is effectively unauthenticated on the WAN unless the app has its own built-in login. Fix: either remove the bypass policy from CF Access, or add forward_auth (Authentik) so Caddy enforces authentication after CF Access lets traffic through.',
+      };
+    }
     return {
       name: 'CF Access Only',
       verdict: 'ok',
@@ -263,6 +272,9 @@ export function buildWanRequestFlow(auth: {
     steps.push({ step: n++, actor: 'Cloudflare', action: 'Intercepts request at edge', result: 'Checks for CF_Authorization JWT cookie' });
     if (hasBypass) {
       steps.push({ step: n++, actor: 'CF Access', action: 'Bypass policy matches', result: 'No challenge — traffic passes through' });
+      if (!hasFA) {
+        steps.push({ step: n++, actor: 'CF Access', action: 'No forward_auth after bypass', result: 'Request continues unauthenticated', warn: true });
+      }
     } else {
       steps.push({ step: n++, actor: 'CF Access', action: 'No JWT cookie found', result: '302 redirect to IdP login (Google/GitHub/etc.)' });
       steps.push({ step: n++, actor: 'IdP', action: 'User authenticates', result: 'IdP redirects back to CF with auth code' });
