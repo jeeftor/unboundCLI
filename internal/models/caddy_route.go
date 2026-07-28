@@ -10,6 +10,7 @@ type CaddyRouteInfo struct {
 	ResponseHeadersSet map[string]string // headers.response.set values
 	TLSToUpstream      bool              // transport includes a tls block
 	HasForwardAuth     bool              // route uses Authentik forward_auth (outpost.goauthentik.io)
+	ConditionalForwardAuth bool          // forward_auth only in some subroutes (not CF tunnel traffic)
 }
 
 // HasXForwardedProto returns true if X-Forwarded-Proto is set or added in request headers.

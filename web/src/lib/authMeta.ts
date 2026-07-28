@@ -142,6 +142,7 @@ export function detectAuthPattern(auth: {
   wan_auth: string;
   lan_auth: string;
   has_forward_auth: boolean;
+  conditional_forward_auth?: boolean;
   cf_access_app_id?: string;
   cf_access_decisions?: string[];
   notes?: string[];
@@ -167,9 +168,20 @@ export function detectAuthPattern(auth: {
   const hasCF = Boolean(auth.cf_access_app_id);
   const hasBypass = auth.cf_access_decisions?.includes('bypass') ?? false;
   const hasFA = auth.has_forward_auth;
+  const hasConditionalFA = auth.conditional_forward_auth ?? false;
+
+  // Pattern E: CF Access + conditional forward_auth (Caddy skips FA for CF tunnel)
+  if (hasCF && hasFA && !hasBypass && hasConditionalFA) {
+    return {
+      name: 'CF Access + Conditional Forward Auth',
+      verdict: 'ok',
+      summary: 'CF Access handles WAN auth, forward_auth only applies to LAN — Caddy skips FA for tunnel traffic',
+      detail: 'The Caddyfile uses matchers to conditionally apply forward_auth: CF tunnel traffic (matched by Cf-Connecting-Ip header) skips forward_auth and goes directly to the service, while LAN/Tailscale traffic goes through Authentik forward_auth. This avoids the double-login problem without needing a CF Access bypass policy.',
+    };
+  }
 
   // Pattern F: CF Access + forward_auth without bypass = double login
-  if (hasCF && hasFA && !hasBypass) {
+  if (hasCF && hasFA && !hasBypass && !hasConditionalFA) {
     return {
       name: 'Double-Login Risk',
       verdict: 'error',
@@ -244,6 +256,7 @@ export function buildWanRequestFlow(auth: {
   wan_exposed: boolean;
   wan_auth: string;
   has_forward_auth: boolean;
+  conditional_forward_auth?: boolean;
   cf_access_app_id?: string;
   cf_access_decisions?: string[];
   authentik_provider_mode?: string;
@@ -263,6 +276,9 @@ export function buildWanRequestFlow(auth: {
   const hasCF = Boolean(auth.cf_access_app_id);
   const hasBypass = auth.cf_access_decisions?.includes('bypass') ?? false;
   const hasFA = auth.has_forward_auth;
+  const hasConditionalFA = auth.conditional_forward_auth ?? false;
+  // When conditional forward_auth is detected, CF tunnel traffic skips FA.
+  const wanSkipsFA = hasConditionalFA;
   const steps: FlowStep[] = [];
   let n = 1;
 
@@ -285,7 +301,7 @@ export function buildWanRequestFlow(auth: {
 
   steps.push({ step: n++, actor: 'Caddy', action: 'Receives request', result: 'Processes route handler' });
 
-  if (hasFA) {
+  if (hasFA && !wanSkipsFA) {
     const isDoubleLogin = hasCF && !hasBypass;
     const mode = auth.authentik_provider_mode || 'forward_single';
 
@@ -300,6 +316,8 @@ export function buildWanRequestFlow(auth: {
     }
 
     steps.push({ step: n++, actor: 'Caddy', action: 'forward_auth returned 200', result: 'Forwards request to upstream' });
+  } else if (wanSkipsFA) {
+    steps.push({ step: n++, actor: 'Caddy', action: 'CF tunnel traffic — skips forward_auth', result: 'Matcher: Cf-Connecting-Ip present → direct to upstream' });
   } else {
     steps.push({ step: n++, actor: 'Caddy', action: 'No forward_auth configured', result: 'Forwards directly to upstream' });
   }

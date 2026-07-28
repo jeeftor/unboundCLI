@@ -237,8 +237,9 @@ type EntryResponse struct {
 	OverallStatus    models.SyncStatus        `json:"overall_status"`
 	StatusLabel      string                   `json:"status_label"`
 	DataSource       string                   `json:"data_source"`
-	HasForwardAuth   bool                     `json:"has_forward_auth"`
-	HasAuthBypass    bool                     `json:"has_auth_bypass_risk"`
+	HasForwardAuth          bool                     `json:"has_forward_auth"`
+	HasConditionalForwardAuth bool                   `json:"has_conditional_forward_auth,omitempty"`
+	HasAuthBypass           bool                     `json:"has_auth_bypass_risk"`
 }
 
 type PlanResponse struct {
@@ -1534,6 +1535,7 @@ func entryResponses(entries []*models.Entry) []EntryResponse {
 			StatusLabel:    entry.OverallStatus.Label(),
 			DataSource:     entry.DataSource,
 			HasForwardAuth: entry.CaddyRoute.HasForwardAuth,
+			HasConditionalForwardAuth: entry.CaddyRoute.ConditionalForwardAuth,
 			HasAuthBypass:  entry.HasAuthBypassRisk(),
 		})
 	}

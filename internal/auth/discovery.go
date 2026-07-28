@@ -288,13 +288,14 @@ func Discover(
 // This captures what we already know from Caddy route parsing and CF tunnel state.
 func buildBaseAuth(e *models.Entry) *models.HostAuth {
 	ha := &models.HostAuth{
-		Hostname:       e.Hostname,
-		HasForwardAuth: e.CaddyRoute.HasForwardAuth,
-		WANExposed:     e.CloudflareStatus.Configured,
-		WANAuth:        models.WANAuthNone,
-		LANAuth:        models.LANAuthNone,
-		APIAuth:        models.APIAuthNone,
-		Status:         models.AuthStatusUnknown,
+		Hostname:               e.Hostname,
+		HasForwardAuth:         e.CaddyRoute.HasForwardAuth,
+		ConditionalForwardAuth: e.CaddyRoute.ConditionalForwardAuth,
+		WANExposed:             e.CloudflareStatus.Configured,
+		WANAuth:                models.WANAuthNone,
+		LANAuth:                models.LANAuthNone,
+		APIAuth:                models.APIAuthNone,
+		Status:                 models.AuthStatusUnknown,
 	}
 
 	// If Caddy has forward_auth, the LAN auth is forward_auth.
@@ -449,6 +450,7 @@ func enrichWithAuthentik(authMap map[string]*models.HostAuth, providers []api.Pr
 //   - CF Access app exists + no forward_auth → cf_access
 //   - CF Access app exists + forward_auth + bypass policy → forward_auth
 //   - CF Access app exists + forward_auth + no bypass → ERROR (double-login)
+//   - CF Access app exists + conditional forward_auth (Caddy skips FA for CF tunnel) → cf_access (OK)
 //   - No CF Access + forward_auth → forward_auth (Authentik handles it)
 //   - No CF Access + no forward_auth → app_native (or none if we can't tell)
 //
@@ -470,11 +472,17 @@ func classifyAuth(ha *models.HostAuth) {
 		hasServiceAuthPolicy := hasPolicyDecision(ha, "service_auth")
 
 		switch {
-		case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy:
+		case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && !ha.ConditionalForwardAuth:
 			// Pattern F: CF Access + forward_auth without bypass = double login
 			ha.WANAuth = models.WANAuthCFAccess
 			notes = append(notes, "Double-login risk: CF Access + forward_auth without bypass policy")
 			ha.Status = models.AuthStatusError
+
+		case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && ha.ConditionalForwardAuth:
+			// Pattern E: CF Access + conditional forward_auth (Caddy skips FA for CF tunnel)
+			// This is OK — CF Access handles WAN auth, forward_auth only applies to LAN
+			ha.WANAuth = models.WANAuthCFAccess
+			notes = append(notes, "CF Access (WAN) + conditional forward_auth (LAN only) — Caddy skips FA for tunnel traffic")
 
 		case hasCFAccess && ha.HasForwardAuth && hasBypassPolicy:
 			// Pattern D: CF Access bypasses, forward_auth handles actual auth
