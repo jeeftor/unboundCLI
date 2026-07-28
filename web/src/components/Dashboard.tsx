@@ -147,7 +147,11 @@ export function AppShell() {
   }, [checkRemote]);
 
   // ── Modal helpers ──
-  const modalEntry = useStore((s) => s.entries.find((e) => e.hostname === modalHostname));
+  const allEntriesForModal = useStore((s) => s.entries);
+  const modalEntry = useMemo(
+    () => allEntriesForModal.find((e) => e.hostname === modalHostname),
+    [allEntriesForModal, modalHostname]
+  );
 
   const openModify = (hostname: string) => {
     setModalHostname(hostname);
