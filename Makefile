@@ -23,7 +23,8 @@ help:
 	@echo "  web-install    : Install web UI dependencies"
 	@echo "  web-build      : Build the React web UI assets"
 	@echo "  web-dev        : Run the React web UI dev server"
-	@echo "  check          : Run all checks (fmt, vet, test)"
+	@echo "  web-lint       : Lint web UI (Zustand selectors, hooks, etc.)"
+	@echo "  check          : Run all checks (fmt, vet, test, web-lint)"
 	@echo "  install        : Install the application"
 	@echo "  cross-build    : Cross-compile for multiple platforms"
 	@echo "  install-remote  : Build linux/amd64 and deploy to REMOTE_HOST (default: caddy)"
@@ -32,7 +33,7 @@ help:
 	@echo "  release-dry-run : Run GoReleaser in dry-run mode"
 	@echo "  help           : Show this help message"
 
-.PHONY: all help build clean test vet fmt web-install web-build web-dev check install cross-build install-remote release-dry-run
+.PHONY: all help build clean test vet fmt web-install web-build web-dev web-lint check install cross-build install-remote release-dry-run
 
 all: help
 
@@ -77,8 +78,13 @@ web-dev:
 	@echo "Starting web UI dev server..."
 	cd web && npm run dev
 
+# Lint web UI (catches unstable Zustand selectors, hook violations, etc.)
+web-lint:
+	@echo "Linting web UI..."
+	cd web && npm run lint
+
 # Run all checks
-check: fmt vet test
+check: fmt vet test web-lint
 
 # Install the application
 install: build
