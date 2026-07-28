@@ -277,20 +277,29 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
           )}
 
-          {/* ── Auth configuration grid ── */}
+          {/* ── Auth configuration table ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
               <Network size={13} /> Auth Configuration
               {authLoading && <Loader2 size={12} className="visualize-loading-spin" />}
             </div>
-            <div className="visualize-status-grid">
-              <StatusTile label="WAN Auth" ok={auth?.wan_auth !== undefined && auth.wan_auth !== 'none'} detail={auth?.wan_auth ? auth.wan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
-              <StatusTile label="LAN Auth" ok={auth?.lan_auth !== undefined && auth.lan_auth !== 'none'} detail={auth?.lan_auth ? auth.lan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
-              <StatusTile label="API Auth" ok={auth?.api_auth !== undefined && auth.api_auth !== 'none'} detail={auth?.api_auth ? auth.api_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
-              <StatusTile label="CF Access" ok={hasCFAccess} detail={hasCFAccess ? 'Configured' : 'None'} />
-              <StatusTile label="Forward Auth" ok={hasForwardAuth} detail={hasForwardAuth ? 'Authentik' : 'None'} />
-              <StatusTile label="WAN Exposed" ok={wanExposed} detail={wanExposed ? 'Yes' : (authLoading ? '…' : 'No')} />
-            </div>
+            <table className="visualize-config-table">
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Method</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <ConfigRow label="WAN" value={auth?.wan_auth ? auth.wan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.wan_auth !== undefined && auth.wan_auth !== 'none'} />
+                <ConfigRow label="LAN" value={auth?.lan_auth ? auth.lan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.lan_auth !== undefined && auth.lan_auth !== 'none'} />
+                <ConfigRow label="API" value={auth?.api_auth ? auth.api_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.api_auth !== undefined && auth.api_auth !== 'none'} />
+                <ConfigRow label="CF Access" value={hasCFAccess ? 'configured' : 'none'} ok={hasCFAccess} />
+                <ConfigRow label="Forward Auth" value={hasForwardAuth ? 'authentik' : 'none'} ok={hasForwardAuth} />
+                <ConfigRow label="WAN Exposed" value={wanExposed ? 'yes' : (authLoading ? '…' : 'no')} ok={wanExposed} />
+              </tbody>
+            </table>
 
             {/* Auth notes */}
             {authNotes && authNotes.length > 0 && (
@@ -303,17 +312,26 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             )}
           </div>
 
-          {/* ── Service status grid ── */}
+          {/* ── Service status table ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
               <Server size={13} /> Service Status
             </div>
-            <div className="visualize-status-grid">
-              <StatusTile label="DNS (Unbound)" ok={entry.unbound_status?.configured ?? false} detail={entry.unbound_status?.ip || 'Not configured'} />
-              <StatusTile label="AdGuard" ok={entry.adguard_status?.configured ?? false} detail={entry.adguard_status?.ip || 'Not configured'} />
-              <StatusTile label="DHCP" ok={entry.dhcp_status?.configured ?? false} detail={entry.dhcp_status?.ip || 'Not configured'} />
-              <StatusTile label="Cloudflare" ok={cf?.configured ?? false} detail={cf?.configured ? cf.tunnel_name : 'Not configured'} />
-            </div>
+            <table className="visualize-config-table">
+              <thead>
+                <tr>
+                  <th>Service</th>
+                  <th>Detail</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <ConfigRow label="DNS (Unbound)" value={entry.unbound_status?.ip || 'not configured'} ok={entry.unbound_status?.configured ?? false} />
+                <ConfigRow label="AdGuard" value={entry.adguard_status?.ip || 'not configured'} ok={entry.adguard_status?.configured ?? false} />
+                <ConfigRow label="DHCP" value={entry.dhcp_status?.ip || 'not configured'} ok={entry.dhcp_status?.configured ?? false} />
+                <ConfigRow label="Cloudflare" value={cf?.configured ? cf.tunnel_name : 'not configured'} ok={cf?.configured ?? false} />
+              </tbody>
+            </table>
           </div>
 
         </div>
@@ -322,12 +340,15 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   );
 }
 
-function StatusTile({ label, ok, detail }: { label: string; ok: boolean; detail: string }) {
+function ConfigRow({ label, value, ok }: { label: string; value: string; ok: boolean }) {
   return (
-    <div className={`visualize-status-tile ${ok ? 'ok' : 'missing'}`}>
-      <span className="visualize-status-label">{label}</span>
-      <span className="visualize-status-detail">{detail}</span>
-    </div>
+    <tr>
+      <td className="config-label">{label}</td>
+      <td className="config-value">{value}</td>
+      <td className={`config-status ${ok ? 'ok' : 'missing'}`}>
+        {ok ? '✓' : '—'}
+      </td>
+    </tr>
   );
 }
 
