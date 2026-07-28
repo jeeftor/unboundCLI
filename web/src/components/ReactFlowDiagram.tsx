@@ -1,11 +1,14 @@
 import '@xyflow/react/dist/style.css';
 
 import ELK from 'elkjs/lib/elk.bundled.js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Background,
   BackgroundVariant,
+  BaseEdge,
   Controls,
+  EdgeLabelRenderer,
+  getBezierPath,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
@@ -32,7 +35,6 @@ async function layoutNodes(
   nodes: DiagramNode[],
   edges: DiagramEdge[]
 ): Promise<{ nodes: DiagramNode[]; edges: DiagramEdge[] }> {
-  // Use vertical layout when there are many nodes (better fit for narrow modals)
   const useVertical = nodes.length > 4;
   const opts = useVertical
     ? { ...elkOptions, 'elk.direction': 'DOWN', 'elk.layered.spacing.nodeNodeBetweenLayers': '25' }
@@ -67,6 +69,97 @@ async function layoutNodes(
   return { nodes: layoutedNodes, edges };
 }
 
+// Custom edge component that renders an explicit arrow at the target end
+function ArrowEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  label,
+  labelStyle,
+  labelBgStyle,
+  labelBgPadding,
+  animated,
+  data,
+  markerEnd,
+}: any) {
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+
+  const isWarn = data?.arrowWarn;
+  const color = isWarn ? '#ef596f' : '#9aa5b3';
+
+  // Calculate arrow angle at target end
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const angle = Math.atan2(dy, dx);
+  const arrowLen = 10;
+  const arrowWidth = 6;
+
+  // Arrow tip at target point, slightly offset back along the path
+  const tipX = targetX;
+  const tipY = targetY;
+  const baseX = tipX - arrowLen * Math.cos(angle);
+  const baseY = tipY - arrowLen * Math.sin(angle);
+  const leftX = baseX - arrowWidth * Math.sin(angle);
+  const leftY = baseY + arrowWidth * Math.cos(angle);
+  const rightX = baseX + arrowWidth * Math.sin(angle);
+  const rightY = baseY - arrowWidth * Math.cos(angle);
+
+  return (
+    <>
+      <path
+        id={id}
+        className={`react-flow__edge-path ${animated ? 'animated' : ''} ${isWarn ? 'rf-edge-warn' : ''}`}
+        d={edgePath}
+        stroke={color}
+        strokeWidth={2}
+        fill="none"
+      />
+      {/* Explicit arrow triangle */}
+      <path
+        d={`M ${tipX} ${tipY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`}
+        fill={color}
+        stroke={color}
+        strokeWidth={1}
+      />
+      {label && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '3px',
+              padding: '2px 6px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: isWarn ? '#ef596f' : 'var(--text-2)',
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+            }}
+            className="rf-edge-label"
+          >
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
+const edgeTypes = { arrow: ArrowEdge };
+
 function FlowDiagramInner({ steps, height }: { steps: Step[]; height: number }) {
   const useVertical = steps.filter(s => s.nodeType).length > 4;
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
@@ -78,13 +171,17 @@ function FlowDiagramInner({ steps, height }: { steps: Step[]; height: number }) 
   const { fitView } = useReactFlow();
   const layoutDone = useRef(false);
 
+  // Set edge type to our custom arrow edge
+  useEffect(() => {
+    setEdges(eds => eds.map(e => ({ ...e, type: 'arrow' })));
+  }, [setEdges, initialEdges]);
+
   useEffect(() => {
     let cancelled = false;
     layoutNodes(initialNodes, initialEdges).then(({ nodes: ln, edges: le }) => {
       if (cancelled) return;
       setNodes(ln);
-      setEdges(le);
-      // Fit view after layout completes — use setTimeout to ensure DOM updates first
+      setEdges(le.map(e => ({ ...e, type: 'arrow' })));
       setTimeout(() => {
         fitView({ padding: 0.1, maxZoom: 1.5 });
       }, 50);
@@ -98,6 +195,7 @@ function FlowDiagramInner({ steps, height }: { steps: Step[]; height: number }) 
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         proOptions={{ hideAttribution: true }}
