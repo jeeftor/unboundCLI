@@ -29,6 +29,7 @@ export function App() {
   // Initial data load.
   useEffect(() => {
     void refreshEntries(() => useStore.getState().clearPlan());
+    void useStore.getState().refreshAuth();
   }, []);
 
   // Sync forms when config changes.
