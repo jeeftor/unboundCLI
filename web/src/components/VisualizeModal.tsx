@@ -105,7 +105,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
           label: 'CF Access (login)',
           sublabel: cfAppDomain || undefined,
           stepNum: n++,
-          arrowLabel: 'IdP login',
+          // No arrow label here — the IdP login happens AT cf_access
         });
         n++; // skip IdP step (4) — it's between CF Access and the exchange
         n++; // skip CF Access exchange step (5)
@@ -121,7 +121,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       label: 'Caddy',
       sublabel: entry.caddy_ip || undefined,
       stepNum: n++,
-      arrowLabel: '',
+      arrowLabel: hasCFAccess && !hasBypass ? 'JWT verified' : '',
     });
 
     if (hasForwardAuth) {
