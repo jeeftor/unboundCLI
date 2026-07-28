@@ -73,30 +73,54 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   }, [auth, entry.hostname, upstream, entry.dns_resolved, entry.unbound_status?.ip]);
 
   // ── Build WAN flow steps for React Flow ──
+  // Step numbers correspond to the WAN request flow table rows
   const wanSteps = useMemo(() => {
     if (!hasCF) return null;
 
+    let n = 1;
     const steps: Step[] = [
-      { id: 'wan', nodeType: 'wan', label: 'Internet', arrowLabel: '' },
-      { id: 'cf', nodeType: 'cf', label: 'Cloudflare', sublabel: cf?.tunnel_name || undefined },
+      { id: 'wan', nodeType: 'wan', label: 'Internet', stepNum: n++, arrowLabel: '' },
+      { id: 'cf', nodeType: 'cf', label: 'Cloudflare', sublabel: cf?.tunnel_name || undefined, stepNum: n++ },
     ];
 
     if (hasCFAccess) {
-      steps.push({
-        id: 'cf_access',
-        nodeType: 'cf_access',
-        label: hasBypass ? 'CF Access (bypass)' : 'CF Access (login)',
-        sublabel: cfAppDomain || undefined,
-        warn: hasBypass && !hasForwardAuth,
-        arrowLabel: hasBypass ? 'bypass' : 'IdP login',
-      });
+      if (hasBypass) {
+        // Bypass: CF Access step 3, then skip IdP steps, tunnel is step 4
+        steps.push({
+          id: 'cf_access',
+          nodeType: 'cf_access',
+          label: 'CF Access (bypass)',
+          sublabel: cfAppDomain || undefined,
+          warn: hasBypass && !hasForwardAuth,
+          stepNum: n++,
+          arrowLabel: 'bypass',
+        });
+        // Skip IdP (4) and CF Access exchange (5) — those don't happen on bypass
+        n += 2; // skip the IdP + exchange steps in the flow table
+      } else {
+        // Login: CF Access step 3, IdP step 4, CF Access step 5, tunnel step 6
+        steps.push({
+          id: 'cf_access',
+          nodeType: 'cf_access',
+          label: 'CF Access (login)',
+          sublabel: cfAppDomain || undefined,
+          stepNum: n++,
+          arrowLabel: 'IdP login',
+        });
+        n++; // skip IdP step (4) — it's between CF Access and the exchange
+        n++; // skip CF Access exchange step (5)
+      }
     }
+
+    // Tunnel step
+    n++; // tunnel step number
 
     steps.push({
       id: 'caddy',
       nodeType: 'caddy',
       label: 'Caddy',
       sublabel: entry.caddy_ip || undefined,
+      stepNum: n++,
       arrowLabel: '',
     });
 
@@ -108,23 +132,30 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
         label: 'Authentik',
         sublabel: authentikSlug || undefined,
         inactive: isDoubleLogin,
+        stepNum: n++,
         arrowLabel: 'forward_auth',
         arrowWarn: isDoubleLogin,
       });
+      // Skip the Authentik redirect + login again steps
+      if (isDoubleLogin) n += 2;
       steps.push({
         id: 'upstream',
         nodeType: 'upstream',
         label: 'Service',
         sublabel: upstream,
+        stepNum: n++,
         arrowLabel: isDoubleLogin ? 'login again!' : 'authorized',
         arrowWarn: isDoubleLogin,
       });
     } else {
+      // Skip the "no forward_auth" step
+      n++;
       steps.push({
         id: 'upstream',
         nodeType: 'upstream',
         label: 'Service',
         sublabel: upstream,
+        stepNum: n++,
         arrowLabel: '',
       });
     }
@@ -134,33 +165,45 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
 
   // ── Build LAN flow steps for React Flow ──
   const lanSteps = useMemo(() => {
+    let n = 1;
     const steps: Step[] = [
-      { id: 'app', nodeType: 'app', label: 'LAN Client', sublabel: entry.dns_resolved || undefined, inactive: !hasDNS, arrowLabel: '' },
-      { id: 'dns', nodeType: 'dns', label: 'Unbound', sublabel: entry.unbound_status?.ip || undefined, inactive: !hasDNS, arrowLabel: 'DNS' },
-      { id: 'caddy-lan', nodeType: 'caddy', label: 'Caddy', sublabel: entry.caddy_ip || undefined, arrowLabel: '' },
+      { id: 'app', nodeType: 'app', label: 'LAN Client', sublabel: entry.dns_resolved || undefined, inactive: !hasDNS, stepNum: n++, arrowLabel: '' },
+      { id: 'dns', nodeType: 'dns', label: 'Unbound', sublabel: entry.unbound_status?.ip || undefined, inactive: !hasDNS, stepNum: n++, arrowLabel: 'DNS' },
+      { id: 'caddy-lan', nodeType: 'caddy', label: 'Caddy', sublabel: entry.caddy_ip || undefined, stepNum: n++, arrowLabel: '' },
     ];
 
     if (hasForwardAuth) {
+      // Skip the "forward_auth subrequest" step
+      n++;
       steps.push({
         id: 'authentik-lan',
         nodeType: 'authentik',
         label: 'Authentik',
         sublabel: authentikSlug || undefined,
+        stepNum: n++,
         arrowLabel: 'forward_auth',
       });
+      // Skip the "validate session" step
+      n++;
+      // Skip the "forward_auth returned 200" step
+      n++;
       steps.push({
         id: 'upstream-lan',
         nodeType: 'upstream',
         label: 'Service',
         sublabel: upstream,
+        stepNum: n++,
         arrowLabel: 'authorized',
       });
     } else {
+      // Skip the "no forward_auth" step
+      n++;
       steps.push({
         id: 'upstream-lan',
         nodeType: 'upstream',
         label: 'Service',
         sublabel: upstream,
+        stepNum: n++,
         arrowLabel: '',
       });
     }
@@ -193,33 +236,37 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
           )}
 
-          {/* ── WAN: diagram + request flow ── */}
+          {/* ── WAN: diagram + request flow side by side ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
               <Globe size={13} /> WAN Path (Internet → Service)
             </div>
             {wanSteps ? (
-              <>
-                <ReactFlowDiagram steps={wanSteps} height={350} />
-                {hasCFAccess && !hasBypass && hasForwardAuth && (
-                  <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
-                    Double-login: users authenticate at CF Access, then again at Authentik.
+              <div className="visualize-diagram-flow">
+                <div className="visualize-diagram-side">
+                  <ReactFlowDiagram steps={wanSteps} height={380} />
+                  {hasCFAccess && !hasBypass && hasForwardAuth && (
+                    <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
+                      Double-login: users authenticate at CF Access, then again at Authentik.
+                    </div>
+                  )}
+                  {hasCFAccess && hasBypass && hasForwardAuth && (
+                    <div className="visualize-section-sub" style={{ marginTop: 6 }}>
+                      CF Access bypasses so Authentik handles the single login.
+                    </div>
+                  )}
+                </div>
+                {wanFlow && (
+                  <div className="visualize-flow-side">
+                    <FlowTable steps={wanFlow} />
                   </div>
                 )}
-                {hasCFAccess && hasBypass && hasForwardAuth && (
-                  <div className="visualize-section-sub" style={{ marginTop: 6 }}>
-                    CF Access bypasses so Authentik handles the single login.
-                  </div>
-                )}
-              </>
+              </div>
             ) : (
               <div className="visualize-section-sub">
                 Not exposed — no Cloudflare tunnel configured. This host is only reachable on the LAN.
               </div>
             )}
-
-            {/* WAN request flow table (right below diagram) */}
-            {wanFlow && <FlowTable steps={wanFlow} />}
 
             {/* CF Access details */}
             {hasCFAccess && (
@@ -246,21 +293,27 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             )}
           </div>
 
-          {/* ── LAN: diagram + request flow ── */}
+          {/* ── LAN: diagram + request flow side by side ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
               <Wifi size={13} /> LAN Path (Internal → Service)
             </div>
-            <ReactFlowDiagram steps={lanSteps} height={350} />
-            <div className="visualize-section-sub" style={{ marginTop: 6 }}>
-              Client resolves <code>{entry.hostname}</code>
-              {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
-              {' → '}Caddy{hasForwardAuth ? ' → Authentik (forward_auth)' : ''}
-              {' → '}Service <code>{upstream}</code>
+            <div className="visualize-diagram-flow">
+              <div className="visualize-diagram-side">
+                <ReactFlowDiagram steps={lanSteps} height={380} />
+                <div className="visualize-section-sub" style={{ marginTop: 6 }}>
+                  Client resolves <code>{entry.hostname}</code>
+                  {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
+                  {' → '}Caddy{hasForwardAuth ? ' → Authentik (forward_auth)' : ''}
+                  {' → '}Service <code>{upstream}</code>
+                </div>
+              </div>
+              {lanFlow && (
+                <div className="visualize-flow-side">
+                  <FlowTable steps={lanFlow} />
+                </div>
+              )}
             </div>
-
-            {/* LAN request flow table (right below diagram) */}
-            {lanFlow && <FlowTable steps={lanFlow} />}
           </div>
 
           {/* ── Auth configuration table ── */}

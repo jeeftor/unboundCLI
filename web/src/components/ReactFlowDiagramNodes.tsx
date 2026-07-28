@@ -10,7 +10,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, MarkerType, Position } from '@xyflow/react';
 
 // ── Node type definitions ──
 
@@ -46,6 +46,7 @@ export type FlowNodeData = {
   inactive?: boolean;
   warn?: boolean;
   vertical?: boolean;
+  stepNum?: number;
 };
 
 function FlowNodeComponent({ data }: { data: FlowNodeData }) {
@@ -61,6 +62,9 @@ function FlowNodeComponent({ data }: { data: FlowNodeData }) {
       }}
     >
       <Handle type="target" position={data.vertical ? Position.Top : Position.Left} style={{ opacity: 0 }} />
+      {data.stepNum !== undefined && (
+        <div className="rf-node-step">{data.stepNum}</div>
+      )}
       <div className="rf-node-icon" style={{ color: cfg.color }}>
         <Icon size={16} />
       </div>
@@ -89,10 +93,14 @@ export type DiagramEdge = {
   source: string;
   target: string;
   label?: string;
+  labelStyle?: Record<string, string>;
+  labelBgStyle?: Record<string, string>;
+  labelBgPadding?: [number, number];
   animated?: boolean;
   type?: string;
   className?: string;
-  markerEnd?: string;
+  markerEnd?: { type: MarkerType; width?: number; height?: number; color?: string };
+  data?: { arrowWarn?: boolean };
 };
 
 export type Step = {
@@ -104,6 +112,7 @@ export type Step = {
   warn?: boolean;
   arrowLabel?: string;
   arrowWarn?: boolean;
+  stepNum?: number;
 };
 
 export function stepsToNodesEdges(steps: Step[], vertical = false): { nodes: DiagramNode[]; edges: DiagramEdge[] } {
@@ -126,6 +135,7 @@ export function stepsToNodesEdges(steps: Step[], vertical = false): { nodes: Dia
           inactive: step.inactive,
           warn: step.warn,
           vertical,
+          stepNum: step.stepNum,
         },
         position: { x: 0, y: 0 },
       });
@@ -138,7 +148,7 @@ export function stepsToNodesEdges(steps: Step[], vertical = false): { nodes: Dia
           label: step.arrowLabel || undefined,
           animated: step.arrowWarn,
           className: step.arrowWarn ? 'rf-edge-warn' : undefined,
-          markerEnd: 'arrowclosed',
+          data: { arrowWarn: step.arrowWarn },
         });
       }
 

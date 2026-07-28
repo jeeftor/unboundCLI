@@ -33,6 +33,33 @@
 }
 
 /* Status grid */
+/* ── Diagram + flow side-by-side layout ── */
+.visualize-diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.visualize-diagram-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.visualize-flow-side {
+  overflow-x: auto;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+/* Mobile: stack vertically */
+@media (max-width: 760px) {
+  .visualize-diagram-flow {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Config table ── */
 .visualize-config-table {
   width: 100%;
