@@ -203,12 +203,12 @@ export function detectAuthPattern(auth: {
   // Pattern A/B: CF Access only (but check for bypass-only)
   if (hasCF && !hasFA) {
     if (hasBypass) {
-      // CF Access has a bypass policy and no forward_auth — effectively no auth
+      // CF Access has a bypass policy and no forward_auth — WIDE OPEN
       return {
-        name: 'CF Access Bypass (No Auth)',
-        verdict: 'warning',
-        summary: 'CF Access bypass policy lets traffic through without challenge, and no forward_auth is configured',
-        detail: 'Cloudflare Access has a bypass policy for this host, so it lets all traffic through without requiring login. No forward_auth is configured either. The host is effectively unauthenticated on the WAN unless the app has its own built-in login. Fix: either remove the bypass policy from CF Access, or add forward_auth (Authentik) so Caddy enforces authentication after CF Access lets traffic through.',
+        name: 'OPEN TO INTERNET (No Auth)',
+        verdict: 'error',
+        summary: 'CRITICAL: CF Access bypass with no forward_auth — host is open to the internet with zero authentication',
+        detail: 'Cloudflare Access has a bypass policy for this host, so it lets all traffic through without requiring login. No forward_auth is configured either. The host is WIDE OPEN to the internet. Fix: add forward_auth (Authentik) so Caddy enforces authentication, or replace the bypass policy with an allow policy in CF Access.',
       };
     }
     return {
