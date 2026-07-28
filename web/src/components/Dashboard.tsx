@@ -11,6 +11,7 @@ import { AuthFlowsTab } from './AuthFlowsTab';
 import { CaddyEditor } from './CaddyEditor';
 import { CFRepairBanner } from './CloudflarePanel';
 import { ConfigModal } from './ConfigModal';
+import { DiagnosticsTab } from './DiagnosticsTab';
 import { EntriesTable } from './EntriesTable';
 import { EntriesToolbar } from './EntriesToolbar';
 import { LogBar } from './LogBar';
@@ -213,6 +214,8 @@ export function AppShell({
             </main>
           ) : view === 'auth' ? (
             <AuthFlowsTab />
+          ) : view === 'diagnostics' ? (
+            <DiagnosticsTab />
           ) : (
             <main className="dashboard-shell">
               <OperationsHeader

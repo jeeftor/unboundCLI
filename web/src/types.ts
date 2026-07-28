@@ -225,3 +225,25 @@ export type AuthInventoryResponse = {
     authentik: boolean;
   };
 };
+
+// ─── Diagnostics types ──────────────────────────────────────────────────────
+
+export type DiagnosticSeverity = 'critical' | 'warning' | 'info';
+export type DiagnosticCategory = 'dns' | 'cloudflare' | 'sync' | 'hostname' | 'auth';
+
+export type DiagnosticIssue = {
+  severity: DiagnosticSeverity;
+  category: DiagnosticCategory;
+  hostname: string;
+  title: string;
+  detail: string;
+  suggestion?: string;
+};
+
+export type DiagnosticsResponse = {
+  total_entries: number;
+  healthy_count: number;
+  issue_count: number;
+  issues: DiagnosticIssue[];
+  summary: Record<string, number>;
+};
