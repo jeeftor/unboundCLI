@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AppShell } from './components/Dashboard';
 import { tabFromHash } from './components/TabBar';
+import { VisualizePage } from './components/VisualizePage';
 import { useStore, refreshEntries, syncFormsFromConfig, previewSync, dryRunSync, syncNow, saveConfig, testConfig } from './store';
 
 export function App() {
@@ -103,6 +104,19 @@ export function App() {
     };
     void run();
   }, [config, setConfigOpen]);
+
+  // ── Standalone visualize page (/visualize/hostname) ──
+  const visualizeMatch = typeof window !== 'undefined'
+    ? window.location.pathname.match(/^\/visualize\/(.+)$/)
+    : null;
+
+  if (visualizeMatch) {
+    return (
+      <div id="app" data-visualize-page="true">
+        <VisualizePage hostname={decodeURIComponent(visualizeMatch[1])} />
+      </div>
+    );
+  }
 
   return (
     <div

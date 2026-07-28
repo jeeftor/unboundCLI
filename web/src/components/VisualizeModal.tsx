@@ -5,9 +5,9 @@ import { buildLanRequestFlow, buildWanRequestFlow, detectAuthPattern } from '../
 import { ReactFlowDiagram } from './ReactFlowDiagram';
 import type { Step } from './ReactFlowDiagramNodes';
 import { useStore } from '../store';
-import type { Entry } from '../types';
+import type { Entry, HostAuth } from '../types';
 
-export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () => void }) {
+export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; auth: HostAuth | null; authLoading: boolean }) {
   const cf = entry.cloudflare_status;
   const hasCF = cf?.configured;
   const hasForwardAuth = entry.has_forward_auth;
@@ -15,10 +15,6 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   const upstream = entry.caddy_upstream || 'unknown';
   // Derive service name from hostname (e.g. "jellyfin.vookie.net" → "Jellyfin")
   const serviceName = entry.hostname.split('.')[0].replace(/^./, c => c.toUpperCase());
-
-  // Auth data from store (cached, fetched once at startup)
-  const auth = useStore((s) => s.authHosts.get(entry.hostname) ?? null);
-  const authLoading = useStore((s) => s.authLoading);
 
   // Enriched auth info
   const hasCFAccess = auth?.cf_access_app_id !== undefined && auth.cf_access_app_id !== '';
@@ -214,6 +210,154 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   }, [hasDNS, hasForwardAuth, entry.dns_resolved, entry.unbound_status?.ip, entry.caddy_ip, upstream, authentikSlug]);
 
   return (
+    <div className="visualize-body">
+
+      {/* ── Auth pattern verdict ── */}
+      {pattern && (
+        <div className={`visualize-auth-verdict ${pattern.verdict}`}>
+          <div className="visualize-auth-verdict-icon">
+            {pattern.verdict === 'ok' && <ShieldCheck size={18} />}
+            {pattern.verdict === 'warning' && <AlertTriangle size={18} />}
+            {pattern.verdict === 'error' && <ShieldX size={18} />}
+          </div>
+          <div className="visualize-auth-verdict-content">
+            <div className="visualize-auth-verdict-name">{pattern.name}</div>
+            <div className="visualize-auth-verdict-summary">{pattern.summary}</div>
+            <div className="visualize-auth-verdict-detail">{pattern.detail}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── WAN: diagram + request flow side by side ── */}
+      <div className="visualize-section">
+        <div className="visualize-section-title">
+          <Globe size={13} /> WAN Path (Internet → Service)
+        </div>
+        {wanSteps ? (
+          <div className="visualize-diagram-flow">
+            <div className="visualize-diagram-side">
+              <ReactFlowDiagram steps={wanSteps} height={420} />
+              {hasCFAccess && !hasBypass && hasForwardAuth && (
+                <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
+                  Double-login: users authenticate at CF Access, then again at Authentik.
+                </div>
+              )}
+              {hasCFAccess && hasBypass && hasForwardAuth && (
+                <div className="visualize-section-sub" style={{ marginTop: 6 }}>
+                  CF Access bypasses so Authentik handles the single login.
+                </div>
+              )}
+            </div>
+            {wanFlow && (
+              <div className="visualize-flow-side">
+                <FlowTable steps={wanFlow} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="visualize-section-sub">
+            Not exposed — no Cloudflare tunnel configured. This host is only reachable on the LAN.
+          </div>
+        )}
+
+        {/* CF Access details */}
+        {hasCFAccess && (
+          <div className="visualize-auth-detail">
+            <div className="visualize-auth-detail-title">Cloudflare Access Policy</div>
+            <dl>
+              {cfAppDomain && <><dt>App Domain</dt><dd>{cfAppDomain}</dd></>}
+              {cfAppType && <><dt>App Type</dt><dd>{cfAppType}</dd></>}
+              {cfDecisions && cfDecisions.length > 0 && <><dt>Policy Decisions</dt><dd>{cfDecisions.join(', ')}</dd></>}
+            </dl>
+          </div>
+        )}
+
+        {/* Authentik details */}
+        {hasForwardAuth && (
+          <div className="visualize-auth-detail">
+            <div className="visualize-auth-detail-title">Authentik Forward Auth</div>
+            <dl>
+              {authentikSlug && <><dt>App Slug</dt><dd>{authentikSlug}</dd></>}
+              {authentikMode && <><dt>Provider Mode</dt><dd>{authentikMode}</dd></>}
+              {!authentikSlug && !authentikMode && <><dt>Status</dt><dd>Configured (details loading…)</dd></>}
+            </dl>
+          </div>
+        )}
+      </div>
+
+      {/* ── LAN: diagram + request flow side by side ── */}
+      <div className="visualize-section">
+        <div className="visualize-section-title">
+          <Wifi size={13} /> LAN Path (Internal → Service)
+        </div>
+        <div className="visualize-diagram-flow">
+          <div className="visualize-diagram-side">
+            <ReactFlowDiagram steps={lanSteps} height={420} />
+            <div className="visualize-section-sub" style={{ marginTop: 6 }}>
+              Client resolves <code>{entry.hostname}</code>
+              {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
+              {' → '}Caddy{hasForwardAuth ? ' → Authentik (forward_auth)' : ''}
+              {' → '}{serviceName} <code>{upstream}</code>
+            </div>
+          </div>
+          {lanFlow && (
+            <div className="visualize-flow-side">
+              <FlowTable steps={lanFlow} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Auth configuration + Service status ── */}
+      <div className="visualize-bottom-panels">
+        {/* Auth Configuration */}
+        <div className="visualize-panel">
+          <div className="visualize-panel-title">
+            <Network size={13} /> Auth Configuration
+            {authLoading && <Loader2 size={12} className="visualize-loading-spin" />}
+          </div>
+          <div className="visualize-badges">
+            <AuthBadge label="WAN" value={auth?.wan_auth ? auth.wan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.wan_auth !== undefined && auth.wan_auth !== 'none'} />
+            <AuthBadge label="LAN" value={auth?.lan_auth ? auth.lan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.lan_auth !== undefined && auth.lan_auth !== 'none'} />
+            <AuthBadge label="API" value={auth?.api_auth ? auth.api_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.api_auth !== undefined && auth.api_auth !== 'none'} />
+            <AuthBadge label="CF Access" value={hasCFAccess ? 'configured' : 'none'} ok={hasCFAccess} />
+            <AuthBadge label="Forward Auth" value={hasForwardAuth ? 'authentik' : 'none'} ok={hasForwardAuth} />
+            <AuthBadge label="WAN Exposed" value={wanExposed ? 'yes' : (authLoading ? '…' : 'no')} ok={wanExposed} />
+          </div>
+
+          {/* Auth notes */}
+          {authNotes && authNotes.length > 0 && (
+            <div className="visualize-auth-notes">
+              <ul>
+                {authNotes.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Service Status */}
+        <div className="visualize-panel">
+          <div className="visualize-panel-title">
+            <Server size={13} /> Service Status
+          </div>
+          <div className="visualize-badges">
+            <ServiceBadge label="DNS" value={entry.unbound_status?.ip || '—'} ok={entry.unbound_status?.configured ?? false} />
+            <ServiceBadge label="AdGuard" value={entry.adguard_status?.ip || '—'} ok={entry.adguard_status?.configured ?? false} />
+            <ServiceBadge label="DHCP" value={entry.dhcp_status?.ip || '—'} ok={entry.dhcp_status?.configured ?? false} />
+            <ServiceBadge label="Cloudflare" value={cf?.configured ? cf.tunnel_name : '—'} ok={cf?.configured ?? false} />
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () => void }) {
+  const auth = useStore((s) => s.authHosts.get(entry.hostname) ?? null);
+  const authLoading = useStore((s) => s.authLoading);
+
+  return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal visualize-modal">
         <div className="modal-header">
@@ -221,144 +365,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
           <button type="button" className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="modal-body visualize-body">
-
-          {/* ── Auth pattern verdict ── */}
-          {pattern && (
-            <div className={`visualize-auth-verdict ${pattern.verdict}`}>
-              <div className="visualize-auth-verdict-icon">
-                {pattern.verdict === 'ok' && <ShieldCheck size={18} />}
-                {pattern.verdict === 'warning' && <AlertTriangle size={18} />}
-                {pattern.verdict === 'error' && <ShieldX size={18} />}
-              </div>
-              <div className="visualize-auth-verdict-content">
-                <div className="visualize-auth-verdict-name">{pattern.name}</div>
-                <div className="visualize-auth-verdict-summary">{pattern.summary}</div>
-                <div className="visualize-auth-verdict-detail">{pattern.detail}</div>
-              </div>
-            </div>
-          )}
-
-          {/* ── WAN: diagram + request flow side by side ── */}
-          <div className="visualize-section">
-            <div className="visualize-section-title">
-              <Globe size={13} /> WAN Path (Internet → Service)
-            </div>
-            {wanSteps ? (
-              <div className="visualize-diagram-flow">
-                <div className="visualize-diagram-side">
-                  <ReactFlowDiagram steps={wanSteps} height={420} />
-                  {hasCFAccess && !hasBypass && hasForwardAuth && (
-                    <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
-                      Double-login: users authenticate at CF Access, then again at Authentik.
-                    </div>
-                  )}
-                  {hasCFAccess && hasBypass && hasForwardAuth && (
-                    <div className="visualize-section-sub" style={{ marginTop: 6 }}>
-                      CF Access bypasses so Authentik handles the single login.
-                    </div>
-                  )}
-                </div>
-                {wanFlow && (
-                  <div className="visualize-flow-side">
-                    <FlowTable steps={wanFlow} />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="visualize-section-sub">
-                Not exposed — no Cloudflare tunnel configured. This host is only reachable on the LAN.
-              </div>
-            )}
-
-            {/* CF Access details */}
-            {hasCFAccess && (
-              <div className="visualize-auth-detail">
-                <div className="visualize-auth-detail-title">Cloudflare Access Policy</div>
-                <dl>
-                  {cfAppDomain && <><dt>App Domain</dt><dd>{cfAppDomain}</dd></>}
-                  {cfAppType && <><dt>App Type</dt><dd>{cfAppType}</dd></>}
-                  {cfDecisions && cfDecisions.length > 0 && <><dt>Policy Decisions</dt><dd>{cfDecisions.join(', ')}</dd></>}
-                </dl>
-              </div>
-            )}
-
-            {/* Authentik details */}
-            {hasForwardAuth && (
-              <div className="visualize-auth-detail">
-                <div className="visualize-auth-detail-title">Authentik Forward Auth</div>
-                <dl>
-                  {authentikSlug && <><dt>App Slug</dt><dd>{authentikSlug}</dd></>}
-                  {authentikMode && <><dt>Provider Mode</dt><dd>{authentikMode}</dd></>}
-                  {!authentikSlug && !authentikMode && <><dt>Status</dt><dd>Configured (details loading…)</dd></>}
-                </dl>
-              </div>
-            )}
-          </div>
-
-          {/* ── LAN: diagram + request flow side by side ── */}
-          <div className="visualize-section">
-            <div className="visualize-section-title">
-              <Wifi size={13} /> LAN Path (Internal → Service)
-            </div>
-            <div className="visualize-diagram-flow">
-              <div className="visualize-diagram-side">
-                <ReactFlowDiagram steps={lanSteps} height={420} />
-                <div className="visualize-section-sub" style={{ marginTop: 6 }}>
-                  Client resolves <code>{entry.hostname}</code>
-                  {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
-                  {' → '}Caddy{hasForwardAuth ? ' → Authentik (forward_auth)' : ''}
-                  {' → '}{serviceName} <code>{upstream}</code>
-                </div>
-              </div>
-              {lanFlow && (
-                <div className="visualize-flow-side">
-                  <FlowTable steps={lanFlow} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Auth configuration + Service status ── */}
-          <div className="visualize-bottom-panels">
-            {/* Auth Configuration */}
-            <div className="visualize-panel">
-              <div className="visualize-panel-title">
-                <Network size={13} /> Auth Configuration
-                {authLoading && <Loader2 size={12} className="visualize-loading-spin" />}
-              </div>
-              <div className="visualize-badges">
-                <AuthBadge label="WAN" value={auth?.wan_auth ? auth.wan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.wan_auth !== undefined && auth.wan_auth !== 'none'} />
-                <AuthBadge label="LAN" value={auth?.lan_auth ? auth.lan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.lan_auth !== undefined && auth.lan_auth !== 'none'} />
-                <AuthBadge label="API" value={auth?.api_auth ? auth.api_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'none')} ok={auth?.api_auth !== undefined && auth.api_auth !== 'none'} />
-                <AuthBadge label="CF Access" value={hasCFAccess ? 'configured' : 'none'} ok={hasCFAccess} />
-                <AuthBadge label="Forward Auth" value={hasForwardAuth ? 'authentik' : 'none'} ok={hasForwardAuth} />
-                <AuthBadge label="WAN Exposed" value={wanExposed ? 'yes' : (authLoading ? '…' : 'no')} ok={wanExposed} />
-              </div>
-
-              {/* Auth notes */}
-              {authNotes && authNotes.length > 0 && (
-                <div className="visualize-auth-notes">
-                  <ul>
-                    {authNotes.map((n, i) => <li key={i}>{n}</li>)}
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            {/* Service Status */}
-            <div className="visualize-panel">
-              <div className="visualize-panel-title">
-                <Server size={13} /> Service Status
-              </div>
-              <div className="visualize-badges">
-                <ServiceBadge label="DNS" value={entry.unbound_status?.ip || '—'} ok={entry.unbound_status?.configured ?? false} />
-                <ServiceBadge label="AdGuard" value={entry.adguard_status?.ip || '—'} ok={entry.adguard_status?.configured ?? false} />
-                <ServiceBadge label="DHCP" value={entry.dhcp_status?.ip || '—'} ok={entry.dhcp_status?.configured ?? false} />
-                <ServiceBadge label="Cloudflare" value={cf?.configured ? cf.tunnel_name : '—'} ok={cf?.configured ?? false} />
-              </div>
-            </div>
-          </div>
-
+          <VisualizeContent entry={entry} auth={auth} authLoading={authLoading} />
         </div>
       </div>
     </div>
