@@ -9,7 +9,6 @@ import type { Entry, HostAuth } from '../types';
 export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () => void }) {
   const cf = entry.cloudflare_status;
   const hasCF = cf?.configured;
-  const hasCFAccess = cf?.has_access_policy;
   const hasForwardAuth = entry.has_forward_auth;
   const hasDNS = Boolean(entry.dns_resolved && entry.dns_resolved !== 'FAIL');
   const upstream = entry.caddy_upstream || 'unknown';
@@ -34,17 +33,17 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   }, [entry.hostname]);
 
   // Enriched auth info
-  const wanAuth = auth?.wan_auth;
-  const lanAuth = auth?.lan_auth;
-  const apiAuth = auth?.api_auth;
+  const hasCFAccess = auth?.cf_access_app_id !== undefined && auth.cf_access_app_id !== '';
+  const hasBypass = auth?.cf_access_decisions?.includes('bypass') ?? false;
   const cfAppDomain = auth?.cf_access_app_domain;
   const cfDecisions = auth?.cf_access_decisions;
   const cfAppType = auth?.cf_access_app_type;
   const authentikSlug = auth?.authentik_app_slug;
   const authentikMode = auth?.authentik_provider_mode;
   const authNotes = auth?.notes;
+  const wanExposed = auth?.wan_exposed ?? false;
 
-  // Detect auth pattern (double-login, no auth, normal, etc.)
+  // Detect auth pattern
   const pattern = useMemo(() => {
     if (!auth) return null;
     return detectAuthPattern({
@@ -58,6 +57,77 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
     });
   }, [auth]);
 
+  // ── Build WAN flow nodes dynamically based on auth pattern ──
+  const wanNodes = useMemo(() => {
+    if (!hasCF) return null;
+
+    type Node = { variant: 'wan' | 'cf' | 'cf_access' | 'caddy' | 'authentik' | 'app_auth' | 'upstream'; label: string; sublabel?: string; active?: boolean };
+    type Step = { node?: Node; arrowLabel?: string; arrowActive?: boolean };
+
+    const steps: Step[] = [
+      { node: { variant: 'wan', label: 'Internet' } },
+      { node: { variant: 'cf', label: 'Cloudflare', sublabel: cf?.tunnel_name || undefined } },
+    ];
+
+    if (hasCFAccess) {
+      // CF Access is a node in the flow — show whether it challenges or bypasses
+      const accessLabel = hasBypass ? 'CF Access (bypass)' : 'CF Access (login)';
+      steps.push({ arrowLabel: hasBypass ? 'bypass' : 'IdP login' });
+      steps.push({ node: { variant: 'cf_access', label: accessLabel, sublabel: cfAppDomain || undefined } });
+    }
+
+    // After CF, traffic reaches Caddy
+    steps.push({ node: { variant: 'caddy', label: 'Caddy', sublabel: entry.caddy_ip || undefined } });
+
+    if (hasForwardAuth) {
+      // Forward auth is a node — Authentik challenges before reaching the app
+      const isDoubleLogin = hasCFAccess && !hasBypass;
+      steps.push({ arrowLabel: 'forward_auth' });
+      steps.push({
+        node: {
+          variant: 'authentik',
+          label: 'Authentik',
+          sublabel: authentikSlug || undefined,
+          active: !isDoubleLogin,
+        },
+      });
+      if (isDoubleLogin) {
+        // Mark as double-login — the Authentik node shows a warning
+        steps.push({ arrowLabel: 'login again!' });
+      } else {
+        steps.push({ arrowLabel: 'authorized' });
+      }
+    }
+
+    // Final destination
+    steps.push({ node: { variant: 'upstream', label: 'Service', sublabel: upstream } });
+
+    return steps;
+  }, [hasCF, hasCFAccess, hasBypass, hasForwardAuth, cf, cfAppDomain, authentikSlug, entry.caddy_ip, upstream]);
+
+  // ── Build LAN flow nodes dynamically ──
+  const lanNodes = useMemo(() => {
+    type Node = { variant: 'app' | 'dns' | 'caddy' | 'authentik' | 'upstream'; label: string; sublabel?: string; active?: boolean };
+    type Step = { node?: Node; arrowLabel?: string; arrowActive?: boolean };
+
+    const steps: Step[] = [
+      { node: { variant: 'app', label: 'LAN Client', sublabel: entry.dns_resolved || undefined, active: hasDNS } },
+      { arrowLabel: 'DNS', arrowActive: hasDNS },
+      { node: { variant: 'dns', label: 'Unbound', sublabel: entry.unbound_status?.ip || undefined, active: hasDNS } },
+      { node: { variant: 'caddy', label: 'Caddy', sublabel: entry.caddy_ip || undefined } },
+    ];
+
+    if (hasForwardAuth) {
+      steps.push({ arrowLabel: 'forward_auth' });
+      steps.push({ node: { variant: 'authentik', label: 'Authentik', sublabel: authentikSlug || undefined } });
+      steps.push({ arrowLabel: 'authorized' });
+    }
+
+    steps.push({ node: { variant: 'upstream', label: 'Service', sublabel: upstream } });
+
+    return steps;
+  }, [hasDNS, hasForwardAuth, entry.dns_resolved, entry.unbound_status?.ip, entry.caddy_ip, upstream, authentikSlug]);
+
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal visualize-modal">
@@ -67,7 +137,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
         </div>
         <div className="modal-body visualize-body">
 
-          {/* ── Auth pattern analysis ── */}
+          {/* ── Auth pattern verdict ── */}
           {pattern && (
             <div className={`visualize-auth-verdict ${pattern.verdict}`}>
               <div className="visualize-auth-verdict-icon">
@@ -86,26 +156,45 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
           {/* ── WAN path ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
-              <Globe size={13} /> WAN Path (Internet → App)
+              <Globe size={13} /> WAN Path (Internet → Service)
             </div>
             <div className="auth-flow-diagram">
-              <FlowRow>
-                <FlowNode variant="wan" label="Internet" />
-                <FlowArrow label={hasCFAccess ? 'CF Access' : undefined} active={hasCF} />
-                <FlowNode variant="cf" label="Cloudflare" sublabel={cf?.tunnel_name || undefined} active={hasCF} />
-                <FlowArrow label={hasForwardAuth ? 'Forward Auth' : undefined} active={hasCF} />
-                <FlowNode variant="caddy" label="Caddy" sublabel={entry.caddy_ip || undefined} active={hasCF} />
-                <FlowArrow active={hasCF} />
-                <FlowNode variant="upstream" label="Upstream" sublabel={upstream} active={hasCF} />
-              </FlowRow>
+              {wanNodes ? (
+                <FlowRow>
+                  {wanNodes.map((step, i) => (
+                    <span key={i}>
+                      {step.arrowLabel !== undefined && (
+                        <FlowArrow label={step.arrowLabel} active={step.arrowActive !== false} />
+                      )}
+                      {step.node && (
+                        <FlowNode
+                          variant={step.node.variant}
+                          label={step.node.label}
+                          sublabel={step.node.sublabel}
+                          active={step.node.active !== false}
+                        />
+                      )}
+                    </span>
+                  ))}
+                </FlowRow>
+              ) : (
+                <FlowRow>
+                  <FlowNode variant="wan" label="Internet" active={false} />
+                  <FlowArrow active={false} />
+                  <FlowNode variant="cf" label="Cloudflare" active={false} />
+                  <FlowNode variant="caddy" label="Caddy" active={false} />
+                  <FlowNode variant="upstream" label="Service" active={false} />
+                </FlowRow>
+              )}
               <FlowExplanation>
-                {hasCF ? (
-                  <p>
-                    <strong>WAN traffic</strong>: Internet → Cloudflare Tunnel
-                    {hasCFAccess ? ' (CF Access login required)' : ' (no access policy — open)'}
-                    {' → '}Caddy
-                    {hasForwardAuth ? ' (forward_auth → Authentik)' : ''}
-                    {' → '}Upstream <code>{upstream}</code>
+                {wanNodes ? (
+                  <p><strong>WAN traffic</strong> reaches the service through the chain above.{' '}
+                    {hasCFAccess && !hasBypass && hasForwardAuth && (
+                      <span className="visualize-warn-inline">Double-login: users authenticate at CF Access, then again at Authentik.</span>
+                    )}
+                    {hasCFAccess && hasBypass && hasForwardAuth && (
+                      <span>CF Access bypasses so Authentik handles the single login.</span>
+                    )}
                   </p>
                 ) : (
                   <p><strong>WAN traffic</strong>: Not exposed — no Cloudflare tunnel configured. This host is only reachable on the LAN.</p>
@@ -141,42 +230,50 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
           {/* ── LAN path ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
-              <Wifi size={13} /> LAN Path (Internal → App)
+              <Wifi size={13} /> LAN Path (Internal → Service)
             </div>
             <div className="auth-flow-diagram">
               <FlowRow>
-                <FlowNode variant="app" label="LAN Client" sublabel={entry.dns_resolved || undefined} active={hasDNS} />
-                <FlowArrow label="DNS" active={hasDNS} />
-                <FlowNode variant="dns" label="Unbound" sublabel={entry.unbound_status?.ip || undefined} active={hasDNS} />
-                <FlowArrow active />
-                <FlowNode variant="caddy" label="Caddy" sublabel={entry.caddy_ip || undefined} />
-                <FlowArrow label={hasForwardAuth ? 'Forward Auth' : undefined} />
-                <FlowNode variant="upstream" label="Upstream" sublabel={upstream} />
+                {lanNodes.map((step, i) => (
+                  <span key={i}>
+                    {step.arrowLabel !== undefined && (
+                      <FlowArrow label={step.arrowLabel} active={step.arrowActive !== false} />
+                    )}
+                    {step.node && (
+                      <FlowNode
+                        variant={step.node.variant}
+                        label={step.node.label}
+                        sublabel={step.node.sublabel}
+                        active={step.node.active !== false}
+                      />
+                    )}
+                  </span>
+                ))}
               </FlowRow>
               <FlowExplanation>
                 <p>
                   <strong>LAN traffic</strong>: Client resolves <code>{entry.hostname}</code>
                   {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
-                  {' → '}Caddy{hasForwardAuth ? ' (forward_auth → Authentik)' : ''}
-                  {' → '}Upstream <code>{upstream}</code>
+                  {' → '}Caddy{hasForwardAuth ? ' → Authentik (forward_auth)' : ''}
+                  {' → '}Service <code>{upstream}</code>
                 </p>
               </FlowExplanation>
             </div>
           </div>
 
-          {/* ── Auth modes (from inventory) ── */}
+          {/* ── Auth configuration grid ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
               <Network size={13} /> Auth Configuration
               {authLoading && <Loader2 size={12} className="visualize-loading-spin" />}
             </div>
             <div className="visualize-status-grid">
-              <StatusTile label="WAN Auth" ok={wanAuth !== undefined && wanAuth !== 'none'} detail={wanAuth ? wanAuth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
-              <StatusTile label="LAN Auth" ok={lanAuth !== undefined && lanAuth !== 'none'} detail={lanAuth ? lanAuth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
-              <StatusTile label="API Auth" ok={apiAuth !== undefined && apiAuth !== 'none'} detail={apiAuth ? apiAuth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
-              <StatusTile label="CF Access" ok={cf?.has_access_policy ?? false} detail={cf?.has_access_policy ? 'Protected' : 'No policy'} />
+              <StatusTile label="WAN Auth" ok={auth?.wan_auth !== undefined && auth.wan_auth !== 'none'} detail={auth?.wan_auth ? auth.wan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
+              <StatusTile label="LAN Auth" ok={auth?.lan_auth !== undefined && auth.lan_auth !== 'none'} detail={auth?.lan_auth ? auth.lan_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
+              <StatusTile label="API Auth" ok={auth?.api_auth !== undefined && auth.api_auth !== 'none'} detail={auth?.api_auth ? auth.api_auth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
+              <StatusTile label="CF Access" ok={hasCFAccess} detail={hasCFAccess ? 'Configured' : 'None'} />
               <StatusTile label="Forward Auth" ok={hasForwardAuth} detail={hasForwardAuth ? 'Authentik' : 'None'} />
-              <StatusTile label="WAN Exposed" ok={auth?.wan_exposed ?? false} detail={auth?.wan_exposed ? 'Yes' : (authLoading ? '…' : 'No')} />
+              <StatusTile label="WAN Exposed" ok={wanExposed} detail={wanExposed ? 'Yes' : (authLoading ? '…' : 'No')} />
             </div>
 
             {/* Auth notes */}

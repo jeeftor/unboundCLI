@@ -150,6 +150,12 @@
   line-height: 1.4;
 }
 
+/* Inline warning in flow explanation */
+.visualize-warn-inline {
+  color: #ef596f;
+  font-weight: 600;
+}
+
 /* Auth detail panels (CF Access policy, Authentik provider) */
 .visualize-auth-detail {
   margin-top: 6px;
