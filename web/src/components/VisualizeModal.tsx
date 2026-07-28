@@ -1,7 +1,9 @@
 import '../styles/VisualizeModal.css';
-import { Globe, Network, Server, Smartphone, Wifi, X } from 'lucide-react';
+import { Globe, Loader2, Network, Server, Smartphone, Wifi, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { api } from '../api/client';
 import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
-import type { Entry } from '../types';
+import type { Entry, HostAuth } from '../types';
 
 export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () => void }) {
   const cf = entry.cloudflare_status;
@@ -10,6 +12,36 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   const hasForwardAuth = entry.has_forward_auth;
   const hasDNS = Boolean(entry.dns_resolved && entry.dns_resolved !== 'FAIL');
   const upstream = entry.caddy_upstream || 'unknown';
+
+  // Fetch rich auth data (CF Access policies, Authentik providers)
+  const [auth, setAuth] = useState<HostAuth | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAuthLoading(true);
+    setAuth(null);
+    api.authInventory()
+      .then((res) => {
+        if (cancelled) return;
+        const match = res.hosts.find((h) => h.hostname === entry.hostname);
+        setAuth(match ?? null);
+      })
+      .catch(() => { /* auth inventory may not be configured */ })
+      .finally(() => { if (!cancelled) setAuthLoading(false); });
+    return () => { cancelled = true; };
+  }, [entry.hostname]);
+
+  // Enriched auth info
+  const wanAuth = auth?.wan_auth;
+  const lanAuth = auth?.lan_auth;
+  const apiAuth = auth?.api_auth;
+  const cfAppDomain = auth?.cf_access_app_domain;
+  const cfDecisions = auth?.cf_access_decisions;
+  const cfAppType = auth?.cf_access_app_type;
+  const authentikSlug = auth?.authentik_app_slug;
+  const authentikMode = auth?.authentik_provider_mode;
+  const authNotes = auth?.notes;
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -49,6 +81,30 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
                 )}
               </FlowExplanation>
             </div>
+
+            {/* CF Access details */}
+            {hasCFAccess && (
+              <div className="visualize-auth-detail">
+                <div className="visualize-auth-detail-title">Cloudflare Access Policy</div>
+                <dl>
+                  {cfAppDomain && <><dt>App Domain</dt><dd>{cfAppDomain}</dd></>}
+                  {cfAppType && <><dt>App Type</dt><dd>{cfAppType}</dd></>}
+                  {cfDecisions && cfDecisions.length > 0 && <><dt>Policy Decisions</dt><dd>{cfDecisions.join(', ')}</dd></>}
+                </dl>
+              </div>
+            )}
+
+            {/* Authentik details */}
+            {hasForwardAuth && (
+              <div className="visualize-auth-detail">
+                <div className="visualize-auth-detail-title">Authentik Forward Auth</div>
+                <dl>
+                  {authentikSlug && <><dt>App Slug</dt><dd>{authentikSlug}</dd></>}
+                  {authentikMode && <><dt>Provider Mode</dt><dd>{authentikMode}</dd></>}
+                  {!authentikSlug && !authentikMode && <><dt>Status</dt><dd>Configured (details loading…)</dd></>}
+                </dl>
+              </div>
+            )}
           </div>
 
           {/* ── LAN path ── */}
@@ -77,6 +133,32 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
           </div>
 
+          {/* ── Auth modes (from inventory) ── */}
+          <div className="visualize-section">
+            <div className="visualize-section-title">
+              <Network size={13} /> Auth Configuration
+              {authLoading && <Loader2 size={12} className="visualize-loading-spin" />}
+            </div>
+            <div className="visualize-status-grid">
+              <StatusTile label="WAN Auth" ok={wanAuth !== undefined && wanAuth !== 'none'} detail={wanAuth ? wanAuth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
+              <StatusTile label="LAN Auth" ok={lanAuth !== undefined && lanAuth !== 'none'} detail={lanAuth ? lanAuth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
+              <StatusTile label="API Auth" ok={apiAuth !== undefined && apiAuth !== 'none'} detail={apiAuth ? apiAuth.replace(/_/g, ' ') : (authLoading ? '…' : 'N/A')} />
+              <StatusTile label="CF Access" ok={cf?.has_access_policy ?? false} detail={cf?.has_access_policy ? 'Protected' : 'No policy'} />
+              <StatusTile label="Forward Auth" ok={hasForwardAuth} detail={hasForwardAuth ? 'Authentik' : 'None'} />
+              <StatusTile label="WAN Exposed" ok={auth?.wan_exposed ?? false} detail={auth?.wan_exposed ? 'Yes' : (authLoading ? '…' : 'No')} />
+            </div>
+
+            {/* Auth notes */}
+            {authNotes && authNotes.length > 0 && (
+              <div className="visualize-auth-notes">
+                <strong>Notes</strong>
+                <ul>
+                  {authNotes.map((n, i) => <li key={i}>{n}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+
           {/* ── Service status grid ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
@@ -87,8 +169,6 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
               <StatusTile label="AdGuard" ok={entry.adguard_status?.configured ?? false} detail={entry.adguard_status?.ip || 'Not configured'} />
               <StatusTile label="DHCP" ok={entry.dhcp_status?.configured ?? false} detail={entry.dhcp_status?.ip || 'Not configured'} />
               <StatusTile label="Cloudflare" ok={cf?.configured ?? false} detail={cf?.configured ? cf.tunnel_name : 'Not configured'} />
-              <StatusTile label="CF Access" ok={cf?.has_access_policy ?? false} detail={cf?.has_access_policy ? 'Protected' : 'No policy'} />
-              <StatusTile label="Forward Auth" ok={hasForwardAuth} detail={hasForwardAuth ? 'Authentik' : 'None'} />
             </div>
           </div>
 

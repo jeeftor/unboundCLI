@@ -93,6 +93,79 @@
   opacity: .6;
 }
 
+/* Auth detail panels (CF Access policy, Authentik provider) */
+.visualize-auth-detail {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--bg-1);
+}
+
+.visualize-auth-detail-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.visualize-auth-detail dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.visualize-auth-detail dt {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.visualize-auth-detail dd {
+  font-size: 11px;
+  color: var(--text-1);
+  margin: 0;
+}
+
+/* Auth notes */
+.visualize-auth-notes {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(249, 115, 22, .2);
+  border-radius: var(--radius);
+  background: rgba(249, 115, 22, .05);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.visualize-auth-notes strong {
+  color: var(--text-1);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.visualize-auth-notes ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.visualize-auth-notes li {
+  margin: 2px 0;
+}
+
+/* Loading spinner */
+.visualize-loading-spin {
+  animation: spin 1s linear infinite;
+  color: var(--text-3);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .visualize-body code {
   font-family: var(--mono, monospace);
   font-size: 11px;
