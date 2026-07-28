@@ -5,8 +5,9 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
+import { isIssue } from '../lib/hostnameDecision';
 import { AuthFlowsTab } from './AuthFlowsTab';
 import { CaddyEditor } from './CaddyEditor';
 import { CFRepairBanner } from './CloudflarePanel';
@@ -23,12 +24,6 @@ import type { TabId } from './TabBar';
 import type { ConfigForms } from '../hooks/useConfigForms';
 import {
   useStore,
-  selectFilteredEntries,
-  selectSummary,
-  selectSelectedEntry,
-  selectCanSyncNow,
-  selectPlannedActions,
-  selectEnabledServices,
   refreshEntries,
   previewSync,
   dryRunSync,
@@ -65,13 +60,41 @@ export function AppShell() {
   const selectedHostname = useStore((s) => s.selectedHostname);
   const suppressed = useStore((s) => s.suppressed);
 
-  // ── Derived selectors ──
-  const entries = useStore(selectFilteredEntries);
-  const summary = useStore(selectSummary);
-  const selectedEntry = useStore(selectSelectedEntry);
-  const canSyncNow = useStore(selectCanSyncNow);
-  const plannedActions = useStore(selectPlannedActions);
-  const enabledServices = useStore(selectEnabledServices);
+  // ── Derived (useMemo, not store selectors, to avoid infinite re-render) ──
+  const allEntries = useStore((s) => s.entries);
+  const caddyServerIP = config?.caddy?.server_ip ?? '';
+  const entries = useMemo(
+    () => allEntries.filter((entry) => {
+      if (statusFilter === 'synced' && entry.overall_status !== 0 && entry.overall_status !== 1) return false;
+      if (statusFilter === 'out_of_sync' && entry.overall_status !== 2) return false;
+      if (statusFilter === 'caddy_only' && entry.overall_status !== 3) return false;
+      if (statusFilter === 'stale' && entry.overall_status !== 4) return false;
+      if (statusFilter === 'cloudflare' && !entry.cloudflare_status?.configured) return false;
+      if (statusFilter === 'issues' && !isIssue(entry, caddyServerIP, suppressed)) return false;
+      if (serviceFilter === 'unbound' && !entry.unbound_status?.configured) return false;
+      if (serviceFilter === 'adguard' && !entry.adguard_status?.configured) return false;
+      if (serviceFilter === 'dhcp' && !entry.dhcp_status?.configured) return false;
+      if (serviceFilter === 'cloudflare' && !entry.cloudflare_status?.configured) return false;
+      return !search.trim() || entry.hostname.toLowerCase().includes(search.trim().toLowerCase());
+    }),
+    [allEntries, statusFilter, serviceFilter, search, suppressed, caddyServerIP]
+  );
+  const summary = useMemo(() => ({
+    entries: allEntries.length,
+    inSync: allEntries.filter((e) => e.overall_status === 0 || e.overall_status === 1).length,
+    out: allEntries.filter((e) => e.overall_status === 2).length,
+    caddyOnly: allEntries.filter((e) => e.overall_status === 3).length,
+    stale: allEntries.filter((e) => e.overall_status === 4).length,
+    cloudflare: allEntries.filter((e) => e.cloudflare_status?.configured).length,
+    issues: allEntries.filter((e) => isIssue(e, caddyServerIP, suppressed)).length,
+  }), [allEntries, caddyServerIP, suppressed]);
+  const selectedEntry = useMemo(
+    () => allEntries.find((e) => e.hostname === selectedHostname),
+    [allEntries, selectedHostname]
+  );
+  const canSyncNow = mutationEnabled && plan.planID !== '' && plan.actionIDs.length > 0;
+  const plannedActions = plan.actions;
+  const enabledServices = config?.enabled || {};
 
   // ── Actions from store ──
   const setView = useStore((s) => s.setView);
