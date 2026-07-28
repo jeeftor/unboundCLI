@@ -116,21 +116,17 @@ function ArrowEdge({
   const rightY = baseY - arrowWidth * Math.cos(angle);
 
   return (
-    <>
+    <g className={`react-flow__edge ${isWarn ? 'rf-edge-warn' : ''}`}>
       <path
         id={id}
-        className={`react-flow__edge-path ${animated ? 'animated' : ''} ${isWarn ? 'rf-edge-warn' : ''}`}
+        className={`react-flow__edge-path ${animated ? 'animated' : ''}`}
         d={edgePath}
-        stroke={color}
-        strokeWidth={2}
-        fill="none"
+        style={{ stroke: color, strokeWidth: 2, fill: 'none' }}
       />
-      {/* Explicit arrow triangle */}
+      {/* Explicit arrow triangle at target end */}
       <path
         d={`M ${tipX} ${tipY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`}
-        fill={color}
-        stroke={color}
-        strokeWidth={1}
+        style={{ fill: color, stroke: color, strokeWidth: 1 }}
       />
       {label && (
         <EdgeLabelRenderer>
@@ -154,7 +150,7 @@ function ArrowEdge({
           </div>
         </EdgeLabelRenderer>
       )}
-    </>
+    </g>
   );
 }
 
