@@ -196,3 +196,37 @@ input::placeholder { color: var(--text-muted); }
   .progress-track span { animation: none; transform: none; }
   .runtime-card em::before { animation: none; }
 }
+
+/* ── Copy button ── */
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 3px;
+  margin-left: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+  vertical-align: middle;
+  opacity: 0;
+  transition: opacity .15s, color .15s, border-color .15s;
+}
+.copy-btn:hover {
+  opacity: 1;
+  color: var(--text);
+  border-color: var(--accent);
+}
+.copy-btn:active {
+  transform: scale(.92);
+}
+/* always show on touch devices */
+@media (hover: none) {
+  .copy-btn { opacity: .6; }
+}
+/* show on row hover */
+tr:hover .copy-btn,
+.inspector-line:hover .copy-btn {
+  opacity: 1;
+}
