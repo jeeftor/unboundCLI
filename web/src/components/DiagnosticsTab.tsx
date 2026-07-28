@@ -1,3 +1,4 @@
+import '../styles/DiagnosticsTab.css';
 import {
   AlertTriangle,
   Cloud,

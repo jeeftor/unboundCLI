@@ -1,0 +1,246 @@
+/* ============================================================
+   Dashboard
+   ============================================================ */
+.dashboard-shell {
+  display: grid;
+  gap: 15px;
+  max-width: 1580px;
+  margin: 0 auto;
+  padding: 15px 20px 28px;
+}
+
+/* ============================================================
+   Operations Header
+   ============================================================ */
+.operations-header {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(200px, auto) minmax(300px, .5fr);
+  gap: 14px;
+  align-items: center;
+  padding: 15px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(130deg, var(--bg-3), var(--bg-2));
+  box-shadow: var(--shadow-sm);
+}
+
+.operations-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  color: var(--text);
+}
+
+.operations-header p {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+/* ============================================================
+   Message Banner
+   ============================================================ */
+.message {
+  justify-self: end;
+  max-width: 340px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.message.error { border-color: rgba(247, 112, 112, .28); color: var(--red); background: rgba(54, 12, 12, .4); }
+.message.ok    { border-color: rgba(46, 204, 142, .28); color: var(--green); background: rgba(3, 38, 23, .4); }
+
+/* ============================================================
+   Loading Panel
+   ============================================================ */
+.loading-panel[hidden], .inline-progress[hidden] { display: none; }
+.loading-panel, .inline-progress { display: grid; gap: 8px; }
+
+.loading-panel {
+  padding: 11px 14px;
+  border: 1px solid rgba(79, 168, 255, .22);
+  border-radius: var(--radius-sm);
+  background: rgba(79, 168, 255, .07);
+}
+
+.loading-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.loading-copy strong { font-size: 17px; color: var(--text); }
+.loading-copy.compact strong { font-size: 12px; color: var(--blue); }
+.loading-copy span { color: var(--text-2); font-size: 12.5px; }
+
+.progress-track {
+  height: 3px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, .07);
+}
+
+.progress-track span {
+  display: block;
+  min-width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  box-shadow: 0 0 10px rgba(79, 168, 255, .5);
+  animation: progress-slide 1.35s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0%   { transform: translateX(-40%); }
+  100% { transform: translateX(200%); }
+}
+
+/* ============================================================
+   Workspace Grid
+   ============================================================ */
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 15px;
+  align-items: start;
+}
+
+.content-stack { display: grid; gap: 13px; min-width: 0; }
+
+/* ============================================================
+   Panel Base
+   ============================================================ */
+.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================
+   Metric Grid
+   ============================================================ */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-card {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 96px;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color .12s, box-shadow .12s;
+  overflow: hidden;
+}
+
+.metric-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--border);
+}
+
+.metric-card.ok::after     { background: var(--green); box-shadow: 0 0 12px rgba(46, 204, 142, .4); }
+.metric-card.warn::after   { background: var(--amber); box-shadow: 0 0 12px rgba(251, 191, 36, .4); }
+.metric-card.bad::after    { background: var(--red); box-shadow: 0 0 12px rgba(247, 112, 112, .4); }
+.metric-card.violet::after { background: var(--purple); box-shadow: 0 0 12px rgba(167, 139, 250, .4); }
+
+.metric-card > div { display: grid; gap: 2px; }
+.metric-card span  { font-size: 11px; color: var(--text-2); font-weight: 500; }
+.metric-card small { font-size: 10.5px; color: var(--text-muted); }
+.metric-card svg   { color: var(--text-muted); opacity: .4; flex-shrink: 0; }
+
+.metric-card strong {
+  display: block;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -.05em;
+  line-height: 1;
+  margin: 5px 0 2px;
+  color: var(--text);
+}
+
+.metric-card.ok strong     { color: var(--green); }
+.metric-card.warn strong   { color: var(--amber); }
+.metric-card.bad strong    { color: var(--red); }
+.metric-card.violet strong { color: var(--purple); }
+
+.metric-card:hover { border-color: rgba(79, 168, 255, .3); box-shadow: var(--shadow-sm), 0 0 0 1px rgba(79, 168, 255, .1); }
+.metric-card.metric-active { border-color: rgba(79, 168, 255, .5); box-shadow: var(--shadow-sm), 0 0 0 1px rgba(79, 168, 255, .2); }
+.metric-card.metric-active::before { content: ''; position: absolute; inset: 0; background: rgba(79, 168, 255, .05); pointer-events: none; border-radius: inherit; }
+
+/* ============================================================
+   Dashboard — SSE service progress chips
+   ============================================================ */
+
+.service-progress-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.service-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-2);
+  color: var(--text-3);
+  transition: all .2s ease;
+}
+
+.service-chip.pending {
+  opacity: 0.5;
+  animation: chip-pulse 1.5s ease-in-out infinite;
+}
+
+.service-chip.loaded {
+  background: rgba(63, 185, 113, .1);
+  color: #3fb971;
+  border-color: rgba(63, 185, 113, .2);
+}
+
+.service-chip.failed {
+  background: rgba(240, 80, 110, .1);
+  color: #f0506e;
+  border-color: rgba(240, 80, 110, .2);
+}
+
+.service-chip.skipped {
+  background: var(--bg-3);
+  color: var(--text-3);
+  opacity: 0.6;
+}
+
+.service-chip-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+@keyframes chip-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}

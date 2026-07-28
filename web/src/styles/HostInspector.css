@@ -1,0 +1,46 @@
+/* ============================================================
+   Host Inspector
+   ============================================================ */
+.inspector { display: grid; gap: 12px; padding: 15px; }
+
+.host-title { align-items: flex-start; }
+.host-title > div { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
+
+.host-title > strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  word-break: break-all;
+  letter-spacing: -.02em;
+}
+
+.inspector-grid { display: grid; }
+
+.inspector-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.inspector-line span  { color: var(--text-2); flex-shrink: 0; }
+.inspector-line strong { overflow-wrap: anywhere; text-align: right; font-weight: 600; }
+.inspector-line.ok strong     { color: var(--green); }
+.inspector-line.bad strong    { color: var(--red); }
+.inspector-line.violet strong { color: var(--purple); }
+
+.inspector-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+
+.config-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 70px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}

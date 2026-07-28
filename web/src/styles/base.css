@@ -1,0 +1,198 @@
+/* ============================================================
+   Caddy DNS Sync — Design System
+   ============================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surface layers */
+  --bg:           #07090f;
+  --bg-1:         #0b0f1a;
+  --bg-2:         #0b0f1a;
+  --bg-3:         #101622;
+  --bg-card:      #0d1320;
+  --bg-hover:     #141c2e;
+  --sidebar:      #080c17;
+
+  /* Borders */
+  --border:         #1a2540;
+  --border-subtle:  #111e32;
+
+  /* Text */
+  --text:       #dde8f8;
+  --text-2:     #728aab;
+  --text-muted: #3f5570;
+
+  /* Accent colors */
+  --blue:       #4fa8ff;
+  --blue-bg:    #0c1e3d;
+  --cyan:       #22d3ee;
+  --cyan-bg:    #04233a;
+  --green:      #2ecc8e;
+  --green-bg:   #032617;
+  --amber:      #fbbf24;
+  --amber-bg:   #271800;
+  --red:        #f77070;
+  --red-bg:     #360c0c;
+  --purple:     #a78bfa;
+  --purple-bg:  #19083e;
+
+  /* Misc */
+  --radius:     10px;
+  --radius-sm:  6px;
+  --shadow:     0 8px 40px rgba(0, 0, 0, .55);
+  --shadow-sm:  0 2px 14px rgba(0, 0, 0, .35);
+}
+
+/* ============================================================
+   Reset & Base
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { min-height: 100%; background: var(--bg); }
+
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(ellipse 60% 40% at 80% -5%, rgba(79, 168, 255, .09), transparent),
+    radial-gradient(ellipse 50% 30% at 0% 25%, rgba(34, 211, 238, .06), transparent),
+    var(--bg);
+  font: 13.5px / 1.52 -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  letter-spacing: -.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p { margin: 0; }
+
+/* ============================================================
+   Form Controls
+   ============================================================ */
+button, select, input {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--text);
+  font: inherit;
+  letter-spacing: inherit;
+  transition: border-color .14s, background-color .14s, box-shadow .14s;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled) {
+  border-color: rgba(79, 168, 255, .45);
+  background: var(--bg-hover);
+}
+
+button:active:not(:disabled) { transform: translateY(1px); }
+
+button:disabled { cursor: not-allowed; opacity: .38; }
+
+select {
+  width: 100%;
+  appearance: none;
+  padding: 7px 30px 7px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+select:focus, input:focus {
+  border-color: rgba(79, 168, 255, .55);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 168, 255, .12);
+}
+
+select:hover:not(:disabled) { border-color: rgba(79, 168, 255, .35); }
+
+input { padding: 7px 11px; font-size: 12.5px; }
+input::placeholder { color: var(--text-muted); }
+
+/* ============================================================
+   App Shell
+   ============================================================ */
+#app { min-height: 100vh; }
+
+.console-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ============================================================
+   Console Main
+   ============================================================ */
+.console-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.console-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+@media (max-width: 1500px) {
+  .operations-header { grid-template-columns: 1fr; }
+  .message { justify-self: stretch; max-width: none; }
+}
+
+@media (max-width: 980px) {
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .entries-toolbar, .config-grid { grid-template-columns: 1fr; }
+  .sync-modal { width: 100%; }
+}
+
+@media (max-width: 760px) {
+  .topbar, .operations-header, .panel-title, .config-sheet-header, .config-overview, .host-title {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dashboard-shell { padding: 10px; }
+  .topbar { position: static; }
+  .runtime-card, .top-actions { width: 100%; }
+  .top-actions, .inspector-actions, .metric-grid {
+    grid-template-columns: 1fr;
+  }
+  .config-actions { flex-direction: column; }
+  table, thead, tbody, tr, td { display: block; width: 100%; }
+  thead { display: none; }
+  tbody tr { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
+  td::before {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--text-muted);
+    content: attr(data-label);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+  td:last-child { border-bottom: 0; }
+  .config-modal { padding: 10px; }
+  .config-sheet { width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-track span { animation: none; transform: none; }
+  .runtime-card em::before { animation: none; }
+}

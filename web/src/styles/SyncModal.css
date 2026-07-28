@@ -1,0 +1,339 @@
+/* ============================================================
+   Sync Modal
+   ============================================================ */
+.sync-modal { width: 480px; max-width: calc(100vw - 32px); }
+.sync-modal-body { display: grid; gap: 14px; }
+
+.modal-header-actions { display: flex; gap: 8px; align-items: center; }
+.modal-header-actions .btn-primary {
+  padding: 5px 12px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hostname-decision {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+}
+
+.hostname-decision.warning {
+  border-color: rgba(251, 191, 36, .26);
+  background: rgba(251, 191, 36, .055);
+}
+
+.hostname-decision.info,
+.hostname-decision.ok {
+  border-color: rgba(79, 168, 255, .18);
+  background: rgba(79, 168, 255, .045);
+}
+
+.hostname-decision-header {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.suppress-toggle-btn {
+  align-self: center;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  border: 1px solid var(--amber);
+  background: rgba(255,180,0,.1);
+  color: var(--amber);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.suppress-toggle-btn:hover { background: rgba(255,180,0,.2); }
+.suppress-toggle-btn.active {
+  border-color: var(--green);
+  background: rgba(46,204,142,.1);
+  color: var(--green);
+}
+.suppress-toggle-btn.active:hover { background: rgba(46,204,142,.2); }
+
+.hostname-decision.suppressed {
+  opacity: 0.55;
+}
+.suppressed-note {
+  color: var(--text-3) !important;
+  font-style: italic;
+}
+
+.hostname-decision-header svg { color: var(--amber); margin-top: 2px; }
+.hostname-decision.info .hostname-decision-header svg,
+.hostname-decision.ok .hostname-decision-header svg { color: var(--blue); }
+
+.hostname-decision-header strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.hostname-decision-header span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.hostname-decision-facts {
+  display: grid;
+  gap: 5px;
+  padding-left: 26px;
+}
+
+.hostname-decision-facts span {
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.hostname-decision-note {
+  display: block;
+  padding-left: 26px;
+  color: var(--amber);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.hostname-decision-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.hostname-decision-action {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, .12);
+}
+
+.hostname-decision-action strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.hostname-decision-action span {
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+/* Per-service sync rows */
+.service-sync-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.service-sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.service-sync-info { display: flex; flex-direction: column; gap: 3px; }
+
+.service-sync-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.service-sync-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-weight: 600;
+  display: inline-block;
+  width: fit-content;
+}
+.service-sync-badge.ok { background: var(--green-bg); color: var(--green); }
+.service-sync-badge.warn { background: var(--amber-bg, rgba(251,191,36,.1)); color: var(--amber); }
+.service-sync-badge.missing { background: var(--bg-4, var(--bg-3)); color: var(--text-muted); }
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.service-sync-empty { color: var(--text-muted); font-size: 13px; padding: 10px 0; }
+
+.sync-modal-log pre,
+.sync-modal-caddy pre {
+  background: var(--bg-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 4px 0 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sync-modal-log-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+}
+
+/* Cloudflare route panel inside SyncModal */
+.cf-route-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-2);
+}
+.cf-route-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cf-route-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.cf-route-service {
+  font-size: 11px;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-route-tag {
+  font-size: 11px;
+  color: var(--violet, #a78bfa);
+  background: color-mix(in srgb, var(--violet, #a78bfa) 12%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  display: inline-block;
+  width: fit-content;
+}
+.cf-route-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.cf-route-label {
+  font-size: 11px;
+  color: var(--text-2);
+}
+.cf-route-error {
+  font-size: 11px;
+  color: var(--red, #f87171);
+}
+.cf-route-dns-warning {
+  font-size: 11px;
+  color: var(--amber, #fbbf24);
+}
+.cf-repair-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(248, 113, 113, 0.07);
+  border-bottom: 1px solid rgba(248, 113, 113, 0.2);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.cf-repair-banner > svg { color: var(--red, #f87171); flex-shrink: 0; }
+.cf-repair-ok { color: var(--green, #4ade80); display: flex; align-items: center; gap: 4px; font-size: 11px; }
+.cf-repair-fail { color: var(--red, #f87171); font-size: 11px; }
+
+.cf-route-saving {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+.cf-route-direct-opts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cf-route-tls-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+/* DNS service row actions — status badge + action buttons side by side */
+.service-sync-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sync-caddy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sync-caddy-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.sync-caddy-toggle:hover { color: var(--text); background: transparent; }
+
+/* ============================================================
+   Inline progress (sync panel) extra label styles
+   ============================================================ */
+.inline-progress small   { font-size: 11px; color: var(--text-2); }
+.loading-panel small     { font-size: 12px; color: var(--text-2); }
+.cloudflare-detail span  { color: inherit; font-size: 10.5px; }

@@ -1,0 +1,101 @@
+/* ============================================================
+   Log Bar (bottom strip)
+   ============================================================ */
+.log-bar {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+
+.log-bar-resize-handle {
+  height: 5px;
+  cursor: ns-resize;
+  background: transparent;
+  border-top: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.log-bar-resize-handle:hover,
+.log-bar-resize-handle:active {
+  border-top-color: var(--blue, #4fa8ff);
+}
+
+.log-bar-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.log-bar-toggle:hover { background: var(--bg-hover); color: var(--text); }
+
+.log-bar-pill {
+  background: var(--bg-4, var(--bg-3));
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  color: var(--text-muted);
+}
+.log-bar-pill.working { background: rgba(79,168,255,.1); color: var(--blue); border-color: rgba(79,168,255,.25); }
+
+.log-bar-toggle > svg:last-child { margin-left: auto; }
+
+.log-bar-content {
+  padding: 12px 16px 14px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-subtle);
+  margin: 0;
+  color: var(--text);
+  background: var(--bg-3);
+}
+
+/* Reused layout utilities */
+.panel-title, .host-title, .config-overview, .log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-title > div { display: grid; gap: 2px; }
+.config-overview > div { display: grid; gap: 2px; }
+
+.panel-title strong { font-size: 14px; font-weight: 700; letter-spacing: -.02em; }
+.panel-title span   { font-size: 11.5px; color: var(--text-2); }
+
+/* Legacy sync panel (kept for CLI view) */
+.sync-panel { display: grid; gap: 12px; padding: 15px; }
+
+.inline-progress {
+  padding: 10px 12px;
+  border: 1px solid rgba(79, 168, 255, .2);
+  border-radius: var(--radius-sm);
+  background: rgba(79, 168, 255, .06);
+}
+
+.log-header button { min-height: 26px; padding: 3px 9px; font-size: 11px; color: var(--text-muted); }
+
+.log {
+  min-height: 130px;
+  max-height: 210px;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #050810;
+  color: #b8ccdf;
+  font: 11.5px / 1.65 ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+}

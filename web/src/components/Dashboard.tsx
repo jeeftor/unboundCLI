@@ -1,11 +1,11 @@
+import '../styles/Dashboard.css';
 import {
   GitBranch,
   Loader2,
   RefreshCw,
-  X
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 import { api } from '../api/client';
 import { AuthFlowsTab } from './AuthFlowsTab';
 import { CaddyEditor } from './CaddyEditor';
@@ -20,117 +20,87 @@ import { OperationsHeader } from './OperationsHeader';
 import { SyncModal } from './SyncModal';
 import { Topbar } from './Topbar';
 import type { TabId } from './TabBar';
-import type { CaddyEditorForm, ConfigForms, TestResults } from '../hooks/useConfigForms';
-import type { ConfigResponse, EntriesResponse, Entry, ServiceKey, SyncAction } from '../types';
+import type { ConfigForms } from '../hooks/useConfigForms';
+import {
+  useStore,
+  selectFilteredEntries,
+  selectSummary,
+  selectSelectedEntry,
+  selectCanSyncNow,
+  selectPlannedActions,
+  selectEnabledServices,
+  refreshEntries,
+  previewSync,
+  dryRunSync,
+  syncNow,
+  removeEntry,
+  syncAll,
+  saveConfig,
+  saveCaddyEditor,
+  testConfig,
+} from '../store';
 
-export function AppShell({
-  view,
-  setView,
-  config,
-  loading,
-  message,
-  messageKind,
-  progress,
-  report,
-  summary,
-  statusFilter,
-  setStatusFilter,
-  serviceFilter,
-  setServiceFilter,
-  search,
-  setSearch,
-  entries,
-  selectedEntry,
-  selectedHostname,
-  setSelectedHostname,
-  suppressed,
-  onToggleSuppress,
-  mutationEnabled,
-  syncService,
-  setSyncService,
-  syncLoading,
-  syncProgress,
-  syncLog,
-  plannedActions,
-  canSyncNow,
-  onRefresh,
-  onPreview,
-  onDryRun,
-  onSync,
-  onRemoveEntry,
-  onSyncAll,
-  configOpen,
-  setConfigOpen,
-  forms,
-  setForms,
-  savedForms,
-  configStatus,
-  configStatusKind,
-  testResults,
-  onSaveConfig,
-  onSaveCaddyEditor,
-  onTestConfig
-}: {
-  view: TabId;
-  setView: (v: TabId) => void;
-  config: ConfigResponse | null;
-  loading: boolean;
-  message: string;
-  messageKind: 'info' | 'error' | 'ok';
-  progress: Record<string, import('../types').ProgressEvent>;
-  report: EntriesResponse['report'];
-  summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number; issues: number };
-  statusFilter: string;
-  setStatusFilter: (value: string) => void;
-  serviceFilter: string;
-  setServiceFilter: (value: string) => void;
-  search: string;
-  setSearch: (value: string) => void;
-  entries: Entry[];
-  selectedEntry?: Entry;
-  selectedHostname: string;
-  setSelectedHostname: (value: string) => void;
-  suppressed: Set<string>;
-  onToggleSuppress: (key: string) => void;
-  mutationEnabled: boolean;
-  syncService: string;
-  setSyncService: (value: string) => void;
-  syncLoading: boolean;
-  syncProgress: { title: string; detail: string };
-  syncLog: string;
-  plannedActions: SyncAction[];
-  canSyncNow: boolean;
-  onRefresh: () => void;
-  onPreview: (service?: string, hostname?: string) => Promise<boolean>;
-  onDryRun: () => Promise<void>;
-  onSync: () => Promise<void>;
-  onRemoveEntry: (hostname: string, service?: string) => Promise<void>;
-  onSyncAll: () => Promise<void>;
-  configOpen: boolean;
-  setConfigOpen: (value: boolean) => void;
-  forms: ConfigForms;
-  setForms: Dispatch<SetStateAction<ConfigForms>>;
-  savedForms: ConfigForms;
-  configStatus: string;
-  configStatusKind: 'info' | 'error' | 'ok';
-  testResults: TestResults;
-  onSaveConfig: (service: 'unbound' | 'adguard' | 'cloudflare') => Promise<void>;
-  onSaveCaddyEditor: () => Promise<void>;
-  onTestConfig: (service: ServiceKey) => Promise<void>;
-}) {
-  const enabledServices = config?.enabled || {};
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalHostname, setModalHostname] = useState('');
-  const [modalAutoSync, setModalAutoSync] = useState(false);
-  const [logBarOpen, setLogBarOpen] = useState(false);
+export function AppShell() {
+  // ── Selectors (each subscribes to a slice of state) ──
+  const view = useStore((s) => s.view);
+  const config = useStore((s) => s.config);
+  const loading = useStore((s) => s.loading);
+  const message = useStore((s) => s.message);
+  const messageKind = useStore((s) => s.messageKind);
+  const progress = useStore((s) => s.progress);
+  const mutationEnabled = useStore((s) => s.mutationEnabled);
+  const syncService = useStore((s) => s.syncService);
+  const syncLoading = useStore((s) => s.syncLoading);
+  const syncProgress = useStore((s) => s.syncProgress);
+  const syncLog = useStore((s) => s.syncLog);
+  const configOpen = useStore((s) => s.configOpen);
+  const forms = useStore((s) => s.forms);
+  const savedForms = useStore((s) => s.savedForms);
+  const configStatus = useStore((s) => s.configStatus);
+  const configStatusKind = useStore((s) => s.configStatusKind);
+  const testResults = useStore((s) => s.testResults);
+  const statusFilter = useStore((s) => s.statusFilter);
+  const serviceFilter = useStore((s) => s.serviceFilter);
+  const search = useStore((s) => s.search);
+  const selectedHostname = useStore((s) => s.selectedHostname);
+  const suppressed = useStore((s) => s.suppressed);
 
-  // Global remote-ahead status -- polled every 60s regardless of active tab.
-  type GitRemoteStatus = { remote_ahead: number; local_ahead: number; branch: string; remote: string; fetch_error?: string };
-  const [remoteStatus, setRemoteStatus] = useState<GitRemoteStatus | null>(null);
+  // ── Derived selectors ──
+  const entries = useStore(selectFilteredEntries);
+  const summary = useStore(selectSummary);
+  const selectedEntry = useStore(selectSelectedEntry);
+  const canSyncNow = useStore(selectCanSyncNow);
+  const plannedActions = useStore(selectPlannedActions);
+  const enabledServices = useStore(selectEnabledServices);
+
+  // ── Actions from store ──
+  const setView = useStore((s) => s.setView);
+  const setConfigOpen = useStore((s) => s.setConfigOpen);
+  const setStatusFilter = useStore((s) => s.setStatusFilter);
+  const setServiceFilter = useStore((s) => s.setServiceFilter);
+  const setSearch = useStore((s) => s.setSearch);
+  const setSelectedHostname = useStore((s) => s.setSelectedHostname);
+  const toggleSuppress = useStore((s) => s.toggleSuppress);
+  const setSyncService = useStore((s) => s.setSyncService);
+  const setForms = useStore((s) => s.setForms);
+  const setModalOpen = useStore((s) => s.setModalOpen);
+  const setModalHostname = useStore((s) => s.setModalHostname);
+  const setModalAutoSync = useStore((s) => s.setModalAutoSync);
+  const modalOpen = useStore((s) => s.modalOpen);
+  const modalHostname = useStore((s) => s.modalHostname);
+  const modalAutoSync = useStore((s) => s.modalAutoSync);
+  const logBarOpen = useStore((s) => s.logBarOpen);
+  const setLogBarOpen = useStore((s) => s.setLogBarOpen);
+
+  // ── Local UI state (not shared) ──
+  const [remoteStatus, setRemoteStatus] = useState<{
+    remote_ahead: number; local_ahead: number; branch: string; remote: string; fetch_error?: string;
+  } | null>(null);
   const [remoteChecking, setRemoteChecking] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [pullOutput, setPullOutput] = useState('');
 
+  // ── Git remote polling ──
   const checkRemote = useCallback(async () => {
     setRemoteChecking(true);
     try { setRemoteStatus(await api.caddyGitStatus()); } catch { /* non-fatal */ } finally { setRemoteChecking(false); }
@@ -142,10 +112,10 @@ export function AppShell({
       const res = await api.caddyGitPull();
       setPullOutput(res.output || 'Already up to date.');
       await checkRemote();
-      onRefresh();
+      await refreshEntries();
     } catch (err) { setPullOutput(`Error: ${String(err)}`); }
     finally { setPulling(false); }
-  }, [checkRemote, onRefresh]);
+  }, [checkRemote]);
 
   useEffect(() => {
     void checkRemote();
@@ -153,7 +123,8 @@ export function AppShell({
     return () => clearInterval(id);
   }, [checkRemote]);
 
-  const modalEntry = entries.find(e => e.hostname === modalHostname);
+  // ── Modal helpers ──
+  const modalEntry = useStore((s) => s.entries.find((e) => e.hostname === modalHostname));
 
   const openModify = (hostname: string) => {
     setModalHostname(hostname);
@@ -174,7 +145,15 @@ export function AppShell({
   return (
     <div className="console-layout">
       <div className="console-main">
-        <Topbar config={config} loading={loading} syncLoading={syncLoading} view={view} setView={setView} onRefresh={onRefresh} onOpenConfig={() => setConfigOpen(true)} />
+        <Topbar
+          config={config}
+          loading={loading}
+          syncLoading={syncLoading}
+          view={view as TabId}
+          setView={(v) => setView(v)}
+          onRefresh={() => void refreshEntries()}
+          onOpenConfig={() => setConfigOpen(true)}
+        />
 
         {showRemoteBanner && (
           <div className={`git-remote-banner global ${remoteStatus!.fetch_error ? 'error' : 'warn'}`}>
@@ -210,7 +189,14 @@ export function AppShell({
         <div className="console-scroll">
           {view === 'caddyfile' ? (
             <main className="dashboard-shell caddy-editor-shell">
-              <CaddyEditor mutationEnabled={mutationEnabled} remoteStatus={remoteStatus} remoteChecking={remoteChecking} pulling={pulling} onPull={handlePull} onCheckRemote={checkRemote} />
+              <CaddyEditor
+                mutationEnabled={mutationEnabled}
+                remoteStatus={remoteStatus}
+                remoteChecking={remoteChecking}
+                pulling={pulling}
+                onPull={handlePull}
+                onCheckRemote={checkRemote}
+              />
             </main>
           ) : view === 'auth' ? (
             <AuthFlowsTab />
@@ -236,31 +222,31 @@ export function AppShell({
                 setSearch={setSearch}
                 enabledServices={enabledServices}
                 mutationEnabled={mutationEnabled}
-                onSyncAll={onSyncAll}
+                onSyncAll={() => syncAll()}
               />
               <CFRepairBanner
                 entries={entries}
                 mutationEnabled={mutationEnabled}
                 cfEnabled={enabledServices.cloudflare === true}
-                onRepaired={onRefresh}
+                onRepaired={() => void refreshEntries()}
               />
               <EntriesTable
                 entries={entries}
                 selectedHostname={selectedHostname}
                 mutationEnabled={mutationEnabled}
                 enabledServices={enabledServices}
-                caddyServerIP={config?.caddy.server_ip || ''}
+                caddyServerIP={config?.caddy?.server_ip || ''}
                 suppressed={suppressed}
-                onToggleSuppress={onToggleSuppress}
+                onToggleSuppress={toggleSuppress}
                 onSelect={setSelectedHostname}
                 onQuickSync={openQuickSync}
                 onOpenModify={openModify}
-                onRemove={onRemoveEntry}
+                onRemove={(hostname, service) => removeEntry(hostname, service as 'all' | 'unbound' | 'adguard')}
               />
             </main>
           )}
         </div>
-        <LogBar open={logBarOpen} onToggle={() => setLogBarOpen(o => !o)} />
+        <LogBar open={logBarOpen} onToggle={() => setLogBarOpen(!logBarOpen)} />
       </div>
       <SyncModal
         open={modalOpen}
@@ -269,9 +255,9 @@ export function AppShell({
         hostname={modalHostname}
         entry={modalEntry}
         enabledServices={enabledServices}
-        caddyServerIP={config?.caddy.server_ip || ''}
+        caddyServerIP={config?.caddy?.server_ip || ''}
         suppressed={suppressed}
-        onToggleSuppress={onToggleSuppress}
+        onToggleSuppress={toggleSuppress}
         syncService={syncService}
         setSyncService={setSyncService}
         syncLoading={syncLoading}
@@ -280,26 +266,32 @@ export function AppShell({
         plannedActions={plannedActions}
         canSyncNow={canSyncNow}
         mutationEnabled={mutationEnabled}
-        onPreviewFor={(service, hostname) => onPreview(service, hostname)}
-        onDryRun={onDryRun}
-        onSync={onSync}
-        onRefresh={onRefresh}
-        onRemoveEntry={onRemoveEntry}
+        onPreviewFor={(service, hostname) => previewSync(service, hostname)}
+        onDryRun={() => dryRunSync()}
+        onSync={() => syncNow()}
+        onRefresh={() => void refreshEntries()}
+        onRemoveEntry={(hostname, service) => removeEntry(hostname, service as 'all' | 'unbound' | 'adguard')}
       />
       <ConfigModal
         open={configOpen}
         onClose={() => setConfigOpen(false)}
         config={config}
         forms={forms}
-        setForms={setForms}
+        setForms={(updater) => {
+          if (typeof updater === 'function') {
+            setForms((updater as (prev: ConfigForms) => ConfigForms)(useStore.getState().forms));
+          } else {
+            setForms(updater);
+          }
+        }}
         savedForms={savedForms}
         mutationEnabled={mutationEnabled}
         status={configStatus}
         statusKind={configStatusKind}
         testResults={testResults}
-        onSave={onSaveConfig}
-        onSaveCaddyEditor={onSaveCaddyEditor}
-        onTest={onTestConfig}
+        onSave={(service) => saveConfig(service)}
+        onSaveCaddyEditor={() => saveCaddyEditor()}
+        onTest={(service) => testConfig(service)}
       />
     </div>
   );

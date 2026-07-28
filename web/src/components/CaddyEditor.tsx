@@ -1,3 +1,4 @@
+import '../styles/CaddyEditor.css';
 import {
   CheckCircle2,
   ChevronDown,
