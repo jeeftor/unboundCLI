@@ -21,6 +21,7 @@ import { MetricGrid } from './MetricCards';
 import { OperationsHeader } from './OperationsHeader';
 import { SyncModal } from './SyncModal';
 import { Topbar } from './Topbar';
+import { VisualizeModal } from './VisualizeModal';
 import type { TabId } from './TabBar';
 import type { ConfigForms } from '../hooks/useConfigForms';
 import {
@@ -114,6 +115,10 @@ export function AppShell() {
   const modalOpen = useStore((s) => s.modalOpen);
   const modalHostname = useStore((s) => s.modalHostname);
   const modalAutoSync = useStore((s) => s.modalAutoSync);
+  const visualizeOpen = useStore((s) => s.visualizeOpen);
+  const visualizeHostname = useStore((s) => s.visualizeHostname);
+  const setVisualizeOpen = useStore((s) => s.setVisualizeOpen);
+  const setVisualizeHostname = useStore((s) => s.setVisualizeHostname);
   const logBarOpen = useStore((s) => s.logBarOpen);
   const setLogBarOpen = useStore((s) => s.setLogBarOpen);
 
@@ -168,6 +173,17 @@ export function AppShell() {
     setModalAutoSync(true);
     setModalOpen(true);
   };
+
+  const openVisualize = (hostname: string) => {
+    setVisualizeHostname(hostname);
+    setSelectedHostname(hostname);
+    setVisualizeOpen(true);
+  };
+
+  const visualizeEntry = useMemo(
+    () => allEntriesForModal.find((e) => e.hostname === visualizeHostname),
+    [allEntriesForModal, visualizeHostname]
+  );
 
   const showRemoteBanner = remoteStatus && (remoteStatus.remote_ahead > 0 || remoteStatus.fetch_error);
 
@@ -270,6 +286,7 @@ export function AppShell() {
                 onSelect={setSelectedHostname}
                 onQuickSync={openQuickSync}
                 onOpenModify={openModify}
+                onOpenVisualize={openVisualize}
                 onRemove={(hostname, service) => removeEntry(hostname, service as 'all' | 'unbound' | 'adguard')}
               />
             </main>
@@ -301,6 +318,9 @@ export function AppShell() {
         onRefresh={() => void refreshEntries()}
         onRemoveEntry={(hostname, service) => removeEntry(hostname, service as 'all' | 'unbound' | 'adguard')}
       />
+      {visualizeOpen && visualizeEntry && (
+        <VisualizeModal entry={visualizeEntry} onClose={() => setVisualizeOpen(false)} />
+      )}
       <ConfigModal
         open={configOpen}
         onClose={() => setConfigOpen(false)}

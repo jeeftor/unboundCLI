@@ -1,5 +1,5 @@
 import '../styles/EntriesTable.css';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, Network } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { KeyboardEvent } from 'react';
@@ -23,6 +23,7 @@ export function EntriesTable({
   onSelect,
   onQuickSync,
   onOpenModify,
+  onOpenVisualize,
   onRemove,
 }: {
   entries: Entry[];
@@ -35,6 +36,7 @@ export function EntriesTable({
   onSelect: (hostname: string) => void;
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
+  onOpenVisualize: (hostname: string) => void;
   onRemove: (hostname: string, service?: string) => Promise<void>;
 }) {
   return (
@@ -58,6 +60,7 @@ export function EntriesTable({
               onSelect={onSelect}
               onQuickSync={onQuickSync}
               onOpenModify={onOpenModify}
+              onOpenVisualize={onOpenVisualize}
               onRemove={onRemove}
             />
           ))}
@@ -77,6 +80,7 @@ function EntryRow({
   onSelect,
   onQuickSync,
   onOpenModify,
+  onOpenVisualize,
   onRemove,
 }: {
   entry: Entry;
@@ -88,6 +92,7 @@ function EntryRow({
   onSelect: (hostname: string) => void;
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
+  onOpenVisualize: (hostname: string) => void;
   onRemove: (hostname: string, service?: string) => Promise<void>;
 }) {
   const isStale = entry.overall_status === 4;
@@ -140,6 +145,9 @@ function EntryRow({
           )}
           <button className="row-modify-btn" type="button" onClick={(e) => { e.stopPropagation(); onOpenModify(entry.hostname); }}>
             Modify
+          </button>
+          <button className="row-visualize-btn" type="button" title="Visualize access flow" onClick={(e) => { e.stopPropagation(); onOpenVisualize(entry.hostname); }}>
+            <Network size={12} /> Flow
           </button>
         </div>
       </td>

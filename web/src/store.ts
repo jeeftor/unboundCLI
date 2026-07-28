@@ -54,6 +54,8 @@ type AppState = {
   modalOpen: boolean;
   modalHostname: string;
   modalAutoSync: boolean;
+  visualizeOpen: boolean;
+  visualizeHostname: string;
   logBarOpen: boolean;
 
   // ── Runtime data ──
@@ -103,6 +105,8 @@ type AppState = {
   setModalOpen: (open: boolean) => void;
   setModalHostname: (hostname: string) => void;
   setModalAutoSync: (auto: boolean) => void;
+  setVisualizeOpen: (open: boolean) => void;
+  setVisualizeHostname: (hostname: string) => void;
   setLogBarOpen: (open: boolean) => void;
 
   // Runtime data actions
@@ -154,6 +158,8 @@ export const useStore = create<AppState>((set, get) => ({
   modalOpen: false,
   modalHostname: '',
   modalAutoSync: false,
+  visualizeOpen: false,
+  visualizeHostname: '',
   logBarOpen: false,
 
   // ── Runtime data ──
@@ -203,6 +209,8 @@ export const useStore = create<AppState>((set, get) => ({
   setModalOpen: (open) => set({ modalOpen: open }),
   setModalHostname: (hostname) => set({ modalHostname: hostname }),
   setModalAutoSync: (auto) => set({ modalAutoSync: auto }),
+  setVisualizeOpen: (open) => set({ visualizeOpen: open }),
+  setVisualizeHostname: (hostname) => set({ visualizeHostname: hostname }),
   setLogBarOpen: (open) => set({ logBarOpen: open }),
 
   // ── Actions: Runtime data ──
