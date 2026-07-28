@@ -11,6 +11,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
   const cf = entry.cloudflare_status;
   const hasCF = cf?.configured;
   const hasForwardAuth = entry.has_forward_auth;
+  const hasConditionalFA = entry.has_conditional_forward_auth ?? false;
   const hasDNS = Boolean(entry.dns_resolved && entry.dns_resolved !== 'FAIL');
   const upstream = entry.caddy_upstream || 'unknown';
   // Derive service name from hostname (e.g. "jellyfin.vookie.net" → "Jellyfin")
@@ -35,6 +36,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
       wan_auth: auth.wan_auth,
       lan_auth: auth.lan_auth,
       has_forward_auth: auth.has_forward_auth,
+      conditional_forward_auth: auth.conditional_forward_auth,
       cf_access_app_id: auth.cf_access_app_id,
       cf_access_decisions: auth.cf_access_decisions,
       notes: auth.notes,
@@ -48,6 +50,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
       wan_exposed: auth.wan_exposed,
       wan_auth: auth.wan_auth,
       has_forward_auth: auth.has_forward_auth,
+      conditional_forward_auth: auth.conditional_forward_auth,
       cf_access_app_id: auth.cf_access_app_id,
       cf_access_decisions: auth.cf_access_decisions,
       authentik_provider_mode: auth.authentik_provider_mode,
@@ -122,7 +125,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
       arrowLabel: hasCFAccess && !hasBypass ? 'JWT verified' : '',
     });
 
-    if (hasForwardAuth) {
+    if (hasForwardAuth && !hasConditionalFA) {
       const isDoubleLogin = hasCFAccess && !hasBypass;
       steps.push({
         id: 'authentik',
@@ -144,6 +147,17 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
         stepNum: n++,
         arrowLabel: isDoubleLogin ? 'login again!' : 'authorized',
         arrowWarn: isDoubleLogin,
+      });
+    } else if (hasConditionalFA) {
+      // Conditional forward_auth: CF tunnel traffic skips forward_auth
+      n++; // skip the "skips forward_auth" step
+      steps.push({
+        id: 'upstream',
+        nodeType: 'upstream',
+        label: serviceName,
+        sublabel: upstream,
+        stepNum: n++,
+        arrowLabel: 'direct (FA skipped)',
       });
     } else {
       // Skip the "no forward_auth" step
@@ -237,7 +251,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
           <div className="visualize-diagram-flow">
             <div className="visualize-diagram-side">
               <ReactFlowDiagram steps={wanSteps} height={420} />
-              {hasCFAccess && !hasBypass && hasForwardAuth && (
+              {hasCFAccess && !hasBypass && hasForwardAuth && !hasConditionalFA && (
                 <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
                   Double-login: users authenticate at CF Access, then again at Authentik.
                 </div>
@@ -245,6 +259,11 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
               {hasCFAccess && hasBypass && hasForwardAuth && (
                 <div className="visualize-section-sub" style={{ marginTop: 6 }}>
                   CF Access bypasses so Authentik handles the single login.
+                </div>
+              )}
+              {hasCFAccess && !hasBypass && hasConditionalFA && (
+                <div className="visualize-section-sub" style={{ marginTop: 6 }}>
+                  Conditional forward_auth: Caddy skips forward_auth for CF tunnel traffic (matched by Cf-Connecting-Ip header). Forward_auth only applies to LAN/Tailscale.
                 </div>
               )}
             </div>

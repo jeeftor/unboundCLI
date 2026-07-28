@@ -426,17 +426,18 @@ func (c *CaddyClient) collectRouteDetails(routes []interface{}, result map[strin
 
 		if len(hostnames) > 0 {
 			chain, upstream, reqSet, reqAdd, respSet, tlsUpstream := c.extractHandlerChain(rObj)
-			hasForwardAuth := routeContainsForwardAuth(rObj)
+			hasForwardAuth, conditionalFA := routeContainsForwardAuth(rObj)
 			for _, h := range hostnames {
 				if _, exists := result[h]; !exists {
 					result[h] = models.CaddyRouteInfo{
-						Upstream:           upstream,
-						HandlerChain:       chain,
-						RequestHeadersSet:  reqSet,
-						RequestHeadersAdd:  reqAdd,
-						ResponseHeadersSet: respSet,
-						TLSToUpstream:      tlsUpstream,
-						HasForwardAuth:     hasForwardAuth,
+						Upstream:               upstream,
+						HandlerChain:           chain,
+						RequestHeadersSet:      reqSet,
+						RequestHeadersAdd:      reqAdd,
+						ResponseHeadersSet:     respSet,
+						TLSToUpstream:          tlsUpstream,
+						HasForwardAuth:         hasForwardAuth,
+						ConditionalForwardAuth: conditionalFA,
 					}
 				}
 			}
@@ -537,13 +538,118 @@ func (c *CaddyClient) extractHandlerChain(routeObj map[string]interface{}) (
 
 // routeContainsForwardAuth checks whether a route object contains an Authentik
 // forward_auth pattern by serializing to JSON and looking for the outpost marker.
-// This avoids deeply walking the nested handler tree.
-func routeContainsForwardAuth(routeObj map[string]interface{}) bool {
+// It also detects whether forward_auth is conditional — i.e., only present in
+// some subroute handlers but skipped for CF tunnel traffic (matched by
+// Cf-Connecting-Ip header). This avoids deeply walking the nested handler tree.
+func routeContainsForwardAuth(routeObj map[string]interface{}) (bool, bool) {
 	data, err := json.Marshal(routeObj)
 	if err != nil {
+		return false, false
+	}
+	hasFA := strings.Contains(string(data), "outpost.goauthentik.io")
+	if !hasFA {
+		return false, false
+	}
+
+	// Check if forward_auth is conditional by examining subroute handlers.
+	// If there are multiple subroute handlers and only some have forward_auth
+	// (specifically, if there's a handler matching Cf-Connecting-Ip that
+	// does NOT have forward_auth), then it's conditional.
+	conditionalFA := detectConditionalForwardAuth(routeObj)
+	return hasFA, conditionalFA
+}
+
+// detectConditionalForwardAuth returns true if the route has multiple subroute
+// handlers where forward_auth only appears in some (not all) of them,
+// AND at least one handler without forward_auth matches CF tunnel traffic
+// (via Cf-Connecting-Ip header matcher).
+func detectConditionalForwardAuth(routeObj map[string]interface{}) bool {
+	// Walk the route tree to find subroute handlers
+	subroutes := findSubrouteHandlers(routeObj)
+	if len(subroutes) < 2 {
 		return false
 	}
-	return strings.Contains(string(data), "outpost.goauthentik.io")
+
+	// Check if any subroute has forward_auth and any doesn't
+	hasFAWithCFSkip := false
+	hasFAInAny := false
+
+	for _, sr := range subroutes {
+		// Check if this route (or any of its nested handlers) contains forward_auth
+		srJSON, _ := json.Marshal(sr)
+		srHasFA := strings.Contains(string(srJSON), "outpost.goauthentik.io")
+		if srHasFA {
+			hasFAInAny = true
+			continue
+		}
+
+		// This subroute doesn't have forward_auth.
+		// Check if it matches CF tunnel traffic (Cf-Connecting-Ip header)
+		// or external traffic (not client_ip LAN ranges)
+		matches, ok := sr["match"].([]interface{})
+		if !ok {
+			continue // catch-all without FA — still a conditional pattern
+		}
+		for _, m := range matches {
+			mObj, ok := m.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// Check for Cf-Connecting-Ip header matcher
+			if header, ok := mObj["header"].(map[string]interface{}); ok {
+				if _, ok := header["Cf-Connecting-Ip"]; ok {
+					hasFAWithCFSkip = true
+				}
+			}
+			// Check for "not" client_ip matcher (external traffic)
+			if notMatch, ok := mObj["not"].([]interface{}); ok {
+				for _, nm := range notMatch {
+					if nmObj, ok := nm.(map[string]interface{}); ok {
+						if _, ok := nmObj["client_ip"]; ok {
+							hasFAWithCFSkip = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Conditional if: some subroutes have FA, some don't, and at least one
+	// without FA matches CF tunnel or external traffic
+	return hasFAInAny && hasFAWithCFSkip
+}
+
+// findSubrouteHandlers walks a route object and returns all top-level routes
+// within the first subroute handler found. These routes carry the matchers
+// (like Cf-Connecting-Ip, User-Agent, etc.) that determine which traffic
+// gets forward_auth vs direct proxying.
+func findSubrouteHandlers(routeObj map[string]interface{}) []map[string]interface{} {
+	var result []map[string]interface{}
+
+	// Check handle list for subroute handlers
+	handle, ok := routeObj["handle"].([]interface{})
+	if !ok {
+		return result
+	}
+
+	for _, h := range handle {
+		hObj, ok := h.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if hObj["handler"] == "subroute" {
+			// This is a subroute — get its inner routes
+			if routes, ok := hObj["routes"].([]interface{}); ok {
+				for _, r := range routes {
+					if rObj, ok := r.(map[string]interface{}); ok {
+						result = append(result, rObj)
+					}
+				}
+			}
+		}
+	}
+
+	return result
 }
 
 // caddyExtractHeaderMap extracts a header set/add map from a reverse_proxy handler object.

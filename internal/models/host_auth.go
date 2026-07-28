@@ -97,6 +97,11 @@ type HostAuth struct {
 	// Caddy-side detection (already exists in CaddyRouteInfo, mirrored here for the auth view)
 	HasForwardAuth bool `json:"has_forward_auth"`
 
+	// ConditionalForwardAuth means forward_auth only applies to some traffic
+	// (e.g., LAN) and is skipped for CF tunnel traffic via Caddy matchers.
+	// This prevents the double-login pattern even without a CF Access bypass.
+	ConditionalForwardAuth bool `json:"conditional_forward_auth,omitempty"`
+
 	// Whether this host is WAN-exposed (has a CF tunnel ingress rule)
 	WANExposed bool `json:"wan_exposed"`
 
@@ -115,8 +120,8 @@ func (h *HostAuth) HasAuthentikProvider() bool {
 }
 
 // IsDoubleLoginRisk returns true if both CF Access and forward_auth are
-// active on WAN without a bypass policy — this causes the Pattern F
-// double-login anti-pattern.
+// active on WAN without a bypass policy or conditional forward_auth —
+// this causes the Pattern F double-login anti-pattern.
 func (h *HostAuth) IsDoubleLoginRisk() bool {
-	return h.WANAuth == WANAuthCFAccess && h.HasForwardAuth && h.WANExposed
+	return h.WANAuth == WANAuthCFAccess && h.HasForwardAuth && h.WANExposed && !h.ConditionalForwardAuth
 }
