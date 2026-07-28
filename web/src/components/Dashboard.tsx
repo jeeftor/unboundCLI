@@ -160,6 +160,24 @@ export function AppShell() {
     [allEntriesForModal, modalHostname]
   );
 
+  // ── Deep link: open visualize modal via #visualize=hostname ──
+  useEffect(() => {
+    const hash = window.location.hash;
+    const match = hash.match(/^#visualize=(.+)$/);
+    if (!match) return;
+    const hostname = decodeURIComponent(match[1]);
+    // Wait until entries are loaded
+    if (allEntriesForModal.length === 0) return;
+    const entry = allEntriesForModal.find((e) => e.hostname === hostname);
+    if (entry) {
+      setVisualizeHostname(hostname);
+      setSelectedHostname(hostname);
+      setVisualizeOpen(true);
+      // Clear hash so refresh doesn't re-open
+      history.replaceState(null, '', window.location.pathname);
+    }
+  }, [allEntriesForModal, setVisualizeHostname, setVisualizeOpen]);
+
   const openModify = (hostname: string) => {
     setModalHostname(hostname);
     setSelectedHostname(hostname);
