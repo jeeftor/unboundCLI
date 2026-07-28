@@ -55,6 +55,10 @@ type Server struct {
 	runtimeMu sync.RWMutex
 	planMu    sync.Mutex
 	plans     map[string]storedPlan
+
+	// Auth inventory cache — populated at startup and after mutations.
+	authMu     sync.RWMutex
+	authCache  *AuthInventoryResponse
 }
 
 type storedPlan struct {
@@ -269,7 +273,47 @@ func NewServerWithOptions(runtime *app.Runtime, options Options) *Server {
 	logging.EnableBuffer()
 	server := &Server{runtime: runtime, options: options, mux: http.NewServeMux(), plans: make(map[string]storedPlan)}
 	server.routes()
+	// Pre-populate auth cache at startup so all clients get instant data.
+	go server.refreshAuthCache()
 	return server
+}
+
+// refreshAuthCache queries auth discovery and stores the result in authCache.
+// Safe to call concurrently; uses authMu for synchronization.
+func (s *Server) refreshAuthCache() {
+	ctx := context.Background()
+	runtime := s.runtimeSnapshot()
+
+	entries, _, err := s.loadEntries(ctx)
+	if err != nil {
+		logging.Warn("Auth cache refresh: loading entries failed", "error", err)
+		return
+	}
+
+	authMap, err := auth.Discover(ctx, entries, runtime.Clients.Cloudflare, runtime.Clients.Authentik)
+	if err != nil {
+		logging.Warn("Auth cache refresh: discovery failed", "error", err)
+		return
+	}
+
+	hosts := make([]models.HostAuth, 0, len(authMap))
+	for _, ha := range authMap {
+		hosts = append(hosts, *ha)
+	}
+	sortHostAuthByName(hosts)
+
+	resp := &AuthInventoryResponse{
+		Hosts: hosts,
+		Sources: AuthSources{
+			CloudflareAccess: runtime.Clients.Cloudflare != nil,
+			Authentik:        runtime.Clients.Authentik != nil,
+		},
+	}
+
+	s.authMu.Lock()
+	s.authCache = resp
+	s.authMu.Unlock()
+	logging.Info("Auth cache refreshed", "hosts", len(hosts))
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -1594,6 +1638,8 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 		}
 		result := s.applyActions(r.Context(), actions, false)
 		writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
+		// Refresh auth cache — entries may have changed.
+		go s.refreshAuthCache()
 		return
 	}
 	if err := validateApplyActions(request.Actions); err != nil {
@@ -1602,6 +1648,9 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 	}
 	result := s.applyActions(r.Context(), request.Actions, request.DryRun)
 	writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
+	if !request.DryRun {
+		go s.refreshAuthCache()
+	}
 }
 
 func (s *Server) applyActions(ctx context.Context, actions []syncplan.Action, dryRun bool) *syncplan.Result {
@@ -1692,6 +1741,8 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 		"removed": removed,
 		"message": msg,
 	})
+	// Refresh auth cache — entries may have changed.
+	go s.refreshAuthCache()
 }
 
 func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
@@ -1702,46 +1753,59 @@ func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadR
 }
 
 // handleAuthInventory returns the auth discovery results for all hostnames.
-// GET /api/auth/inventory — queries Caddy, CF Access, and Authentik to
-// classify each hostname's WAN/LAN/API auth configuration.
+// GET /api/auth/inventory — returns cached auth inventory (populated at
+// startup and after mutations). Falls back to live query if cache is empty.
 func (s *Server) handleAuthInventory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeMethodNotAllowed(w)
 		return
 	}
 
+	// Try cache first.
+	s.authMu.RLock()
+	cached := s.authCache
+	s.authMu.RUnlock()
+
+	if cached != nil {
+		writeJSON(w, http.StatusOK, cached)
+		return
+	}
+
+	// Cache miss — do a live query (and populate cache for next time).
 	ctx := r.Context()
 	runtime := s.runtimeSnapshot()
 
-	// Load entries (Caddy + CF tunnel state) as the base for auth discovery.
 	entries, _, err := s.loadEntries(ctx)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Errorf("loading entries for auth discovery: %w", err))
 		return
 	}
 
-	// Run auth discovery with whatever clients are available.
 	authMap, err := auth.Discover(ctx, entries, runtime.Clients.Cloudflare, runtime.Clients.Authentik)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Errorf("auth discovery failed: %w", err))
 		return
 	}
 
-	// Convert map to sorted slice.
 	hosts := make([]models.HostAuth, 0, len(authMap))
 	for _, ha := range authMap {
 		hosts = append(hosts, *ha)
 	}
-	// Sort by hostname for stable output.
 	sortHostAuthByName(hosts)
 
-	response := AuthInventoryResponse{
+	response := &AuthInventoryResponse{
 		Hosts: hosts,
 		Sources: AuthSources{
 			CloudflareAccess: runtime.Clients.Cloudflare != nil,
 			Authentik:        runtime.Clients.Authentik != nil,
 		},
 	}
+
+	// Store in cache.
+	s.authMu.Lock()
+	s.authCache = response
+	s.authMu.Unlock()
+
 	writeJSON(w, http.StatusOK, response)
 }
 
