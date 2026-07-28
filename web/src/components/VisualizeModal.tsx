@@ -193,7 +193,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
           )}
 
-          {/* ── WAN path ── */}
+          {/* ── WAN: diagram + request flow ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
               <Globe size={13} /> WAN Path (Internet → Service)
@@ -217,6 +217,9 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
                 Not exposed — no Cloudflare tunnel configured. This host is only reachable on the LAN.
               </div>
             )}
+
+            {/* WAN request flow table (right below diagram) */}
+            {wanFlow && <FlowTable steps={wanFlow} />}
 
             {/* CF Access details */}
             {hasCFAccess && (
@@ -243,7 +246,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             )}
           </div>
 
-          {/* ── LAN path ── */}
+          {/* ── LAN: diagram + request flow ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
               <Wifi size={13} /> LAN Path (Internal → Service)
@@ -255,27 +258,10 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
               {' → '}Caddy{hasForwardAuth ? ' → Authentik (forward_auth)' : ''}
               {' → '}Service <code>{upstream}</code>
             </div>
+
+            {/* LAN request flow table (right below diagram) */}
+            {lanFlow && <FlowTable steps={lanFlow} />}
           </div>
-
-          {/* ── WAN request flow (step-by-step) ── */}
-          {wanFlow && (
-            <div className="visualize-section">
-              <div className="visualize-section-title">
-                <Globe size={13} /> WAN Request Flow
-              </div>
-              <FlowTable steps={wanFlow} />
-            </div>
-          )}
-
-          {/* ── LAN request flow (step-by-step) ── */}
-          {lanFlow && (
-            <div className="visualize-section">
-              <div className="visualize-section-title">
-                <Wifi size={13} /> LAN Request Flow
-              </div>
-              <FlowTable steps={lanFlow} />
-            </div>
-          )}
 
           {/* ── Auth configuration table ── */}
           <div className="visualize-section">
