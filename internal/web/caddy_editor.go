@@ -243,6 +243,7 @@ func (s *Server) createCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": req.Hostname})
+	go s.refreshAuthCache()
 }
 
 func (s *Server) updateCaddyEntry(w http.ResponseWriter, r *http.Request) {
@@ -296,6 +297,7 @@ func (s *Server) updateCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": hostname})
+	go s.refreshAuthCache()
 }
 
 func (s *Server) deleteCaddyEntry(w http.ResponseWriter, r *http.Request) {
@@ -322,6 +324,7 @@ func (s *Server) deleteCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": hostname})
+	go s.refreshAuthCache()
 }
 
 func (s *Server) handleCaddyDiff(w http.ResponseWriter, r *http.Request) {
@@ -386,6 +389,7 @@ func (s *Server) handleCaddyGitPull(w http.ResponseWriter, r *http.Request) {
 	}
 	logging.Info("caddy: git pull completed", "output", out)
 	writeJSON(w, http.StatusOK, map[string]string{"output": out, "status": "ok"})
+	go s.refreshAuthCache()
 }
 
 func (s *Server) handleCaddyValidate(w http.ResponseWriter, r *http.Request) {

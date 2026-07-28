@@ -601,6 +601,8 @@ export async function syncNow(): Promise<void> {
     store.setSyncLog(`${data.result.message}\nadded=${data.result.items_added} updated=${data.result.items_updated} deleted=${data.result.items_deleted}`);
     store.clearPlan();
     await refreshEntries();
+    // Refresh auth cache — backend also refreshes its cache, but this
+    // updates the frontend store so the VisualizeModal shows fresh data.
     void useStore.getState().refreshAuth();
   } catch (err) {
     store.setSyncLog(err instanceof Error ? err.message : String(err));
