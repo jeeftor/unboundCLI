@@ -2,7 +2,7 @@ import '../styles/VisualizeModal.css';
 import { AlertTriangle, Globe, Loader2, Network, Server, ShieldCheck, ShieldX, Smartphone, Wifi, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
-import { detectAuthPattern } from '../lib/authMeta';
+import { buildLanRequestFlow, buildWanRequestFlow, detectAuthPattern } from '../lib/authMeta';
 import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
 import type { Entry, HostAuth } from '../types';
 
@@ -56,6 +56,35 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       notes: auth.notes,
     });
   }, [auth]);
+
+  // ── Request flow step-by-step (what happens when a user hits the service) ──
+  const wanFlow = useMemo(() => {
+    if (!auth) return null;
+    return buildWanRequestFlow({
+      wan_exposed: auth.wan_exposed,
+      wan_auth: auth.wan_auth,
+      has_forward_auth: auth.has_forward_auth,
+      cf_access_app_id: auth.cf_access_app_id,
+      cf_access_decisions: auth.cf_access_decisions,
+      authentik_provider_mode: auth.authentik_provider_mode,
+      authentik_app_slug: auth.authentik_app_slug,
+      hostname: entry.hostname,
+      upstream,
+    });
+  }, [auth, entry.hostname, upstream]);
+
+  const lanFlow = useMemo(() => {
+    if (!auth) return null;
+    return buildLanRequestFlow({
+      has_forward_auth: auth.has_forward_auth,
+      authentik_provider_mode: auth.authentik_provider_mode,
+      authentik_app_slug: auth.authentik_app_slug,
+      hostname: entry.hostname,
+      upstream,
+      dns_resolved: entry.dns_resolved || '',
+      unbound_ip: entry.unbound_status?.ip,
+    });
+  }, [auth, entry.hostname, upstream, entry.dns_resolved, entry.unbound_status?.ip]);
 
   // ── Build WAN flow nodes dynamically based on auth pattern ──
   const wanNodes = useMemo(() => {
@@ -261,6 +290,26 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
           </div>
 
+          {/* ── WAN request flow (step-by-step) ── */}
+          {wanFlow && (
+            <div className="visualize-section">
+              <div className="visualize-section-title">
+                <Globe size={13} /> WAN Request Flow
+              </div>
+              <FlowTable steps={wanFlow} />
+            </div>
+          )}
+
+          {/* ── LAN request flow (step-by-step) ── */}
+          {lanFlow && (
+            <div className="visualize-section">
+              <div className="visualize-section-title">
+                <Wifi size={13} /> LAN Request Flow
+              </div>
+              <FlowTable steps={lanFlow} />
+            </div>
+          )}
+
           {/* ── Auth configuration grid ── */}
           <div className="visualize-section">
             <div className="visualize-section-title">
@@ -316,5 +365,30 @@ function StatusTile({ label, ok, detail }: { label: string; ok: boolean; detail:
       <span className="visualize-status-label">{label}</span>
       <span className="visualize-status-detail">{detail}</span>
     </div>
+  );
+}
+
+function FlowTable({ steps }: { steps: Array<{ step: number; actor: string; action: string; result: string; warn?: boolean }> }) {
+  return (
+    <table className="flow-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Actor</th>
+          <th>Action</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {steps.map((s) => (
+          <tr key={s.step} className={s.warn ? 'flow-warn' : undefined}>
+            <td className="flow-step-num">{s.step}</td>
+            <td className="flow-actor">{s.actor}</td>
+            <td className="flow-action">{s.action}</td>
+            <td className="flow-result">{s.result}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

@@ -93,6 +93,71 @@
   opacity: .6;
 }
 
+/* Request flow table */
+.flow-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.flow-table thead {
+  background: var(--bg-2);
+}
+
+.flow-table th {
+  text-align: left;
+  padding: 6px 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: 10px;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.flow-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: top;
+}
+
+.flow-table tr:last-child td {
+  border-bottom: none;
+}
+
+.flow-step-num {
+  color: var(--text-3);
+  font-weight: 600;
+  width: 24px;
+  text-align: center;
+}
+
+.flow-actor {
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.flow-action {
+  color: var(--text-2);
+}
+
+.flow-result {
+  color: var(--text-3);
+}
+
+.flow-warn {
+  background: rgba(239, 89, 111, .06);
+}
+
+.flow-warn .flow-actor,
+.flow-warn .flow-action {
+  color: #ef596f;
+}
+
 /* Auth pattern verdict box */
 .visualize-auth-verdict {
   display: flex;
