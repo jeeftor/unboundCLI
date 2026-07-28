@@ -1,3 +1,4 @@
+import '../styles/EntriesTable.css';
 import { CircleAlert } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

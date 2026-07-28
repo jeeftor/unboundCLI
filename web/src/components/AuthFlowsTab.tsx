@@ -1,3 +1,4 @@
+import '../styles/AuthFlowsTab.css';
 import {
   AlertTriangle,
   ArrowLeftRight,

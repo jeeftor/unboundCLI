@@ -1,3 +1,4 @@
+import '../styles/LogBar.css';
 import {
   ChevronDown,
   ChevronUp,

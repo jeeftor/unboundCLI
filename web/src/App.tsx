@@ -1,61 +1,47 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppShell } from './components/Dashboard';
-import { api } from './api/client';
-import { setTabHash, tabFromHash } from './components/TabBar';
-import type { TabId } from './components/TabBar';
-import { useConfigForms } from './hooks/useConfigForms';
-import { useEntryFilters } from './hooks/useEntryFilters';
-import { useRuntimeData } from './hooks/useRuntimeData';
-import { useSyncPlan } from './hooks/useSyncPlan';
-import type { ServiceKey } from './types';
+import { tabFromHash } from './components/TabBar';
+import { useStore, refreshEntries, syncFormsFromConfig, previewSync, dryRunSync, syncNow, saveConfig, testConfig } from './store';
 
 export function App() {
-  const [view, setView] = useState<TabId>(() => tabFromHash());
-  const [configOpen, setConfigOpen] = useState(false);
-  const [mobile, setMobile] = useState(false);
-  const [tableScrolls, setTableScrolls] = useState(false);
-  const e2eRan = useRef(false);
-  const clearPlanRef = useRef<(() => void) | null>(null);
+  const config = useStore((s) => s.config);
+  const configOpen = useStore((s) => s.configOpen);
+  const loading = useStore((s) => s.loading);
+  const syncLoading = useStore((s) => s.syncLoading);
+  const plan = useStore((s) => s.plan);
+  const mutationEnabled = useStore((s) => s.mutationEnabled);
+  const mobile = useStore((s) => s.mobile);
+  const tableScrolls = useStore((s) => s.tableScrolls);
+  const entries = useStore((s) => s.entries);
+  const selectedHostname = useStore((s) => s.selectedHostname);
 
-  // Sync hash → view (browser back/forward, bookmarkable URLs).
-  const handleSetView = useCallback((v: TabId) => {
-    setTabHash(v);
-    setView(v);
-  }, []);
+  const setConfigOpen = useStore((s) => s.setConfigOpen);
+  const setMobile = useStore((s) => s.setMobile);
+  const setTableScrolls = useStore((s) => s.setTableScrolls);
+  const e2eRan = useRef(false);
 
   useEffect(() => {
-    const onHashChange = () => setView(tabFromHash());
+    const onHashChange = () => useStore.getState().setView(tabFromHash());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const clearPlanForDataChange = useCallback(() => {
-    clearPlanRef.current?.();
+  // Initial data load.
+  useEffect(() => {
+    void refreshEntries(() => useStore.getState().clearPlan());
   }, []);
 
-  const runtime = useRuntimeData(clearPlanForDataChange);
-  const mutationEnabled = Boolean(runtime.config?.mutation_enabled && window.UNBOUNDCLI_WEB_CONFIG?.mutationEnabled);
-  const filters = useEntryFilters(runtime.entries, runtime.config?.caddy?.server_ip ?? '');
-  const sync = useSyncPlan({
-    config: runtime.config,
-    mutationEnabled,
-    refreshEntries: runtime.refreshEntries
-  });
-  const configForms = useConfigForms({
-    config: runtime.config,
-    mutationEnabled,
-    applyConfig: runtime.applyConfig,
-    onConfigChanged: sync.clearPlan
-  });
-
+  // Sync forms when config changes.
   useEffect(() => {
-    clearPlanRef.current = () => sync.clearPlan();
-  }, [sync]);
+    syncFormsFromConfig(config);
+  }, [config]);
 
+  // Clear plan when selected hostname changes.
   useEffect(() => {
-    sync.clearPlan();
-  }, [filters.selectedHostname, sync.clearPlan]);
+    useStore.getState().clearPlan();
+  }, [selectedHostname]);
 
+  // Responsive detection.
   useEffect(() => {
     const updateResponsive = () => {
       setMobile(window.innerWidth <= 760);
@@ -65,8 +51,9 @@ export function App() {
     updateResponsive();
     window.addEventListener('resize', updateResponsive);
     return () => window.removeEventListener('resize', updateResponsive);
-  }, [runtime.entries, filters.filteredEntries]);
+  }, [entries, setMobile, setTableScrolls]);
 
+  // Close config modal on Escape.
   useEffect(() => {
     if (!configOpen) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -74,10 +61,11 @@ export function App() {
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [configOpen]);
+  }, [configOpen, setConfigOpen]);
 
+  // E2E test hooks.
   useEffect(() => {
-    if (!runtime.config || e2eRan.current || window.UNBOUNDCLI_TEST_HOOKS !== true) return;
+    if (!config || e2eRan.current || window.UNBOUNDCLI_TEST_HOOKS !== true) return;
     e2eRan.current = true;
     const script = new URLSearchParams(window.location.search).get('e2e');
     if (!script) return;
@@ -85,102 +73,50 @@ export function App() {
       for (const action of script.split(',')) {
         const [name, ...parts] = action.split(':');
         const value = parts.join(':');
-        if (name === 'filter') filters.setStatusFilter(value);
-        if (name === 'search') filters.setSearch(value);
+        const store = useStore.getState();
+        if (name === 'filter') store.setStatusFilter(value);
+        if (name === 'search') store.setSearch(value);
         if (name === 'preview') {
-          sync.setSyncService(value);
-          await sync.previewSync(value);
+          store.setSyncService(value);
+          await previewSync(value);
         }
         if (name === 'rowpreview') {
           const [hostname, service = 'unbound'] = parts;
-          filters.setSelectedHostname(hostname);
-          await sync.previewSync(service, hostname);
+          store.setSelectedHostname(hostname);
+          await previewSync(service, hostname);
         }
-        if (name === 'dryrun') await sync.dryRunSync();
-        if (name === 'sync') await sync.syncNow();
+        if (name === 'dryrun') await dryRunSync();
+        if (name === 'sync') await syncNow();
         if (name === 'toggleconfig') setConfigOpen(value !== 'closed');
         if (name === 'setconfig' && value === 'unbound') {
           const nextForms = {
-            ...configForms.forms,
-            unbound: { ...configForms.forms.unbound, base_url: 'https://saved.example.test', api_key: 'saved-key' }
+            ...useStore.getState().forms,
+            unbound: { ...useStore.getState().forms.unbound, base_url: 'https://saved.example.test', api_key: 'saved-key' },
           };
-          configForms.setForms(nextForms);
-          await configForms.saveConfig('unbound', nextForms);
+          useStore.getState().setForms(nextForms);
+          await saveConfig('unbound');
         }
-        if (name === 'testconfig') await configForms.testConfig(value as ServiceKey);
+        if (name === 'testconfig') await testConfig(value as never);
       }
       document.getElementById('app')?.setAttribute('data-e2e', 'done');
     };
     void run();
-  }, [configForms, filters, runtime.config, sync]);
+  }, [config, setConfigOpen]);
 
   return (
     <div
       id="app"
-      data-loading={String(runtime.loading)}
-      data-preview-loading={String(sync.syncLoading)}
-      data-dry-run-enabled={String(sync.plannedActions.length > 0)}
-      data-sync-enabled={String(sync.canSyncNow)}
-      data-unbound-enabled={String(runtime.config?.enabled?.unbound !== false)}
-      data-adguard-enabled={String(runtime.config?.enabled?.adguard !== false)}
+      data-loading={String(loading)}
+      data-preview-loading={String(syncLoading)}
+      data-dry-run-enabled={String(plan.actions.length > 0)}
+      data-sync-enabled={String(plan.planID !== '' && plan.actionIDs.length > 0)}
+      data-unbound-enabled={String(config?.enabled?.unbound !== false)}
+      data-adguard-enabled={String(config?.enabled?.adguard !== false)}
       data-mutation-enabled={String(mutationEnabled)}
       data-mobile={String(mobile)}
       data-table-scrolls={String(tableScrolls)}
     >
-      <AppShell
-        view={view}
-        setView={handleSetView}
-        config={runtime.config}
-        loading={runtime.loading}
-        message={runtime.message}
-        messageKind={runtime.messageKind}
-        progress={runtime.progress}
-        report={runtime.report}
-        summary={filters.summary}
-        statusFilter={filters.statusFilter}
-        setStatusFilter={filters.setStatusFilter}
-        serviceFilter={filters.serviceFilter}
-        setServiceFilter={filters.setServiceFilter}
-        search={filters.search}
-        setSearch={filters.setSearch}
-        entries={filters.filteredEntries}
-        selectedEntry={filters.selectedEntry}
-        selectedHostname={filters.selectedHostname}
-        setSelectedHostname={filters.setSelectedHostname}
-        suppressed={filters.suppressed}
-        onToggleSuppress={filters.toggleSuppress}
-        mutationEnabled={mutationEnabled}
-        syncService={sync.syncService}
-        setSyncService={sync.setSyncService}
-        syncLoading={sync.syncLoading}
-        syncProgress={sync.syncProgress}
-        syncLog={sync.syncLog}
-        plannedActions={sync.plannedActions}
-        canSyncNow={sync.canSyncNow}
-        onRefresh={() => void runtime.refreshEntries()}
-        onPreview={sync.previewSync}
-        onDryRun={sync.dryRunSync}
-        onSync={sync.syncNow}
-        onRemoveEntry={async (hostname: string, service?: string) => {
-          await api.removeEntry(hostname, (service as 'all' | 'unbound' | 'adguard') ?? 'all');
-          runtime.refreshEntries();
-        }}
-        onSyncAll={async () => {
-          const ok = await sync.previewSync('all', '');
-          if (ok) { await sync.syncNow(); runtime.refreshEntries(); }
-        }}
-        configOpen={configOpen}
-        setConfigOpen={setConfigOpen}
-        forms={configForms.forms}
-        setForms={configForms.setForms}
-        savedForms={configForms.savedForms}
-        configStatus={configForms.configStatus}
-        configStatusKind={configForms.configStatusKind}
-        testResults={configForms.testResults}
-        onSaveConfig={configForms.saveConfig}
-        onSaveCaddyEditor={configForms.saveCaddyEditor}
-        onTestConfig={configForms.testConfig}
-      />
+      <AppShell />
     </div>
   );
 }

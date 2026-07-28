@@ -1,3 +1,4 @@
+import '../styles/ConfigModal.css';
 import {
   ChevronDown,
   FileCode2,

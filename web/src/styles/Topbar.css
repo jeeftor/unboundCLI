@@ -1,0 +1,115 @@
+/* ============================================================
+   Topbar
+   ============================================================ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 56px;
+  padding: 10px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(7, 9, 15, .93);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.runtime-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  font-size: 12.5px;
+}
+
+.runtime-card > span { color: var(--text-2); }
+
+.runtime-card strong {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.runtime-card em {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--green);
+}
+
+.runtime-card em::before {
+  content: '';
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.runtime-card em.down { color: var(--red); }
+.runtime-card em.down::before {
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+  animation: none;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .5; }
+}
+
+.top-actions { display: flex; gap: 8px; }
+.top-actions button, #config-close { background: var(--bg-3); font-size: 12.5px; }
+
+/* ============================================================
+   TabBar — top-level navigation
+   ============================================================ */
+
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.tabbar-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s, background .15s;
+}
+
+.tabbar-item:hover {
+  color: var(--text-1);
+  background: var(--bg-3);
+}
+
+.tabbar-item.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tabbar-item.active svg {
+  color: var(--accent);
+}

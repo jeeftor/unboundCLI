@@ -1,3 +1,4 @@
+import '../styles/HostInspector.css';
 import { WifiOff } from 'lucide-react';
 import {
   cloudflareStateText,

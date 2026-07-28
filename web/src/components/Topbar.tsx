@@ -1,3 +1,5 @@
+import '../styles/Topbar.css';
+import '../styles/Sidebar.css';
 import {
   FileCode2,
   Gauge,
