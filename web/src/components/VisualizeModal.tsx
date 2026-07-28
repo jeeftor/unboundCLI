@@ -393,25 +393,17 @@ function ConfigRow({ label, value, ok }: { label: string; value: string; ok: boo
 
 function FlowTable({ steps }: { steps: Array<{ step: number; actor: string; action: string; result: string; warn?: boolean }> }) {
   return (
-    <table className="flow-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Actor</th>
-          <th>Action</th>
-          <th>Result</th>
-        </tr>
-      </thead>
-      <tbody>
-        {steps.map((s) => (
-          <tr key={s.step} className={s.warn ? 'flow-warn' : undefined}>
-            <td className="flow-step-num">{s.step}</td>
-            <td className="flow-actor">{s.actor}</td>
-            <td className="flow-action">{s.action}</td>
-            <td className="flow-result">{s.result}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="flow-steps">
+      {steps.map((s) => (
+        <div key={s.step} className={`flow-step ${s.warn ? 'flow-warn' : ''}`}>
+          <div className="flow-step-num">{s.step}</div>
+          <div className="flow-step-body">
+            <div className="flow-step-actor">{s.actor}</div>
+            <div className="flow-step-action">{s.action}</div>
+            <div className="flow-step-result">{s.result}</div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
