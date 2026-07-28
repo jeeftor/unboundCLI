@@ -15,14 +15,14 @@ import {
   Unlock,
   UnlockKeyhole,
 } from 'lucide-react';
-import type { ComponentType } from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 // ── Shared auth metadata (used by AuthFlowsTab + VisualizeModal) ──
 
 export type AuthMeta = {
   label: string;
   desc: string;
-  icon: ComponentType<{ size?: number }>;
+  icon: LucideIcon;
   tone: string;
 };
 
