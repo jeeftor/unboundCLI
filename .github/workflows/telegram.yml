@@ -1,0 +1,39 @@
+name: Telegram Notifications
+
+on:
+  release:
+    types: [published]
+  workflow_run:
+    workflows: ["SLSA Go Release"]
+    types: [completed]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'release' || (github.event.workflow_run.conclusion == 'failure') }}
+    steps:
+      - name: Send release notification
+        if: ${{ github.event_name == 'release' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
+          disable_web_page_preview: true
+          message: |
+            🚀 <b>caddy-dns-sync ${{ github.event.release.tag_name }}</b>
+
+            <a href="${{ github.event.release.html_url }}">Release notes</a>
+
+      - name: Send CI failure notification
+        if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' }}
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: html
+          disable_web_page_preview: true
+          message: |
+            ❌ <b>CI failed</b> on <code>${{ github.event.workflow_run.head_branch }}</code>
+
+            <a href="${{ github.event.workflow_run.html_url }}">View run</a>
