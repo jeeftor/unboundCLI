@@ -6,6 +6,7 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  Stethoscope,
   TerminalSquare,
   Zap
 } from 'lucide-react';
@@ -69,6 +70,7 @@ export function Sidebar({ config, report, view, setView, onOpenConfig }: { confi
         <button type="button" className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}><Gauge size={15} /> Dashboard</button>
         <button type="button" className={`nav-item ${view === 'caddyfile' ? 'active' : ''}`} onClick={() => setView('caddyfile')}><FileCode2 size={15} /> Caddyfile</button>
         <button type="button" className={`nav-item ${view === 'auth' ? 'active' : ''}`} onClick={() => setView('auth')}><ShieldCheck size={15} /> Auth Flows</button>
+        <button type="button" className={`nav-item ${view === 'diagnostics' ? 'active' : ''}`} onClick={() => setView('diagnostics')}><Stethoscope size={15} /> Diagnostics</button>
         <a className="nav-item" href="#sync-panel"><SlidersHorizontal size={15} /> Sync plan</a>
         <a className="nav-item" href="#sync-log"><TerminalSquare size={15} /> Logs</a>
         <span className="nav-section">Services</span>

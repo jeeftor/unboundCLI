@@ -302,6 +302,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/entries/stream", s.handleEntriesStream)
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/dns-probe", s.handleDNSProbe)
+	s.mux.HandleFunc("/api/diagnostics", s.handleDiagnostics)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
@@ -1976,4 +1977,216 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+// ─── Diagnostics ────────────────────────────────────────────────────────────
+
+// DiagnosticSeverity classifies how bad a problem is.
+type DiagnosticSeverity string
+
+const (
+	DiagSevCritical DiagnosticSeverity = "critical" // broken / security risk
+	DiagSevWarning  DiagnosticSeverity = "warning"  // works but non-ideal
+	DiagSevInfo     DiagnosticSeverity = "info"     // FYI
+)
+
+// DiagnosticCategory groups problems by type for UI filtering.
+type DiagnosticCategory string
+
+const (
+	DiagCatDNS      DiagnosticCategory = "dns"       // DNS resolution / overrides
+	DiagCatCloudflare DiagnosticCategory = "cloudflare" // CF tunnel / DNS records
+	DiagCatSync     DiagnosticCategory = "sync"      // service mismatches
+	DiagCatHostname DiagnosticCategory = "hostname"  // invalid hostname
+	DiagCatAuth     DiagnosticCategory = "auth"      // auth bypass / security
+)
+
+// DiagnosticIssue describes a single problem found during the scan.
+type DiagnosticIssue struct {
+	Severity  DiagnosticSeverity   `json:"severity"`
+	Category  DiagnosticCategory   `json:"category"`
+	Hostname  string               `json:"hostname"`
+	Title     string               `json:"title"`
+	Detail    string               `json:"detail"`
+	Suggestion string              `json:"suggestion,omitempty"`
+}
+
+// DiagnosticsResponse is the full output of GET /api/diagnostics.
+type DiagnosticsResponse struct {
+	TotalEntries  int               `json:"total_entries"`
+	HealthyCount  int               `json:"healthy_count"`
+	IssueCount    int               `json:"issue_count"`
+	Issues        []DiagnosticIssue `json:"issues"`
+	Summary       map[string]int    `json:"summary"` // severity → count
+}
+
+// GET /api/diagnostics
+// Scans all entries and returns a structured list of problems:
+//   - DNS resolution failures
+//   - Missing Unbound/AdGuard overrides for Caddy hosts
+//   - Missing CF tunnel routes for Caddy hosts
+//   - Missing CF DNS CNAME records for CF tunnel hosts
+//   - Stale entries (in DNS/AdGuard but not in Caddy)
+//   - Invalid hostnames (trailing commas, etc.)
+//   - Auth bypass risk (forward_auth without CF Access bypass)
+func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+
+	entries, _, err := s.loadEntries(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to load entries: %w", err))
+		return
+	}
+
+	resp := entryResponses(entries)
+	issues := []DiagnosticIssue{}
+
+	for _, e := range resp {
+		hostname := e.Hostname
+
+		// ── Invalid hostname (trailing comma, whitespace, etc.)
+		if strings.ContainsAny(hostname, ", \t") || hostname == "" {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevCritical,
+				Category:   DiagCatHostname,
+				Hostname:   hostname,
+				Title:      "Invalid hostname",
+				Detail:     fmt.Sprintf("Hostname %q contains invalid characters (comma, whitespace). This is usually caused by a Caddyfile syntax error — use spaces, not commas, to separate hostnames in `host` matchers.", hostname),
+				Suggestion: "Fix the Caddyfile: change `host foo.com, bar.com` to `host foo.com bar.com`",
+			})
+		}
+
+		// ── DNS resolution failure
+		if e.DNSResolved == "FAIL" {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevCritical,
+				Category:   DiagCatDNS,
+				Hostname:   hostname,
+				Title:      "DNS resolution failed",
+				Detail:     fmt.Sprintf("Hostname %s does not resolve via local DNS. This means LAN clients cannot reach it.", hostname),
+				Suggestion: "Add a DNS override in Unbound and/or AdGuard Home pointing this hostname to the Caddy server IP.",
+			})
+		}
+
+		// ── Caddy host missing Unbound override
+		if e.CaddyUpstream != "" && !e.UnboundStatus.Configured {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevWarning,
+				Category:   DiagCatSync,
+				Hostname:   hostname,
+				Title:      "Missing Unbound DNS override",
+				Detail:     fmt.Sprintf("Hostname %s is in Caddy (upstream %s) but has no Unbound DNS override. LAN clients using Unbound won't resolve it.", hostname, e.CaddyUpstream),
+				Suggestion: fmt.Sprintf("Add Unbound override: %s → %s", hostname, s.caddyServerIP()),
+			})
+		}
+
+		// ── Caddy host missing AdGuard override
+		if e.CaddyUpstream != "" && !e.AdguardStatus.Configured {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevWarning,
+				Category:   DiagCatSync,
+				Hostname:   hostname,
+				Title:      "Missing AdGuard DNS rewrite",
+				Detail:     fmt.Sprintf("Hostname %s is in Caddy (upstream %s) but has no AdGuard DNS rewrite. LAN clients using AdGuard won't resolve it.", hostname, e.CaddyUpstream),
+				Suggestion: fmt.Sprintf("Add AdGuard rewrite: %s → %s", hostname, s.caddyServerIP()),
+			})
+		}
+
+		// ── Caddy host missing CF tunnel route
+		if e.CaddyUpstream != "" && !e.CloudflareStatus.Configured {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevWarning,
+				Category:   DiagCatCloudflare,
+				Hostname:   hostname,
+				Title:      "Missing Cloudflare tunnel route",
+				Detail:     fmt.Sprintf("Hostname %s is in Caddy but has no Cloudflare tunnel ingress rule. WAN clients cannot reach it.", hostname),
+				Suggestion: fmt.Sprintf("Add CF tunnel route: %s → %s", hostname, e.CaddyUpstream),
+			})
+		}
+
+		// ── CF tunnel route exists but no DNS CNAME
+		if e.CloudflareStatus.Configured && !e.CloudflareStatus.HasDNSRecord {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevCritical,
+				Category:   DiagCatCloudflare,
+				Hostname:   hostname,
+				Title:      "Missing Cloudflare DNS CNAME record",
+				Detail:     fmt.Sprintf("Hostname %s has a CF tunnel ingress rule but no public DNS CNAME record. WAN clients cannot resolve it.", hostname),
+				Suggestion: "Call POST /api/cloudflare/repair-dns to create missing CNAME records, or add manually in the CF dashboard.",
+			})
+		}
+
+		// ── Stale entry (in DNS/AdGuard but not in Caddy)
+		if e.CaddyUpstream == "" && e.StatusLabel == "Stale" {
+			source := e.DataSource
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevWarning,
+				Category:   DiagCatSync,
+				Hostname:   hostname,
+				Title:      "Stale entry — in DNS but not in Caddy",
+				Detail:     fmt.Sprintf("Hostname %s exists in %s but has no Caddy reverse proxy route. It may have been removed from the Caddyfile but not cleaned up from DNS.", hostname, source),
+				Suggestion: fmt.Sprintf("Remove the stale DNS override for %s, or re-add it to the Caddyfile.", hostname),
+			})
+		}
+
+		// ── Caddy-only entry (in Caddy but not in any DNS)
+		if e.CaddyUpstream != "" && e.StatusLabel == "Caddy Only" {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevWarning,
+				Category:   DiagCatSync,
+				Hostname:   hostname,
+				Title:      "Caddy-only — not in any DNS",
+				Detail:     fmt.Sprintf("Hostname %s is in Caddy but not in Unbound, AdGuard, or DHCP DNS. Only Caddy knows about it.", hostname),
+				Suggestion: "Run a sync to propagate this hostname to all DNS services.",
+			})
+		}
+
+		// ── Auth bypass risk
+		if e.HasAuthBypass {
+			issues = append(issues, DiagnosticIssue{
+				Severity:   DiagSevCritical,
+				Category:   DiagCatAuth,
+				Hostname:   hostname,
+				Title:      "Auth bypass risk — double login",
+				Detail:     fmt.Sprintf("Hostname %s has both CF Access and forward_auth without a bypass policy. Users will hit double login (CF Access + Authentik).", hostname),
+				Suggestion: "Add a CF Access bypass policy for this hostname, or remove forward_auth.",
+			})
+		}
+	}
+
+	// Build summary
+	summary := map[string]int{
+		"critical": 0,
+		"warning":  0,
+		"info":     0,
+	}
+	healthy := 0
+	for _, issue := range issues {
+		summary[string(issue.Severity)]++
+	}
+	for _, e := range resp {
+		if e.StatusLabel == "Synced" {
+			healthy++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, DiagnosticsResponse{
+		TotalEntries:  len(resp),
+		HealthyCount:  healthy,
+		IssueCount:    len(issues),
+		Issues:        issues,
+		Summary:       summary,
+	})
+}
+
+// caddyServerIP returns the configured Caddy server IP.
+func (s *Server) caddyServerIP() string {
+	rt := s.runtimeSnapshot()
+	if rt.CaddyEndpoint.ServerIP != "" {
+		return rt.CaddyEndpoint.ServerIP
+	}
+	return "10.0.0.15" // fallback
 }

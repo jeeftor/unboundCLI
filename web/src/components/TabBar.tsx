@@ -1,7 +1,7 @@
-import { Gauge, FileCode2, ShieldCheck } from 'lucide-react';
+import { Gauge, FileCode2, ShieldCheck, Stethoscope } from 'lucide-react';
 import type { ComponentType } from 'react';
 
-export type TabId = 'dashboard' | 'caddyfile' | 'auth';
+export type TabId = 'dashboard' | 'caddyfile' | 'auth' | 'diagnostics';
 
 type TabDef = {
   id: TabId;
@@ -13,6 +13,7 @@ const TABS: TabDef[] = [
   { id: 'dashboard', label: 'Dashboard', icon: Gauge },
   { id: 'caddyfile', label: 'Caddyfile', icon: FileCode2 },
   { id: 'auth', label: 'Auth Flows', icon: ShieldCheck },
+  { id: 'diagnostics', label: 'Diagnostics', icon: Stethoscope },
 ];
 
 const VALID_IDS = new Set(TABS.map(t => t.id));
