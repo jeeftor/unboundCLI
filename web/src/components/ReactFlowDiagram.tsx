@@ -35,7 +35,12 @@ async function layoutNodes(
   nodes: DiagramNode[],
   edges: DiagramEdge[]
 ): Promise<{ nodes: DiagramNode[]; edges: DiagramEdge[] }> {
-  const opts = { ...elkOptions, 'elk.direction': 'DOWN', 'elk.layered.spacing.nodeNodeBetweenLayers': '25' };
+  const opts = {
+    ...elkOptions,
+    'elk.direction': 'DOWN',
+    'elk.layered.spacing.nodeNodeBetweenLayers': '60',
+    'elk.spacing.nodeNode': '40',
+  };
 
   const graph = {
     id: 'root',
@@ -43,7 +48,7 @@ async function layoutNodes(
     children: nodes.map((n) => ({
       id: n.id,
       width: 200,
-      height: 40,
+      height: 48,
     })),
     edges: edges.map((e) => ({
       id: e.id,

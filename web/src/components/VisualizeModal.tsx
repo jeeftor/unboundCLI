@@ -246,7 +246,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             {wanSteps ? (
               <div className="visualize-diagram-flow">
                 <div className="visualize-diagram-side">
-                  <ReactFlowDiagram steps={wanSteps} height={380} />
+                  <ReactFlowDiagram steps={wanSteps} height={420} />
                   {hasCFAccess && !hasBypass && hasForwardAuth && (
                     <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
                       Double-login: users authenticate at CF Access, then again at Authentik.
@@ -302,7 +302,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
             </div>
             <div className="visualize-diagram-flow">
               <div className="visualize-diagram-side">
-                <ReactFlowDiagram steps={lanSteps} height={380} />
+                <ReactFlowDiagram steps={lanSteps} height={420} />
                 <div className="visualize-section-sub" style={{ marginTop: 6 }}>
                   Client resolves <code>{entry.hostname}</code>
                   {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
