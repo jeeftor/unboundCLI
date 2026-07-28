@@ -13,6 +13,8 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
   const hasForwardAuth = entry.has_forward_auth;
   const hasDNS = Boolean(entry.dns_resolved && entry.dns_resolved !== 'FAIL');
   const upstream = entry.caddy_upstream || 'unknown';
+  // Derive service name from hostname (e.g. "jellyfin.vookie.net" → "Jellyfin")
+  const serviceName = entry.hostname.split('.')[0].replace(/^./, c => c.toUpperCase());
 
   // Auth data from store (cached, fetched once at startup)
   const auth = useStore((s) => s.authHosts.get(entry.hostname) ?? null);
@@ -141,7 +143,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       steps.push({
         id: 'upstream',
         nodeType: 'upstream',
-        label: 'Service',
+        label: serviceName,
         sublabel: upstream,
         stepNum: n++,
         arrowLabel: isDoubleLogin ? 'login again!' : 'authorized',
@@ -153,7 +155,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       steps.push({
         id: 'upstream',
         nodeType: 'upstream',
-        label: 'Service',
+        label: serviceName,
         sublabel: upstream,
         stepNum: n++,
         arrowLabel: '',
@@ -190,7 +192,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       steps.push({
         id: 'upstream-lan',
         nodeType: 'upstream',
-        label: 'Service',
+        label: serviceName,
         sublabel: upstream,
         stepNum: n++,
         arrowLabel: 'authorized',
@@ -201,7 +203,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
       steps.push({
         id: 'upstream-lan',
         nodeType: 'upstream',
-        label: 'Service',
+        label: serviceName,
         sublabel: upstream,
         stepNum: n++,
         arrowLabel: '',
@@ -305,7 +307,7 @@ export function VisualizeModal({ entry, onClose }: { entry: Entry; onClose: () =
                   Client resolves <code>{entry.hostname}</code>
                   {hasDNS ? ` → ${entry.dns_resolved}` : ' (not in DNS)'}
                   {' → '}Caddy{hasForwardAuth ? ' → Authentik (forward_auth)' : ''}
-                  {' → '}Service <code>{upstream}</code>
+                  {' → '}{serviceName} <code>{upstream}</code>
                 </div>
               </div>
               {lanFlow && (
