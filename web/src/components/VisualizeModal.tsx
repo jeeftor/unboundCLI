@@ -262,8 +262,8 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
                 </div>
               )}
               {hasCFAccess && !hasBypass && hasConditionalFA && (
-                <div className="visualize-section-sub" style={{ marginTop: 6 }}>
-                  Conditional forward_auth: Caddy skips forward_auth for CF tunnel traffic (matched by Cf-Connecting-Ip header). Forward_auth only applies to LAN/Tailscale.
+                <div className="visualize-warn-inline" style={{ marginTop: 6 }}>
+                  DEPRECATED: Conditional forward_auth — simplify to CF Access only with auto_redirect_to_identity. The split-horizon pattern adds complexity and risk.
                 </div>
               )}
             </div>

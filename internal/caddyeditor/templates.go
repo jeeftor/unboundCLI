@@ -91,32 +91,25 @@ handle @[[ .MatcherName ]] {
 	}
 }`,
 
-	// forward-auth: Authentik split-horizon pattern.
-	// LAN/Tailscale traffic is gated behind Authentik forward auth;
-	// external traffic (e.g. via Cloudflare) skips forward auth.
+	// forward-auth: Authentik forward_auth pattern.
+	// All traffic (WAN and LAN) is gated behind Authentik forward auth.
+	// Use this when you want Authentik to manage sessions (e.g., for API
+	// bearer token support or group-based access control). For WAN hosts
+	// also protected by CF Access, add a bypass policy in CF Access so
+	// traffic flows: CF (bypass) → Caddy → forward_auth → Authentik.
 	//
 	// Required param:  authentik_url  — host:port of the Authentik embedded outpost
 	//                                   e.g. "192.168.1.112:9000"
-	// Optional param:  external_cidrs — space-separated CIDRs to treat as external
-	//                                   (default: "private_ranges" — Caddy built-in)
 	"forward-auth": `@[[ .MatcherName ]] host [[ .Hostname ]]
-@[[ .MatcherName ]]_external not client_ip [[ param "external_cidrs" "private_ranges" ]]
 handle @[[ .MatcherName ]] {
 	reverse_proxy /outpost.goauthentik.io/* [[ param "authentik_url" "AUTHENTIK_HOST:PORT" ]]
-	handle @[[ .MatcherName ]]_external {
-		reverse_proxy [[ .Upstream ]] {
-			import proxy_headers
-		}
+	forward_auth [[ param "authentik_url" "AUTHENTIK_HOST:PORT" ]] {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username X-Authentik-Email X-Authentik-Groups X-Authentik-Name X-Authentik-Jwt
+		trusted_proxies private_ranges
 	}
-	handle {
-		forward_auth [[ param "authentik_url" "AUTHENTIK_HOST:PORT" ]] {
-			uri /outpost.goauthentik.io/auth/caddy
-			copy_headers X-Authentik-Username X-Authentik-Email X-Authentik-Groups X-Authentik-Name X-Authentik-Jwt
-			trusted_proxies private_ranges
-		}
-		reverse_proxy [[ .Upstream ]] {
-			import proxy_headers
-		}
+	reverse_proxy [[ .Upstream ]] {
+		import proxy_headers
 	}
 }`,
 }

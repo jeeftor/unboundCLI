@@ -141,6 +141,7 @@ func TestRenderTemplateForwardAuthParams(t *testing.T) {
 		name         string
 		params       map[string]string
 		wantContains []string
+		wantAbsent   []string
 	}{
 		{
 			name: "uses provided authentik_url",
@@ -160,13 +161,17 @@ func TestRenderTemplateForwardAuthParams(t *testing.T) {
 			},
 		},
 		{
-			name: "custom external_cidrs",
+			name: "no split-horizon matchers",
 			params: map[string]string{
-				"authentik_url":  "192.168.1.112:9000",
-				"external_cidrs": "10.0.0.0/8 172.16.0.0/12",
+				"authentik_url": "192.168.1.112:9000",
 			},
 			wantContains: []string{
-				"not client_ip 10.0.0.0/8 172.16.0.0/12",
+				"forward_auth 192.168.1.112:9000 {",
+			},
+			wantAbsent: []string{
+				"not client_ip",
+				"_external",
+				"Cf-Connecting-Ip",
 			},
 		},
 	}
@@ -184,6 +189,11 @@ func TestRenderTemplateForwardAuthParams(t *testing.T) {
 			for _, want := range tc.wantContains {
 				if !strings.Contains(out, want) {
 					t.Errorf("output missing %q\noutput:\n%s", want, out)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(out, absent) {
+					t.Errorf("output should not contain %q\noutput:\n%s", absent, out)
 				}
 			}
 		})
