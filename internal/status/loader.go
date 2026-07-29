@@ -719,6 +719,9 @@ func (d *DataLoader) buildEntry(
 		entry.DHCPStatus = models.NoDHCP()
 	}
 
+	// Store the Caddy server IP so HasDNSMismatch() can compare against it.
+	entry.CaddyServerIP = d.caddyServerIP
+
 	// Compute overall sync status (DNS resolution happens separately in parallel)
 	entry.OverallStatus = models.ComputeSyncStatus(entry, d.caddyServerIP)
 

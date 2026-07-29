@@ -98,27 +98,27 @@ func TestParseCaddyfile(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		hostname    string
-		matcher     string
-		upstream    string
-		wantInRaw   string
+		name         string
+		hostname     string
+		matcher      string
+		upstream     string
+		wantInRaw    string
 		wantInDirect []string
 	}{
 		{
-			name:        "sonarr entry",
-			hostname:    "sonarr.vookie.net",
-			matcher:     "sonarr",
-			upstream:    "http://192.168.1.112:8989",
-			wantInRaw:   "reverse_proxy http://192.168.1.112:8989",
+			name:         "sonarr entry",
+			hostname:     "sonarr.vookie.net",
+			matcher:      "sonarr",
+			upstream:     "http://192.168.1.112:8989",
+			wantInRaw:    "reverse_proxy http://192.168.1.112:8989",
 			wantInDirect: nil,
 		},
 		{
-			name:        "radarr entry",
-			hostname:    "radarr.vookie.net",
-			matcher:     "radarr",
-			upstream:    "http://192.168.1.112:7878",
-			wantInRaw:   "reverse_proxy http://192.168.1.112:7878",
+			name:         "radarr entry",
+			hostname:     "radarr.vookie.net",
+			matcher:      "radarr",
+			upstream:     "http://192.168.1.112:7878",
+			wantInRaw:    "reverse_proxy http://192.168.1.112:7878",
 			wantInDirect: nil,
 		},
 	}
@@ -268,26 +268,26 @@ func TestAddEntryDuplicate(t *testing.T) {
 
 func TestRemoveEntry(t *testing.T) {
 	tests := []struct {
-		name        string
-		existing    string
-		hostname    string
-		wantErr     bool
+		name          string
+		existing      string
+		hostname      string
+		wantErr       bool
 		wantRemaining int
 	}{
 		{
-			name:         "remove existing sonarr entry",
-			existing:     sampleCaddyfile,
-			hostname:     "sonarr.vookie.net",
+			name:          "remove existing sonarr entry",
+			existing:      sampleCaddyfile,
+			hostname:      "sonarr.vookie.net",
 			wantRemaining: 1, // radarr remains
 		},
 		{
-			name:         "remove existing radarr entry",
-			existing:     sampleCaddyfile,
-			hostname:     "radarr.vookie.net",
+			name:          "remove existing radarr entry",
+			existing:      sampleCaddyfile,
+			hostname:      "radarr.vookie.net",
 			wantRemaining: 1, // sonarr remains
 		},
 		{
-			name:    "remove non-existent entry errors",
+			name:     "remove non-existent entry errors",
 			existing: sampleCaddyfile,
 			hostname: "nope.vookie.net",
 			wantErr:  true,

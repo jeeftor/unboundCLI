@@ -15,6 +15,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloudflare/cloudflare-go"
@@ -97,7 +98,7 @@ func (c *CloudflareClient) FindAccessAppByDomain(domain string) (*AccessAppInfo,
 	}
 	// Then try wildcard match (e.g. "*.vookie.net" matches "jellyfin.vookie.net")
 	for i := range apps {
-		if isWildcardMatch(apps[i].Domain, domain) {
+		if IsWildcardMatch(apps[i].Domain, domain) {
 			return &apps[i], nil
 		}
 	}
@@ -126,10 +127,10 @@ func (c *CloudflareClient) CreateAccessApp(req CreateAccessAppRequest) (*AccessA
 	skipInterstitial := req.AutoRedirect
 
 	params := cloudflare.CreateAccessApplicationParams{
-		Name:            req.Name,
-		Domain:          req.Domain,
-		Type:            cloudflare.SelfHosted,
-		SessionDuration: sessionDuration,
+		Name:                   req.Name,
+		Domain:                 req.Domain,
+		Type:                   cloudflare.SelfHosted,
+		SessionDuration:        sessionDuration,
 		AutoRedirectToIdentity: &autoRedirect,
 		SkipInterstitial:       &skipInterstitial,
 	}
@@ -174,11 +175,11 @@ func (c *CloudflareClient) DeleteAccessApp(appID string) error {
 
 // AccessPolicyInfo is a simplified view of a CF Access policy.
 type AccessPolicyInfo struct {
-	ID        string
-	Name      string
-	Decision  PolicyDecision
+	ID         string
+	Name       string
+	Decision   PolicyDecision
 	Precedence int
-	AppID     string // the application this policy is attached to
+	AppID      string // the application this policy is attached to
 }
 
 // ListAccessPolicies returns all policies for a given CF Access application.
@@ -530,12 +531,27 @@ func (c *CloudflareClient) EnsureServiceAuthPolicy(appID, serviceTokenID string)
 
 // --- internal helpers ---
 
-// isWildcardMatch checks if a wildcard domain (e.g. "*.vookie.net") matches
+// IsWildcardMatch checks if a wildcard domain (e.g. "*.vookie.net") matches
 // a specific hostname (e.g. "jellyfin.vookie.net").
-func isWildcardMatch(wildcard, hostname string) bool {
+// Exported so other packages (e.g. internal/auth) can reuse the same logic.
+func IsWildcardMatch(wildcard, hostname string) bool {
 	if len(wildcard) < 2 || wildcard[:2] != "*." {
 		return false
 	}
 	suffix := wildcard[1:] // ".vookie.net"
 	return len(hostname) > len(suffix) && hostname[len(hostname)-len(suffix):] == suffix
+}
+
+// IsWildcardDomain returns true if domain starts with "*." (e.g. "*.vookie.net").
+func IsWildcardDomain(domain string) bool {
+	return len(domain) > 2 && domain[:2] == "*."
+}
+
+// IsWildcardOrRootHostname returns true for wildcard patterns ("*.example.com"),
+// root domain entries (".example.com"), or empty strings. These are catch-all
+// DNS overrides, not real hosts, and should be skipped in host-level scans.
+func IsWildcardOrRootHostname(hostname string) bool {
+	return hostname == "" ||
+		strings.HasPrefix(hostname, ".") ||
+		strings.HasPrefix(hostname, "*.")
 }

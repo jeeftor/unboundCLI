@@ -40,10 +40,10 @@ func TestListAccessApps(t *testing.T) {
 			"success": true,
 			"result": []map[string]interface{}{
 				{
-					"id":              "app-1",
-					"name":            "Jellyfin",
-					"domain":          "jellyfin.vookie.net",
-					"type":            "self_hosted",
+					"id":               "app-1",
+					"name":             "Jellyfin",
+					"domain":           "jellyfin.vookie.net",
+					"type":             "self_hosted",
 					"session_duration": "24h",
 				},
 				{
@@ -159,10 +159,10 @@ func TestCreateAccessApp(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"result": map[string]interface{}{
-				"id":              "new-app-id",
-				"name":            "test.vookie.net",
-				"domain":          "test.vookie.net",
-				"type":            "self_hosted",
+				"id":               "new-app-id",
+				"name":             "test.vookie.net",
+				"domain":           "test.vookie.net",
+				"type":             "self_hosted",
 				"session_duration": "24h",
 			},
 		})
@@ -324,17 +324,17 @@ func TestIsWildcardMatch(t *testing.T) {
 	}{
 		{"*.vookie.net", "jellyfin.vookie.net", true},
 		{"*.vookie.net", "sub.app.vookie.net", true},
-		{"*.vookie.net", "vookie.net", false},     // no subdomain prefix
+		{"*.vookie.net", "vookie.net", false}, // no subdomain prefix
 		{"*.vookie.net", "other.example.com", false},
 		{"jellyfin.vookie.net", "jellyfin.vookie.net", false}, // not a wildcard
-		{"*", "anything.com", false}, // not a valid wildcard pattern
+		{"*", "anything.com", false},                          // not a valid wildcard pattern
 	}
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s_vs_%s", tt.wildcard, tt.hostname), func(t *testing.T) {
-			got := isWildcardMatch(tt.wildcard, tt.hostname)
+			got := IsWildcardMatch(tt.wildcard, tt.hostname)
 			if got != tt.want {
-				t.Errorf("isWildcardMatch(%q, %q) = %v, want %v", tt.wildcard, tt.hostname, got, tt.want)
+				t.Errorf("IsWildcardMatch(%q, %q) = %v, want %v", tt.wildcard, tt.hostname, got, tt.want)
 			}
 		})
 	}

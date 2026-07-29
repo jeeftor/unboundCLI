@@ -82,17 +82,17 @@ type HostAuth struct {
 	Status AuthStatus `json:"status"`
 
 	// Discovered Cloudflare Access state
-	CFAccessAppID       string   `json:"cf_access_app_id,omitempty"`
-	CFAccessAppDomain   string   `json:"cf_access_app_domain,omitempty"`
-	CFAccessPolicyIDs   []string `json:"cf_access_policy_ids,omitempty"`
-	CFAccessDecisions   []string `json:"cf_access_decisions,omitempty"` // "allow", "bypass", "service_auth", "deny"
-	CFAccessAppType     string   `json:"cf_access_app_type,omitempty"`  // "self_hosted", "wildcard", etc
+	CFAccessAppID     string   `json:"cf_access_app_id,omitempty"`
+	CFAccessAppDomain string   `json:"cf_access_app_domain,omitempty"`
+	CFAccessPolicyIDs []string `json:"cf_access_policy_ids,omitempty"`
+	CFAccessDecisions []string `json:"cf_access_decisions,omitempty"` // "allow", "bypass", "service_auth", "deny"
+	CFAccessAppType   string   `json:"cf_access_app_type,omitempty"`  // "self_hosted", "wildcard", etc
 
 	// Discovered Authentik state
-	AuthentikProviderPK  int32  `json:"authentik_provider_pk,omitempty"`
-	AuthentikAppSlug     string `json:"authentik_app_slug,omitempty"`
+	AuthentikProviderPK   int32  `json:"authentik_provider_pk,omitempty"`
+	AuthentikAppSlug      string `json:"authentik_app_slug,omitempty"`
 	AuthentikProviderMode string `json:"authentik_provider_mode,omitempty"` // forward_single, proxy, etc
-	AuthentikOutpostUUID string `json:"authentik_outpost_uuid,omitempty"`
+	AuthentikOutpostUUID  string `json:"authentik_outpost_uuid,omitempty"`
 
 	// Caddy-side detection (already exists in CaddyRouteInfo, mirrored here for the auth view)
 	HasForwardAuth bool `json:"has_forward_auth"`
