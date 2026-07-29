@@ -92,14 +92,97 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := entryResponses(entries)
+	issues := runDiagnostics(resp)
+
+	// Build summary
+	summary := map[string]int{
+		"critical": 0,
+		"warning":  0,
+		"info":     0,
+	}
+	healthy := 0
+	for _, issue := range issues {
+		summary[string(issue.Severity)]++
+	}
+	for _, e := range resp {
+		if e.StatusLabel == "Synced" {
+			healthy++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, DiagnosticsResponse{
+		TotalEntries: len(resp),
+		HealthyCount: healthy,
+		IssueCount:   len(issues),
+		Issues:       issues,
+		Summary:      summary,
+	})
+}
+
+// handleDiagnosticsStream streams diagnostics via SSE.
+// GET /api/diagnostics/stream — sends progress as entries load, then the full
+// diagnostics result.
+//
+// Events:
+//   - event: loading  (entries are being fetched from APIs)
+//   - event: done     (diagnostics complete, includes full DiagnosticsResponse)
+//   - event: error    (fatal error)
+func (s *Server) handleDiagnosticsStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("streaming not supported"))
+		return
+	}
+
+	sendSSEEvent(w, flusher, "loading", map[string]string{"status": "fetching entries"})
+
+	entries, _, err := s.loadEntries(r.Context())
+	if err != nil {
+		sendSSEEvent(w, flusher, "error", map[string]string{"error": err.Error()})
+		return
+	}
+
+	resp := entryResponses(entries)
+	issues := runDiagnostics(resp)
+	summary := map[string]int{}
+	healthy := 0
+	for _, issue := range issues {
+		summary[string(issue.Severity)]++
+	}
+	for _, e := range resp {
+		if e.StatusLabel == "Synced" {
+			healthy++
+		}
+	}
+
+	sendSSEEvent(w, flusher, "done", DiagnosticsResponse{
+		TotalEntries: len(resp),
+		HealthyCount: healthy,
+		IssueCount:   len(issues),
+		Issues:       issues,
+		Summary:      summary,
+	})
+}
+
+// runDiagnostics contains the diagnostic logic extracted from handleDiagnostics
+// so it can be shared between the blocking and streaming handlers.
+func runDiagnostics(resp []EntryResponse) []DiagnosticIssue {
 	issues := []DiagnosticIssue{}
 
 	for _, e := range resp {
 		hostname := e.Hostname
 
 		// ── Skip wildcard / root domain entries (e.g. ".vookie.net", "*.vookie.net").
-		// These are catch-all DNS overrides, not real hosts — DNS "failure" and
-		// "stale" status are expected for them.
 		if api.IsWildcardOrRootHostname(hostname) {
 			continue
 		}
@@ -136,7 +219,7 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 				Hostname:   hostname,
 				Title:      "Missing Unbound DNS override",
 				Detail:     fmt.Sprintf("Hostname %s is in Caddy (upstream %s) but has no Unbound DNS override. LAN clients using Unbound won't resolve it.", hostname, e.CaddyUpstream),
-				Suggestion: fmt.Sprintf("Add Unbound override: %s → %s", hostname, s.caddyServerIP()),
+				Suggestion: fmt.Sprintf("Add Unbound override: %s → Caddy server IP", hostname),
 			})
 		}
 
@@ -148,7 +231,7 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 				Hostname:   hostname,
 				Title:      "Missing AdGuard DNS rewrite",
 				Detail:     fmt.Sprintf("Hostname %s is in Caddy (upstream %s) but has no AdGuard DNS rewrite. LAN clients using AdGuard won't resolve it.", hostname, e.CaddyUpstream),
-				Suggestion: fmt.Sprintf("Add AdGuard rewrite: %s → %s", hostname, s.caddyServerIP()),
+				Suggestion: fmt.Sprintf("Add AdGuard rewrite: %s → Caddy server IP", hostname),
 			})
 		}
 
@@ -214,29 +297,7 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build summary
-	summary := map[string]int{
-		"critical": 0,
-		"warning":  0,
-		"info":     0,
-	}
-	healthy := 0
-	for _, issue := range issues {
-		summary[string(issue.Severity)]++
-	}
-	for _, e := range resp {
-		if e.StatusLabel == "Synced" {
-			healthy++
-		}
-	}
-
-	writeJSON(w, http.StatusOK, DiagnosticsResponse{
-		TotalEntries: len(resp),
-		HealthyCount: healthy,
-		IssueCount:   len(issues),
-		Issues:       issues,
-		Summary:      summary,
-	})
+	return issues
 }
 
 // caddyServerIP returns the configured Caddy server IP.

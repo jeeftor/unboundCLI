@@ -36,6 +36,15 @@ to [Semantic Versioning](https://semver.org/).
 - **CLI commands use signal-aware context** — `status` and
   `caddy-push-cloudflare` commands now use `signal.NotifyContext` so Ctrl+C
   cancels pending API calls.
+- **Graceful shutdown** — web server now catches SIGINT/SIGTERM, drains
+  in-flight HTTP requests, and stops background goroutines cleanly.
+- **Refactored diagnostics** — extracted `runDiagnostics()` shared between
+  blocking and streaming handlers.
+- **`handleCloudflareRepairDNS`** now supports SSE streaming (via Accept
+  header) with per-hostname progress events, and uses request context for
+  cancellation.
+- **Frontend diagnostics tab** now uses SSE stream endpoint with timeout
+  handling.
 
 ### Added
 
@@ -55,6 +64,12 @@ to [Semantic Versioning](https://semver.org/).
 - **`Server.Shutdown()`** method — cancels background goroutines and waits
   for them to finish, enabling graceful shutdown.
 - **`logging.Recover()`** helper — deferred panic recovery for goroutines.
+- **`logging.GoSafe()`** helper — launches a goroutine with panic recovery.
+- **`sendSSEEvent()`** helper — shared SSE event writer for streaming handlers.
+- **`GET /api/diagnostics/stream`** — SSE endpoint for diagnostics with
+  loading/done/error events.
+- **`POST /api/cloudflare/repair-dns`** with SSE — streams per-hostname
+  progress when Accept header includes `text/event-stream`.
 - **12 table-driven tests** for `classifyAuth()` covering all auth patterns
   (A–F, IdP bypass, open host, LAN-only, service_auth, Authentik provider).
 - **6 unit tests** for `buildCloudflareAction` edge cases (direct mode,
