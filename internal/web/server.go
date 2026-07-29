@@ -299,3 +299,23 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(value)
 }
+
+// validHostname performs a basic sanity check that a hostname looks like a
+// DNS name (at least one dot, no spaces, no scheme, reasonable length).
+// Wildcard patterns ("*.example.com") are accepted.
+func validHostname(hostname string) bool {
+	if hostname == "" || len(hostname) > 253 {
+		return false
+	}
+	if strings.ContainsAny(hostname, " /\\") {
+		return false
+	}
+	if strings.Contains(hostname, "://") {
+		return false
+	}
+	// Wildcard is only valid as the leftmost label.
+	if strings.HasPrefix(hostname, "*.") {
+		hostname = hostname[2:]
+	}
+	return strings.Count(hostname, ".") >= 1
+}

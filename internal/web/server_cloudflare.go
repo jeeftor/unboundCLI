@@ -150,6 +150,10 @@ func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname and service are required"))
 		return
 	}
+	if !validHostname(req.Hostname) {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid hostname %q", req.Hostname))
+		return
+	}
 	// Validate service URL format — must start with http:// or https://
 	if !strings.HasPrefix(req.Service, "http://") && !strings.HasPrefix(req.Service, "https://") {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("service must be a valid URL starting with http:// or https://"))
