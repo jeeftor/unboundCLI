@@ -479,110 +479,109 @@ func classifyAuth(ha *models.HostAuth, authentikHostname string) {
 
 	// --- WAN auth ---
 	if ha.WANExposed {
-		hasCFAccess := ha.CFAccessAppID != ""
-		hasBypassPolicy := hasPolicyDecision(ha, "bypass")
-		hasAllowPolicy := hasPolicyDecision(ha, "allow")
-		hasServiceAuthPolicy := hasPolicyDecision(ha, "service_auth")
-
-		// Check if this host IS the Authentik identity provider itself.
-		// The IdP must have a CF Access bypass policy (circular dependency —
-		// can't put auth in front of the auth provider). This is expected
-		// and safe — Authentik has its own native login.
-		isAuthProvider := authentikHostname != "" && ha.Hostname == authentikHostname
-
-		switch {
-		case isAuthProvider && hasCFAccess && hasBypassPolicy && !ha.HasForwardAuth:
-			// This is the Authentik IdP itself — bypass is required (circular dependency).
-			ha.WANAuth = models.WANAuthAppNative
-			notes = append(notes, "Authentik identity provider — CF Access bypass required (circular dependency), native auth handles login")
-			ha.Status = models.AuthStatusOK
-
-		case hasCFAccess && !ha.HasForwardAuth && hasBypassPolicy && !hasAllowPolicy && !hasServiceAuthPolicy:
-			// CRITICAL: CF Access has only bypass policies and no forward_auth.
-			// This means the host is WIDE OPEN to the internet with zero auth.
-			ha.WANAuth = models.WANAuthNone
-			notes = append(notes, "CRITICAL: CF Access bypass-only with no forward_auth — host is OPEN to the internet")
-			ha.Status = models.AuthStatusError
-
-		case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && !ha.ConditionalForwardAuth:
-			// Pattern F: CF Access + forward_auth without bypass = double login
-			ha.WANAuth = models.WANAuthCFAccess
-			notes = append(notes, "Double-login risk: CF Access + forward_auth without bypass policy")
-			ha.Status = models.AuthStatusError
-
-		case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && ha.ConditionalForwardAuth:
-			// Pattern E (DEPRECATED): CF Access + conditional forward_auth (Caddy skips FA for CF tunnel)
-			// With CF Access auto_redirect_to_identity, the split-horizon pattern is no longer
-			// needed. It adds complexity and risk (misconfigured matchers can leave hosts open).
-			// Simplify to CF Access only (remove forward_auth + matchers from Caddyfile).
-			ha.WANAuth = models.WANAuthCFAccess
-			ha.Status = models.AuthStatusWarning
-			notes = append(notes, "DEPRECATED: conditional forward_auth — simplify to CF Access only (auto_redirect_to_identity makes split-horizon unnecessary)")
-
-		case hasCFAccess && ha.HasForwardAuth && hasBypassPolicy:
-			// Pattern D: CF Access bypasses, forward_auth handles actual auth
-			ha.WANAuth = models.WANAuthForwardAuth
-			notes = append(notes, "CF Access bypass → forward_auth")
-
-		case hasCFAccess && !ha.HasForwardAuth:
-			// Pattern A/B: CF Access handles auth
-			ha.WANAuth = models.WANAuthCFAccess
-
-		case !hasCFAccess && ha.HasForwardAuth:
-			// Pattern C: forward_auth without CF Access
-			ha.WANAuth = models.WANAuthForwardAuth
-
-		case !hasCFAccess && !ha.HasForwardAuth:
-			// No auth layer at all — either app-native or completely open
-			// We can't distinguish app-native from "no auth" without app-specific
-			// knowledge, so we classify as app_native (optimistic) but flag it.
-			ha.WANAuth = models.WANAuthAppNative
-			notes = append(notes, "No CF Access or forward_auth — assuming app-native auth")
-		}
-
-		// --- API auth (only relevant for WAN-exposed hosts) ---
-		switch {
-		case hasServiceAuthPolicy:
-			ha.APIAuth = models.APIAuthCFServiceToken
-		case ha.AuthentikProviderPK > 0:
-			// We don't currently check intercept_header_auth in the discovery
-			// (it's not exposed in ProxyProviderInfo). Assume the provider
-			// could support bearer auth if it exists.
-			ha.APIAuth = models.APIAuthAuthentikBearer
-		default:
-			ha.APIAuth = models.APIAuthNone
-		}
+		notes = classifyWANAuth(ha, authentikHostname, notes)
+		classifyAPIAuth(ha)
 	} else {
-		// Not WAN-exposed — WAN auth is N/A
 		ha.WANAuth = models.WANAuthNone
 	}
 
 	// --- LAN auth ---
+	classifyLANAuth(ha)
+
+	// --- Status ---
+	notes = classifyStatus(ha, notes)
+
+	ha.Notes = notes
+}
+
+// classifyWANAuth determines the WAN auth mode for a WAN-exposed host.
+func classifyWANAuth(ha *models.HostAuth, authentikHostname string, notes []string) []string {
+	hasCFAccess := ha.CFAccessAppID != ""
+	hasBypassPolicy := hasPolicyDecision(ha, "bypass")
+	hasAllowPolicy := hasPolicyDecision(ha, "allow")
+	hasServiceAuthPolicy := hasPolicyDecision(ha, "service_auth")
+
+	// Check if this host IS the Authentik identity provider itself.
+	isAuthProvider := authentikHostname != "" && ha.Hostname == authentikHostname
+
+	switch {
+	case isAuthProvider && hasCFAccess && hasBypassPolicy && !ha.HasForwardAuth:
+		ha.WANAuth = models.WANAuthAppNative
+		notes = append(notes, "Authentik identity provider — CF Access bypass required (circular dependency), native auth handles login")
+		ha.Status = models.AuthStatusOK
+
+	case hasCFAccess && !ha.HasForwardAuth && hasBypassPolicy && !hasAllowPolicy && !hasServiceAuthPolicy:
+		ha.WANAuth = models.WANAuthNone
+		notes = append(notes, "CRITICAL: CF Access bypass-only with no forward_auth — host is OPEN to the internet")
+		ha.Status = models.AuthStatusError
+
+	case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && !ha.ConditionalForwardAuth:
+		ha.WANAuth = models.WANAuthCFAccess
+		notes = append(notes, "Double-login risk: CF Access + forward_auth without bypass policy")
+		ha.Status = models.AuthStatusError
+
+	case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && ha.ConditionalForwardAuth:
+		ha.WANAuth = models.WANAuthCFAccess
+		ha.Status = models.AuthStatusWarning
+		notes = append(notes, "DEPRECATED: conditional forward_auth — simplify to CF Access only (auto_redirect_to_identity makes split-horizon unnecessary)")
+
+	case hasCFAccess && ha.HasForwardAuth && hasBypassPolicy:
+		ha.WANAuth = models.WANAuthForwardAuth
+		notes = append(notes, "CF Access bypass → forward_auth")
+
+	case hasCFAccess && !ha.HasForwardAuth:
+		ha.WANAuth = models.WANAuthCFAccess
+
+	case !hasCFAccess && ha.HasForwardAuth:
+		ha.WANAuth = models.WANAuthForwardAuth
+
+	case !hasCFAccess && !ha.HasForwardAuth:
+		ha.WANAuth = models.WANAuthAppNative
+		notes = append(notes, "No CF Access or forward_auth — assuming app-native auth")
+	}
+
+	return notes
+}
+
+// classifyAPIAuth determines the API auth mode for a WAN-exposed host.
+func classifyAPIAuth(ha *models.HostAuth) {
+	hasServiceAuthPolicy := hasPolicyDecision(ha, "service_auth")
+	switch {
+	case hasServiceAuthPolicy:
+		ha.APIAuth = models.APIAuthCFServiceToken
+	case ha.AuthentikProviderPK > 0:
+		ha.APIAuth = models.APIAuthAuthentikBearer
+	default:
+		ha.APIAuth = models.APIAuthNone
+	}
+}
+
+// classifyLANAuth determines the LAN auth mode.
+func classifyLANAuth(ha *models.HostAuth) {
 	if ha.HasForwardAuth {
 		ha.LANAuth = models.LANAuthForwardAuth
 	} else {
 		ha.LANAuth = models.LANAuthNone
 	}
+}
 
-	// --- Status ---
-	if ha.Status != models.AuthStatusError {
-		// Check for warnings
-		if ha.WANExposed && ha.WANAuth == models.WANAuthNone {
-			ha.Status = models.AuthStatusError
-			notes = append(notes, "WAN-exposed host with no auth")
-		} else if ha.WANExposed && ha.WANAuth == models.WANAuthAppNative && ha.CFAccessAppID == "" && !ha.HasForwardAuth {
-			// WAN-exposed with no auth layer — could be app-native or could be open
-			ha.Status = models.AuthStatusWarning
-		} else if ha.LANAuth == models.LANAuthForwardAuth && ha.WANAuth == models.WANAuthCFAccess {
-			// Split auth: CF Access on WAN, forward_auth on LAN
-			ha.Status = models.AuthStatusWarning
-			notes = append(notes, "Split auth: CF Access (WAN) + forward_auth (LAN)")
-		} else {
-			ha.Status = models.AuthStatusOK
-		}
+// classifyStatus determines the overall auth status and appends relevant notes.
+func classifyStatus(ha *models.HostAuth, notes []string) []string {
+	if ha.Status == models.AuthStatusError {
+		return notes
 	}
-
-	ha.Notes = notes
+	if ha.WANExposed && ha.WANAuth == models.WANAuthNone {
+		ha.Status = models.AuthStatusError
+		notes = append(notes, "WAN-exposed host with no auth")
+	} else if ha.WANExposed && ha.WANAuth == models.WANAuthAppNative && ha.CFAccessAppID == "" && !ha.HasForwardAuth {
+		ha.Status = models.AuthStatusWarning
+	} else if ha.LANAuth == models.LANAuthForwardAuth && ha.WANAuth == models.WANAuthCFAccess {
+		ha.Status = models.AuthStatusWarning
+		notes = append(notes, "Split auth: CF Access (WAN) + forward_auth (LAN)")
+	} else {
+		ha.Status = models.AuthStatusOK
+	}
+	return notes
 }
 
 // hasPolicyDecision checks if any of the host's CF Access policies has the

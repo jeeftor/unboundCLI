@@ -292,3 +292,135 @@ func assertAction(t *testing.T, got Action, want Action) {
 		t.Fatalf("unexpected action\nwant: %#v\n got: %#v", want, got)
 	}
 }
+
+func TestBuildCloudflareActionDirectMode(t *testing.T) {
+	entry := &models.Entry{
+		Hostname:      "direct.example.com",
+		CaddyUpstream: "10.0.0.5:8080",
+		CloudflareStatus: models.CloudflareStatus{
+			Configured: false,
+		},
+	}
+	action := buildCloudflareAction(entry, Options{
+		OriginMode:    "direct",
+		CaddyServerIP: "10.0.0.15",
+	})
+	if action.Type != "add" {
+		t.Fatalf("expected add, got %q", action.Type)
+	}
+	if action.NewService != "http://10.0.0.5:8080" {
+		t.Fatalf("expected direct service URL http://10.0.0.5:8080, got %q", action.NewService)
+	}
+	if action.OriginServerName != "" {
+		t.Fatalf("expected no OriginServerName in direct mode, got %q", action.OriginServerName)
+	}
+}
+
+func TestBuildCloudflareActionSkipNonDefaultTunnel(t *testing.T) {
+	entry := &models.Entry{
+		Hostname:      "other.example.com",
+		CaddyUpstream: "10.0.0.5:8080",
+		CloudflareStatus: models.CloudflareStatus{
+			Configured:      true,
+			IsDefaultTunnel: false,
+			TunnelID:        "tunnel-other",
+			Service:         "https://10.0.0.15",
+			HTTPHostHeader:  "other.example.com",
+		},
+	}
+	action := buildCloudflareAction(entry, Options{
+		CaddyServerIP: "10.0.0.15",
+	})
+	if action.Type != "" {
+		t.Fatalf("expected empty action for non-default tunnel, got %q", action.Type)
+	}
+}
+
+func TestBuildCloudflareActionOverrideTunnel(t *testing.T) {
+	entry := &models.Entry{
+		Hostname:      "override.example.com",
+		CaddyUpstream: "10.0.0.5:8080",
+		CloudflareStatus: models.CloudflareStatus{
+			Configured:      true,
+			IsDefaultTunnel: false,
+			TunnelID:        "tunnel-other",
+			Service:         "https://10.0.0.15",
+			HTTPHostHeader:  "override.example.com",
+		},
+	}
+	action := buildCloudflareAction(entry, Options{
+		CaddyServerIP:    "10.0.0.15",
+		OverrideTunnelID: "tunnel-target",
+	})
+	if action.Type != "" {
+		// Should still skip — override only applies when the action would be generated
+		t.Fatalf("expected empty action even with override for non-default tunnel, got %q", action.Type)
+	}
+}
+
+func TestBuildCloudflareActionTLSVerifyChange(t *testing.T) {
+	entry := &models.Entry{
+		Hostname:      "tls.example.com",
+		CaddyUpstream: "10.0.0.5:8080",
+		CloudflareStatus: models.CloudflareStatus{
+			Configured:      true,
+			IsDefaultTunnel: true,
+			TunnelID:        "tunnel-default",
+			TunnelName:      "default",
+			Service:         "https://10.0.0.15",
+			HTTPHostHeader:  "tls.example.com",
+			NoTLSVerify:     false,
+		},
+	}
+	action := buildCloudflareAction(entry, Options{
+		CaddyServerIP: "10.0.0.15",
+		NoTLSVerify:   true,
+	})
+	if action.Type != "update" {
+		t.Fatalf("expected update for TLS verify change, got %q", action.Type)
+	}
+	if action.Details != "TLS verify setting changed" {
+		t.Fatalf("expected TLS verify detail, got %q", action.Details)
+	}
+}
+
+func TestBuildCloudflareActionNoChangeReturnsEmpty(t *testing.T) {
+	entry := &models.Entry{
+		Hostname:      "ok.example.com",
+		CaddyUpstream: "10.0.0.5:8080",
+		CloudflareStatus: models.CloudflareStatus{
+			Configured:      true,
+			IsDefaultTunnel: true,
+			TunnelID:        "tunnel-default",
+			TunnelName:      "default",
+			Service:         "https://10.0.0.15",
+			HTTPHostHeader:  "ok.example.com",
+		},
+	}
+	action := buildCloudflareAction(entry, Options{
+		CaddyServerIP: "10.0.0.15",
+	})
+	if action.Type != "" {
+		t.Fatalf("expected empty action when everything matches, got %q", action.Type)
+	}
+}
+
+func TestBuildCloudflareActionStaleDeleteNonDefaultTunnel(t *testing.T) {
+	entry := &models.Entry{
+		Hostname: "stale-other.example.com",
+		CloudflareStatus: models.CloudflareStatus{
+			Configured:      true,
+			IsDefaultTunnel: false,
+			TunnelID:        "tunnel-other",
+			TunnelName:      "other",
+			Service:         "https://10.0.0.15",
+			HTTPHostHeader:  "stale-other.example.com",
+		},
+	}
+	action := buildCloudflareAction(entry, Options{
+		CaddyServerIP: "10.0.0.15",
+	})
+	if action.Type != "" {
+		t.Fatalf("expected empty action for stale entry on non-default tunnel, got %q", action.Type)
+	}
+}

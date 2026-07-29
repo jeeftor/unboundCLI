@@ -144,156 +144,30 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 	}
 
 	// --- Phase 1: parallel API fetches ---
-	var (
-		caddyHostnames   map[string]models.CaddyRouteInfo
-		unboundOverrides map[string]*api.DNSOverride
-		adguardRewrites  map[string]*api.Rewrite
-		dhcpLeases       map[string]*api.DNSMasqLease
-		dhcpLeaseCount   int
-		cfDetails        map[string]api.CloudflareIngressEntry
+	data, errs := d.fetchAllData()
 
-		caddyErr   error
-		unboundErr error
-		adguardErr error
-		dhcpErr    error
-		cfErr      error
-
-		wg sync.WaitGroup
-	)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if d.contextErr() != nil {
-			return
-		}
-		logging.Info("Loading Caddy configuration...")
-		caddyHostnames, caddyErr = d.loadCaddyHostnames()
-		if caddyErr != nil {
-			logging.Error("Failed to load Caddy hostnames", "error", caddyErr)
-		} else {
-			logging.Info("Loaded Caddy hostnames", "count", len(caddyHostnames))
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if d.contextErr() != nil {
-			return
-		}
-		logging.Info("Loading Unbound DNS overrides...")
-		if d.unboundClient == nil {
-			unboundOverrides = make(map[string]*api.DNSOverride)
-			return
-		}
-		unboundOverrides, unboundErr = d.loadUnboundOverrides()
-		if unboundErr != nil {
-			logging.Warn("Failed to load Unbound overrides", "error", unboundErr)
-			unboundOverrides = make(map[string]*api.DNSOverride)
-		} else {
-			logging.Info("Loaded Unbound overrides", "count", len(unboundOverrides))
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if d.contextErr() != nil {
-			return
-		}
-		if d.adguardClient == nil {
-			adguardRewrites = make(map[string]*api.Rewrite)
-			return
-		}
-		logging.Info("Loading AdGuard DNS rewrites...")
-		adguardRewrites, adguardErr = d.loadAdguardRewrites()
-		if adguardErr != nil {
-			logging.Warn("Failed to load AdGuard rewrites", "error", adguardErr)
-			adguardRewrites = make(map[string]*api.Rewrite)
-		} else {
-			logging.Info("Loaded AdGuard rewrites", "count", len(adguardRewrites))
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if d.contextErr() != nil {
-			return
-		}
-		logging.Info("Loading DHCP leases...")
-		if d.dnsmasqClient == nil {
-			dhcpLeases = make(map[string]*api.DNSMasqLease)
-			return
-		}
-		dhcpLeases, dhcpErr = d.loadDHCPLeases()
-		dhcpLeaseCount = countUniqueDHCPLeases(dhcpLeases)
-		if dhcpErr != nil {
-			logging.Warn("Failed to load DHCP leases", "error", dhcpErr)
-			dhcpLeases = make(map[string]*api.DNSMasqLease)
-			dhcpLeaseCount = 0
-		} else {
-			logging.Info("Loaded DHCP leases", "count", dhcpLeaseCount)
-		}
-	}()
-
-	var cfDNSRecords map[string]string
-	if d.cfClient != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if d.contextErr() != nil {
-				return
-			}
-			logging.Info("Loading Cloudflare tunnel details...")
-			cfDetails, cfErr = d.cfClient.GetAllTunnelsDetails()
-			if cfErr != nil {
-				logging.Warn("Failed to load Cloudflare tunnel details", "error", cfErr)
-			} else {
-				logging.Info("Loaded Cloudflare tunnel details", "count", len(cfDetails))
-			}
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if d.contextErr() != nil {
-				return
-			}
-			records, err := d.cfClient.ListManagedDNSRecords()
-			if err != nil {
-				logging.Warn("Failed to load Cloudflare DNS records", "error", err)
-			} else {
-				cfDNSRecords = records
-				logging.Info("Loaded Cloudflare DNS records", "count", len(records))
-			}
-		}()
-	}
-
-	wg.Wait()
 	if err := d.contextErr(); err != nil {
 		report.markUnfinished(ServiceFailed, err.Error())
 		d.emitAllReports(report)
 		return nil, report, err
 	}
 
-	report.set(ServiceCaddy, serviceReport(caddyHostnames, caddyErr, false))
-	report.set(ServiceUnbound, serviceReport(unboundOverrides, unboundErr, d.unboundClient == nil))
-	report.set(ServiceAdguard, serviceReport(adguardRewrites, adguardErr, d.adguardClient == nil))
-	report.set(ServiceDHCP, serviceReport(dhcpLeases, dhcpErr, d.dnsmasqClient == nil))
+	report.set(ServiceCaddy, serviceReport(data.caddyHostnames, errs.caddy, false))
+	report.set(ServiceUnbound, serviceReport(data.unboundOverrides, errs.unbound, d.unboundClient == nil))
+	report.set(ServiceAdguard, serviceReport(data.adguardRewrites, errs.adguard, d.adguardClient == nil))
+	report.set(ServiceDHCP, serviceReport(data.dhcpLeases, errs.dhcp, d.dnsmasqClient == nil))
 	if report.Services[ServiceDHCP].Status == ServiceLoaded {
 		dhcpReport := report.Services[ServiceDHCP]
-		dhcpReport.Count = dhcpLeaseCount
+		dhcpReport.Count = data.dhcpLeaseCount
 		report.set(ServiceDHCP, dhcpReport)
 	}
-	report.set(ServiceCloudflare, serviceReport(cfDetails, cfErr, d.cfClient == nil))
+	report.set(ServiceCloudflare, serviceReport(data.cfDetails, errs.cf, d.cfClient == nil))
 	d.emitReports(report, []ServiceName{ServiceCaddy, ServiceUnbound, ServiceAdguard, ServiceDHCP, ServiceCloudflare})
 
-	if caddyErr != nil {
+	if errs.caddy != nil {
 		report.set(ServiceDNS, ServiceReport{Status: ServiceSkipped, Error: "skipped because Caddy load failed"})
 		d.emitServiceReport(ServiceDNS, report.Services[ServiceDNS])
-		return nil, report, fmt.Errorf("failed to load Caddy hostnames: %w", caddyErr)
+		return nil, report, fmt.Errorf("failed to load Caddy hostnames: %w", errs.caddy)
 	}
 	if err := d.contextErr(); err != nil {
 		report.markUnfinished(ServiceFailed, err.Error())
@@ -303,7 +177,7 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 
 	// --- Phase 2: build entry models ---
 	logging.Info("Building unified entry models...")
-	entries := d.buildEntries(caddyHostnames, unboundOverrides, adguardRewrites, dhcpLeases)
+	entries := d.buildEntries(data.caddyHostnames, data.unboundOverrides, data.adguardRewrites, data.dhcpLeases)
 	logging.Info("Built entry models", "count", len(entries))
 
 	// --- Phase 3: parallel DNS resolution ---
@@ -318,38 +192,7 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 	d.emitServiceReport(ServiceDNS, report.Services[ServiceDNS])
 
 	// --- Phase 4: enrich with Cloudflare data ---
-	if cfDetails != nil {
-		hostIndex := make(map[string]int, len(entries))
-		for i, e := range entries {
-			hostIndex[e.Hostname] = i
-		}
-		for hostname, cfEntry := range cfDetails {
-			_, hasDNSRecord := cfDNSRecords[hostname]
-			cfStatus := models.CloudflareStatus{
-				Configured:       true,
-				TunnelName:       cfEntry.TunnelName,
-				TunnelID:         cfEntry.TunnelID,
-				Service:          cfEntry.Service,
-				Path:             cfEntry.Path,
-				IsDefaultTunnel:  cfEntry.IsDefaultTunnel,
-				HTTPHostHeader:   cfEntry.HTTPHostHeader,
-				OriginServerName: cfEntry.OriginServerName,
-				NoTLSVerify:      cfEntry.NoTLSVerify,
-				Http2Origin:      cfEntry.Http2Origin,
-				HasAccessPolicy:  cfEntry.HasAccessPolicy,
-				HasDNSRecord:     hasDNSRecord,
-			}
-			if idx, ok := hostIndex[hostname]; ok {
-				entries[idx].CloudflareStatus = cfStatus
-			} else {
-				entries = append(entries, &models.Entry{
-					Hostname:         hostname,
-					DataSource:       "CloudFlare",
-					CloudflareStatus: cfStatus,
-				})
-			}
-		}
-	}
+	d.enrichWithCloudflare(entries, data.cfDetails, data.cfDNSRecords)
 
 	// Recompute overall status now that CF data is merged
 	for _, e := range entries {
@@ -359,6 +202,184 @@ func (d *DataLoader) LoadDataWithReport() ([]*models.Entry, LoadReport, error) {
 	d.logLoadSummary(entries)
 
 	return entries, report, nil
+}
+
+// fetchedData holds the results of parallel API fetches.
+type fetchedData struct {
+	caddyHostnames   map[string]models.CaddyRouteInfo
+	unboundOverrides map[string]*api.DNSOverride
+	adguardRewrites  map[string]*api.Rewrite
+	dhcpLeases       map[string]*api.DNSMasqLease
+	dhcpLeaseCount   int
+	cfDetails        map[string]api.CloudflareIngressEntry
+	cfDNSRecords     map[string]string
+}
+
+// fetchErrors holds errors from parallel API fetches.
+type fetchErrors struct {
+	caddy   error
+	unbound error
+	adguard error
+	dhcp    error
+	cf      error
+}
+
+// fetchAllData runs all API fetches in parallel and returns the collected data and errors.
+func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
+	var (
+		data fetchedData
+		errs fetchErrors
+		wg   sync.WaitGroup
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
+		logging.Info("Loading Caddy configuration...")
+		data.caddyHostnames, errs.caddy = d.loadCaddyHostnames()
+		if errs.caddy != nil {
+			logging.Error("Failed to load Caddy hostnames", "error", errs.caddy)
+		} else {
+			logging.Info("Loaded Caddy hostnames", "count", len(data.caddyHostnames))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
+		logging.Info("Loading Unbound DNS overrides...")
+		if d.unboundClient == nil {
+			data.unboundOverrides = make(map[string]*api.DNSOverride)
+			return
+		}
+		data.unboundOverrides, errs.unbound = d.loadUnboundOverrides()
+		if errs.unbound != nil {
+			logging.Warn("Failed to load Unbound overrides", "error", errs.unbound)
+			data.unboundOverrides = make(map[string]*api.DNSOverride)
+		} else {
+			logging.Info("Loaded Unbound overrides", "count", len(data.unboundOverrides))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
+		if d.adguardClient == nil {
+			data.adguardRewrites = make(map[string]*api.Rewrite)
+			return
+		}
+		logging.Info("Loading AdGuard DNS rewrites...")
+		data.adguardRewrites, errs.adguard = d.loadAdguardRewrites()
+		if errs.adguard != nil {
+			logging.Warn("Failed to load AdGuard rewrites", "error", errs.adguard)
+			data.adguardRewrites = make(map[string]*api.Rewrite)
+		} else {
+			logging.Info("Loaded AdGuard rewrites", "count", len(data.adguardRewrites))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if d.contextErr() != nil {
+			return
+		}
+		logging.Info("Loading DHCP leases...")
+		if d.dnsmasqClient == nil {
+			data.dhcpLeases = make(map[string]*api.DNSMasqLease)
+			return
+		}
+		data.dhcpLeases, errs.dhcp = d.loadDHCPLeases()
+		data.dhcpLeaseCount = countUniqueDHCPLeases(data.dhcpLeases)
+		if errs.dhcp != nil {
+			logging.Warn("Failed to load DHCP leases", "error", errs.dhcp)
+			data.dhcpLeases = make(map[string]*api.DNSMasqLease)
+			data.dhcpLeaseCount = 0
+		} else {
+			logging.Info("Loaded DHCP leases", "count", data.dhcpLeaseCount)
+		}
+	}()
+
+	if d.cfClient != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if d.contextErr() != nil {
+				return
+			}
+			logging.Info("Loading Cloudflare tunnel details...")
+			data.cfDetails, errs.cf = d.cfClient.GetAllTunnelsDetails()
+			if errs.cf != nil {
+				logging.Warn("Failed to load Cloudflare tunnel details", "error", errs.cf)
+			} else {
+				logging.Info("Loaded Cloudflare tunnel details", "count", len(data.cfDetails))
+			}
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if d.contextErr() != nil {
+				return
+			}
+			records, err := d.cfClient.ListManagedDNSRecords()
+			if err != nil {
+				logging.Warn("Failed to load Cloudflare DNS records", "error", err)
+			} else {
+				data.cfDNSRecords = records
+				logging.Info("Loaded Cloudflare DNS records", "count", len(records))
+			}
+		}()
+	}
+
+	wg.Wait()
+	return data, errs
+}
+
+// enrichWithCloudflare merges Cloudflare tunnel and DNS data into the entries.
+func (d *DataLoader) enrichWithCloudflare(entries []*models.Entry, cfDetails map[string]api.CloudflareIngressEntry, cfDNSRecords map[string]string) {
+	if cfDetails == nil {
+		return
+	}
+	hostIndex := make(map[string]int, len(entries))
+	for i, e := range entries {
+		hostIndex[e.Hostname] = i
+	}
+	for hostname, cfEntry := range cfDetails {
+		_, hasDNSRecord := cfDNSRecords[hostname]
+		cfStatus := models.CloudflareStatus{
+			Configured:       true,
+			TunnelName:       cfEntry.TunnelName,
+			TunnelID:         cfEntry.TunnelID,
+			Service:          cfEntry.Service,
+			Path:             cfEntry.Path,
+			IsDefaultTunnel:  cfEntry.IsDefaultTunnel,
+			HTTPHostHeader:   cfEntry.HTTPHostHeader,
+			OriginServerName: cfEntry.OriginServerName,
+			NoTLSVerify:      cfEntry.NoTLSVerify,
+			Http2Origin:      cfEntry.Http2Origin,
+			HasAccessPolicy:  cfEntry.HasAccessPolicy,
+			HasDNSRecord:     hasDNSRecord,
+		}
+		if idx, ok := hostIndex[hostname]; ok {
+			entries[idx].CloudflareStatus = cfStatus
+		} else {
+			entries = append(entries, &models.Entry{
+				Hostname:         hostname,
+				DataSource:       "CloudFlare",
+				CloudflareStatus: cfStatus,
+			})
+		}
+	}
 }
 
 // logLoadSummary logs notable findings after all data is loaded and merged.
