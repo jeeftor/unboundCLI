@@ -10,6 +10,7 @@ type Entry struct {
 	CaddyIP       string         // Extracted IP: "10.0.0.112"
 	CaddyPort     string         // Extracted port: "8096"
 	CaddyRoute    CaddyRouteInfo // full handler chain from Caddy config
+	CaddyServerIP string         // IP of the Caddy reverse proxy itself (e.g., "10.0.0.15")
 
 	// DNS Services
 	UnboundStatus ServiceStatus
@@ -50,14 +51,18 @@ func (e *Entry) NeedsHTTPHostHeader() bool {
 	return e.CloudflareStatus.Configured && e.CloudflareStatus.HTTPHostHeader == ""
 }
 
-// HasDNSMismatch returns true if DNS resolves to something other than Caddy
+// HasDNSMismatch returns true if DNS resolves to an IP that differs from the
+// Caddy server IP. This indicates that a DNS override is pointing to the wrong
+// address (or a stale public record is being picked up instead of the LAN override).
+// Returns false when DNS resolution failed or the Caddy server IP is unknown.
 func (e *Entry) HasDNSMismatch() bool {
 	if e.DNSResolved == "" || e.DNSResolved == "NONE" || e.DNSResolved == "FAIL" {
 		return false
 	}
-	// Caddy server IP would typically be the target (e.g., 10.0.0.15)
-	// This would need to be passed in from configuration
-	return false // TODO: Implement proper DNS mismatch detection
+	if e.CaddyServerIP == "" {
+		return false
+	}
+	return e.DNSResolved != e.CaddyServerIP
 }
 
 // NeedsSyncToUnbound returns true if Unbound needs to be updated

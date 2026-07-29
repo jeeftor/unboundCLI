@@ -3,14 +3,14 @@ package models
 // CaddyRouteInfo holds the full handler chain detail for a single hostname route,
 // extracted from the Caddy Admin API config.
 type CaddyRouteInfo struct {
-	Upstream           string            // reverse_proxy dial target, e.g. "192.168.0.1:3001"
-	HandlerChain       []string          // ordered handler types, e.g. ["rewrite", "reverse_proxy"]
-	RequestHeadersSet  map[string]string // headers.request.set values
-	RequestHeadersAdd  map[string]string // headers.request.add values
-	ResponseHeadersSet map[string]string // headers.response.set values
-	TLSToUpstream      bool              // transport includes a tls block
-	HasForwardAuth     bool              // route uses Authentik forward_auth (outpost.goauthentik.io)
-	ConditionalForwardAuth bool          // forward_auth only in some subroutes (not CF tunnel traffic)
+	Upstream               string            // reverse_proxy dial target, e.g. "192.168.0.1:3001"
+	HandlerChain           []string          // ordered handler types, e.g. ["rewrite", "reverse_proxy"]
+	RequestHeadersSet      map[string]string // headers.request.set values
+	RequestHeadersAdd      map[string]string // headers.request.add values
+	ResponseHeadersSet     map[string]string // headers.response.set values
+	TLSToUpstream          bool              // transport includes a tls block
+	HasForwardAuth         bool              // route uses Authentik forward_auth (outpost.goauthentik.io)
+	ConditionalForwardAuth bool              // forward_auth only in some subroutes (not CF tunnel traffic)
 }
 
 // HasXForwardedProto returns true if X-Forwarded-Proto is set or added in request headers.

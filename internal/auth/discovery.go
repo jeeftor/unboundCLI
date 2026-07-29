@@ -223,8 +223,8 @@ func Discover(
 
 	// Query CF Access and Authentik in parallel.
 	var (
-		cfApps     []api.AccessAppInfo
-		cfPolicies map[string][]api.AccessPolicyInfo // appID → policies
+		cfApps      []api.AccessAppInfo
+		cfPolicies  map[string][]api.AccessPolicyInfo // appID → policies
 		akProviders []api.ProxyProviderInfo
 		akOutposts  []api.OutpostInfo
 
@@ -599,15 +599,11 @@ func hasPolicyDecision(ha *models.HostAuth, decision string) bool {
 // --- helpers ---
 
 func isWildcardDomain(domain string) bool {
-	return len(domain) > 2 && domain[:2] == "*."
+	return api.IsWildcardDomain(domain)
 }
 
 func wildcardMatchesDomain(wildcard, hostname string) bool {
-	if !isWildcardDomain(wildcard) {
-		return false
-	}
-	suffix := wildcard[1:] // ".vookie.net"
-	return len(hostname) > len(suffix) && hostname[len(hostname)-len(suffix):] == suffix
+	return api.IsWildcardMatch(wildcard, hostname)
 }
 
 func stripScheme(url string) string {
