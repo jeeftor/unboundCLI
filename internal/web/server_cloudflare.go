@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
@@ -147,6 +148,11 @@ func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request
 	}
 	if req.Hostname == "" || req.Service == "" {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname and service are required"))
+		return
+	}
+	// Validate service URL format — must start with http:// or https://
+	if !strings.HasPrefix(req.Service, "http://") && !strings.HasPrefix(req.Service, "https://") {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("service must be a valid URL starting with http:// or https://"))
 		return
 	}
 	spec := api.IngressRuleSpec{

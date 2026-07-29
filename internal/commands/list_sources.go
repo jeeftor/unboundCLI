@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/tables"
 	"github.com/jeeftor/caddy-dns-sync/internal/tui"
 )
@@ -346,9 +347,12 @@ func (s *AllDataSource) FetchData() (interface{}, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Load AdguardHome config (optional)
+	// Load AdguardHome config (optional — may not be configured)
 	var adguardConfig config.AdguardConfig
-	adguardConfig, _ = config.LoadAdguardConfig()
+	adguardConfig, err = config.LoadAdguardConfig()
+	if err != nil {
+		logging.Warn("Failed to load AdGuard config", "error", err)
+	}
 
 	// Create clients
 	unboundClient := api.NewClient(cfg)

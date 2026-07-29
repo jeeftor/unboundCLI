@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -446,7 +447,10 @@ func (s *Server) handleCaddyDeploy(w http.ResponseWriter, r *http.Request) {
 		SkipValidate  bool   `json:"skip_validate"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	_ = json.NewDecoder(r.Body).Decode(&opts)
+	if err := json.NewDecoder(r.Body).Decode(&opts); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid deploy request: %w", err))
+		return
+	}
 
 	cfg, err := s.caddyEditorConfig()
 	if err != nil {
