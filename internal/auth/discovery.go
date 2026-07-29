@@ -9,6 +9,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sync"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -65,6 +66,8 @@ func DiscoverStream(
 		ctx = context.Background()
 	}
 
+	akHostname := authentikHostnameFromClient(akClient)
+
 	// Phase 1: Build base auth from entries (instant — no API calls).
 	authMap := make(map[string]*models.HostAuth, len(entries))
 	for _, e := range entries {
@@ -90,7 +93,7 @@ func DiscoverStream(
 			ha.Status = models.AuthStatusUnknown
 			ha.Notes = []string{"Awaiting CF Access enrichment…"}
 		} else {
-			classifyAuth(ha)
+			classifyAuth(ha, akHostname)
 		}
 		baseHosts = append(baseHosts, ha)
 	}
@@ -118,7 +121,7 @@ func DiscoverStream(
 					return ha.Status == models.AuthStatusUnknown
 				})
 				for _, ha := range updated {
-					classifyAuth(ha)
+					classifyAuth(ha, akHostname)
 				}
 				if len(updated) > 0 {
 					emit(StreamEvent{Type: "enrich", Source: "cloudflare", Hosts: updated})
@@ -134,7 +137,7 @@ func DiscoverStream(
 				return ha.WANExposed
 			})
 			for _, ha := range updated {
-				classifyAuth(ha)
+				classifyAuth(ha, akHostname)
 			}
 			if len(updated) > 0 {
 				emit(StreamEvent{Type: "enrich", Source: "cloudflare", Hosts: updated})
@@ -158,7 +161,7 @@ func DiscoverStream(
 				return ha.AuthentikProviderPK > 0
 			})
 			for _, ha := range updated {
-				classifyAuth(ha)
+				classifyAuth(ha, akHostname)
 			}
 			if len(updated) > 0 {
 				emit(StreamEvent{Type: "enrich", Source: "authentik", Hosts: updated})
@@ -171,7 +174,7 @@ func DiscoverStream(
 	// Phase 4: Re-classify all hosts (in case enrichment changed status)
 	// and emit done.
 	for _, ha := range authMap {
-		classifyAuth(ha)
+		classifyAuth(ha, akHostname)
 	}
 	emit(StreamEvent{Type: "done", Sources: &sources})
 }
@@ -210,6 +213,8 @@ func Discover(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	akHostname := authentikHostnameFromClient(akClient)
 
 	// Build the initial HostAuth from Entry data (Caddy + CF tunnel state).
 	// This gives us the base classification before we enrich with CF Access
@@ -271,7 +276,7 @@ func Discover(
 
 	// Classify each host's auth modes and status now that all data is merged.
 	for hostname, ha := range authMap {
-		classifyAuth(ha)
+		classifyAuth(ha, akHostname)
 		logging.Debug("Auth discovery result",
 			"hostname", hostname,
 			"wan", ha.WANAuth,
@@ -441,6 +446,19 @@ func enrichWithAuthentik(authMap map[string]*models.HostAuth, providers []api.Pr
 	}
 }
 
+// authentikHostnameFromClient extracts the hostname from the Authentik base URL.
+// Returns empty string if akClient is nil or the URL is invalid.
+func authentikHostnameFromClient(akClient *api.AuthentikClient) string {
+	if akClient == nil {
+		return ""
+	}
+	u, err := url.Parse(akClient.BaseURL())
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
 // classifyAuth determines the WAN/LAN/API auth modes and overall status
 // based on the merged data from all sources.
 //
@@ -462,7 +480,7 @@ func enrichWithAuthentik(authMap map[string]*models.HostAuth, providers []api.Pr
 //   - service_auth policy on CF Access app → cf_service_token
 //   - Authentik provider with intercept_header_auth → authentik_bearer
 //   - Otherwise → none
-func classifyAuth(ha *models.HostAuth) {
+func classifyAuth(ha *models.HostAuth, authentikHostname string) {
 	var notes []string
 
 	// --- WAN auth ---
@@ -472,7 +490,19 @@ func classifyAuth(ha *models.HostAuth) {
 		hasAllowPolicy := hasPolicyDecision(ha, "allow")
 		hasServiceAuthPolicy := hasPolicyDecision(ha, "service_auth")
 
+		// Check if this host IS the Authentik identity provider itself.
+		// The IdP must have a CF Access bypass policy (circular dependency —
+		// can't put auth in front of the auth provider). This is expected
+		// and safe — Authentik has its own native login.
+		isAuthProvider := authentikHostname != "" && ha.Hostname == authentikHostname
+
 		switch {
+		case isAuthProvider && hasCFAccess && hasBypassPolicy && !ha.HasForwardAuth:
+			// This is the Authentik IdP itself — bypass is required (circular dependency).
+			ha.WANAuth = models.WANAuthAppNative
+			notes = append(notes, "Authentik identity provider — CF Access bypass required (circular dependency), native auth handles login")
+			ha.Status = models.AuthStatusOK
+
 		case hasCFAccess && !ha.HasForwardAuth && hasBypassPolicy && !hasAllowPolicy && !hasServiceAuthPolicy:
 			// CRITICAL: CF Access has only bypass policies and no forward_auth.
 			// This means the host is WIDE OPEN to the internet with zero auth.

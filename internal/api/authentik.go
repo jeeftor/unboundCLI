@@ -91,6 +91,11 @@ func (c *AuthentikClient) ctx() context.Context {
 	return context.Background()
 }
 
+// BaseURL returns the configured Authentik base URL (e.g. "https://auth.vookie.net").
+func (c *AuthentikClient) BaseURL() string {
+	return c.baseURL
+}
+
 // --- Flows ---
 
 // FlowInfo is a minimal representation of an Authentik flow.
