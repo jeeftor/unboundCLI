@@ -504,7 +504,9 @@ func (c *AuthentikClient) EnsureProxyApp(
 	})
 	if err != nil {
 		// Rollback: delete the provider if app creation fails
-		_ = c.DeleteProxyProvider(provider.PK)
+		if rbErr := c.DeleteProxyProvider(provider.PK); rbErr != nil {
+			logging.Error("Rollback failed: could not delete orphaned provider", "providerPK", provider.PK, "error", rbErr)
+		}
 		return nil, nil, err
 	}
 
