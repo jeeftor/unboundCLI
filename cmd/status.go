@@ -1,8 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
 	"text/tabwriter"
 
@@ -49,7 +50,11 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		fmt.Fprint(cmd.OutOrStdout(), StyleMuted.Render("Loading data from all services…"))
 	}
 
-	entries, report, err := status.LoadEntries(context.Background(), runtime.Clients, status.Options{
+	// Use signal-aware context so Ctrl+C cancels pending API calls.
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+
+	entries, report, err := status.LoadEntries(ctx, runtime.Clients, status.Options{
 		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
 	})
 	if err != nil {

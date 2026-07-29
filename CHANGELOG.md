@@ -19,6 +19,23 @@ to [Semantic Versioning](https://semver.org/).
 - **Refactored `classifyAuth`** (109 lines) into `classifyWANAuth`,
   `classifyAPIAuth`, `classifyLANAuth`, and `classifyStatus` sub-functions.
 - **Improved `stripScheme`** to use `strings.TrimPrefix` idiomatically.
+- **Added context propagation to all API clients** — `CloudflareClient`,
+  `AuthentikClient`, `Client` (OPNSense), and `AdguardClient` now support
+  `WithContext(ctx)` for cancellation and timeout support. API calls in the
+  data loader and auth discovery now respect the request/server context.
+- **Added panic recovery to all goroutines** — `logging.Recover()` helper
+  prevents server crashes from goroutine panics. Applied to all 12+ goroutine
+  sites (auth discovery, data loader, DNS resolution, upstream probing, cache
+  refresh).
+- **Improved `refreshAuthCache`** — uses server context instead of
+  `context.Background()`, deduplicates concurrent refresh calls with
+  `refreshMu` mutex, and tracks goroutines via `WaitGroup` for graceful
+  shutdown.
+- **Improved DNS resolution** — now logs resolution failures and respects
+  context cancellation (skips pending resolutions when context is cancelled).
+- **CLI commands use signal-aware context** — `status` and
+  `caddy-push-cloudflare` commands now use `signal.NotifyContext` so Ctrl+C
+  cancels pending API calls.
 
 ### Added
 
@@ -28,6 +45,16 @@ to [Semantic Versioning](https://semver.org/).
   `handleCloudflareSetRoute` API handlers.
 - **Service URL validation** on `handleCloudflareSetRoute` — must start with
   `http://` or `https://`.
+- **Periodic auth cache background refresh** — auth inventory cache now
+  auto-refreshes every 5 minutes via a background ticker, ensuring the UI
+  shows current auth state without manual refresh.
+- **Short-lived entries cache (30s TTL)** — `loadEntries` now caches results
+  for 30 seconds, so rapid successive calls from multiple endpoints (entries,
+  diagnostics, plan, auth) don't re-fetch from all APIs. Invalidated on
+  mutations.
+- **`Server.Shutdown()`** method — cancels background goroutines and waits
+  for them to finish, enabling graceful shutdown.
+- **`logging.Recover()`** helper — deferred panic recovery for goroutines.
 - **12 table-driven tests** for `classifyAuth()` covering all auth patterns
   (A–F, IdP bypass, open host, LAN-only, service_auth, Authentik provider).
 - **6 unit tests** for `buildCloudflareAction` edge cases (direct mode,

@@ -166,6 +166,7 @@ func probeCaddyUpstreams(ctx context.Context, entries []CaddyEntryResponse) {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
+			defer logging.Recover("caddy: upstream probe worker")
 			for index := range jobs {
 				entries[index].UpstreamStatus, entries[index].UpstreamError = probeCaddyUpstream(ctx, entries[index].Upstream)
 			}
@@ -244,6 +245,7 @@ func (s *Server) createCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": req.Hostname})
+	s.invalidateEntriesCache()
 	go s.refreshAuthCache()
 }
 
@@ -298,6 +300,7 @@ func (s *Server) updateCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": hostname})
+	s.invalidateEntriesCache()
 	go s.refreshAuthCache()
 }
 
@@ -325,6 +328,7 @@ func (s *Server) deleteCaddyEntry(w http.ResponseWriter, r *http.Request) {
 		gitCommitAndPush(cfg, msg)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "hostname": hostname})
+	s.invalidateEntriesCache()
 	go s.refreshAuthCache()
 }
 
@@ -390,6 +394,7 @@ func (s *Server) handleCaddyGitPull(w http.ResponseWriter, r *http.Request) {
 	}
 	logging.Info("caddy: git pull completed", "output", out)
 	writeJSON(w, http.StatusOK, map[string]string{"output": out, "status": "ok"})
+	s.invalidateEntriesCache()
 	go s.refreshAuthCache()
 }
 

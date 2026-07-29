@@ -307,3 +307,17 @@ func (h *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 func (h *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{primary: h.primary.WithGroup(name)}
 }
+
+// Recover is a deferred panic recovery helper for goroutines.
+// It logs the panic and stack trace, preventing the process from crashing.
+// Usage:
+//
+//	go func() {
+//	    defer Recover("background task name")
+//	    ...
+//	}()
+func Recover(name string) {
+	if r := recover(); r != nil {
+		Error("goroutine panic recovered", "name", name, "panic", r)
+	}
+}

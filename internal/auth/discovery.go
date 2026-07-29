@@ -61,6 +61,14 @@ func DiscoverStream(
 		ctx = context.Background()
 	}
 
+	// Wrap clients with context so API calls can be cancelled.
+	if cfClient != nil {
+		cfClient = cfClient.WithContext(ctx)
+	}
+	if akClient != nil {
+		akClient = akClient.WithContext(ctx)
+	}
+
 	akHostname := authentikHostnameFromClient(akClient)
 
 	// Phase 1: Build base auth from entries (instant — no API calls).
@@ -107,6 +115,7 @@ func DiscoverStream(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("auth: cf access discovery stream")
 			cfApps, cfPolicies, err := discoverCloudflareAccess(ctx, cfClient)
 			if err != nil {
 				logging.Warn("CF Access discovery failed", "error", err)
@@ -144,6 +153,7 @@ func DiscoverStream(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("auth: authentik discovery stream")
 			akProviders, akOutposts, err := discoverAuthentik(ctx, akClient)
 			if err != nil {
 				logging.Warn("Authentik discovery failed", "error", err)
@@ -209,6 +219,14 @@ func Discover(
 		ctx = context.Background()
 	}
 
+	// Wrap clients with context so API calls can be cancelled.
+	if cfClient != nil {
+		cfClient = cfClient.WithContext(ctx)
+	}
+	if akClient != nil {
+		akClient = akClient.WithContext(ctx)
+	}
+
 	akHostname := authentikHostnameFromClient(akClient)
 
 	// Build the initial HostAuth from Entry data (Caddy + CF tunnel state).
@@ -239,6 +257,7 @@ func Discover(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("auth: cf access discovery")
 			cfApps, cfPolicies, cfErr = discoverCloudflareAccess(ctx, cfClient)
 			if cfErr != nil {
 				logging.Warn("CF Access discovery failed", "error", cfErr)
@@ -250,6 +269,7 @@ func Discover(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("auth: authentik discovery")
 			akProviders, akOutposts, akErr = discoverAuthentik(ctx, akClient)
 			if akErr != nil {
 				logging.Warn("Authentik discovery failed", "error", akErr)

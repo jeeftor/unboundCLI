@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -55,6 +56,25 @@ type Client struct {
 	config     Config
 	httpClient *http.Client
 	Prompt     bool // Enable interactive prompting for API calls
+	ctx        context.Context
+}
+
+// WithContext returns a shallow copy of the client with the given context.
+func (c *Client) WithContext(ctx context.Context) *Client {
+	return &Client{
+		config:     c.config,
+		httpClient: c.httpClient,
+		Prompt:     c.Prompt,
+		ctx:        ctx,
+	}
+}
+
+// getCtx returns the client's context, falling back to context.Background().
+func (c *Client) getCtx() context.Context {
+	if c.ctx != nil {
+		return c.ctx
+	}
+	return context.Background()
 }
 
 // Host returns the hostname/IP of the OPNSense server parsed from BaseURL.
@@ -192,8 +212,8 @@ func (c *Client) makeRequest(method, endpoint string, body io.Reader) (*APIRespo
 		"endpoint", endpoint,
 	)
 
-	// Create the request
-	req, err := http.NewRequest(method, url, body)
+	// Create the request with context for cancellation support
+	req, err := http.NewRequestWithContext(c.getCtx(), method, url, body)
 	if err != nil {
 		logging.Error("Failed to create request", "error", err)
 		return nil, fmt.Errorf("error creating request: %w", err)

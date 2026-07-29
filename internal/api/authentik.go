@@ -39,6 +39,17 @@ type AuthentikClient struct {
 	client  *api.APIClient
 	baseURL string
 	token   string
+	defCtx  context.Context // default context for API calls
+}
+
+// WithContext returns a shallow copy of the client with the given context.
+func (c *AuthentikClient) WithContext(ctx context.Context) *AuthentikClient {
+	return &AuthentikClient{
+		client:  c.client,
+		baseURL: c.baseURL,
+		token:   c.token,
+		defCtx:  ctx,
+	}
 }
 
 // DefaultAuthorizationFlow is the standard implicit-consent authorization
@@ -86,8 +97,12 @@ func NewAuthentikClient(config AuthentikConfig) (*AuthentikClient, error) {
 	}, nil
 }
 
-// ctx returns a background context (auth is via default headers).
+// ctx returns the client's context, falling back to context.Background().
+// Auth is via default headers, so the context is only used for cancellation/timeouts.
 func (c *AuthentikClient) ctx() context.Context {
+	if c.defCtx != nil {
+		return c.defCtx
+	}
 	return context.Background()
 }
 
