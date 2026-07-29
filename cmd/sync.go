@@ -103,6 +103,13 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot specify both --unbound-only and --adguard-only")
 	}
 
+	// Acquire sync lock to prevent concurrent syncs.
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+
 	opts := buildSyncOptions()
 	syncUI := execsync.NewSyncUI()
 
@@ -151,6 +158,10 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 		logging.Error("Error during unified sync operation", "error", err)
 		return fmt.Errorf("error during unified sync operation: %w", err)
 	}
+	if result == nil {
+		fmt.Println(syncUI.RenderWarning("No hostnames found in Caddy config"))
+		return nil
+	}
 
 	if len(result.HostnameMap) == 0 {
 		fmt.Println(syncUI.RenderWarning("No hostnames found in Caddy config"))
@@ -181,6 +192,12 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 }
 
 func runSyncUnbound(cmd *cobra.Command, args []string) error {
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+
 	opts := buildSyncOptions()
 	syncUI := execsync.NewSyncUI()
 
@@ -239,6 +256,12 @@ func runSyncUnbound(cmd *cobra.Command, args []string) error {
 }
 
 func runSyncAdguard(cmd *cobra.Command, args []string) error {
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
+
 	opts := buildSyncOptions()
 	syncUI := execsync.NewSyncUI()
 

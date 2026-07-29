@@ -158,6 +158,17 @@ func DiscoverStream(
 			if err != nil {
 				logging.Warn("Authentik discovery failed", "error", err)
 				emit(StreamEvent{Type: "error", Source: "authentik", Error: err.Error()})
+				// Re-classify all hosts that are still in unknown state
+				// so they don't remain pending forever.
+				updated := collectUpdatedHosts(authMap, func(ha *models.HostAuth) bool {
+					return ha.Status == "unknown"
+				})
+				for _, ha := range updated {
+					classifyAuth(ha, akHostname)
+				}
+				if len(updated) > 0 {
+					emit(StreamEvent{Type: "enrich", Source: "authentik", Hosts: updated})
+				}
 				return
 			}
 			// Enrich and emit updated hosts.

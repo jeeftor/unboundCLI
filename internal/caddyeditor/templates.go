@@ -168,6 +168,10 @@ func lookupTemplate(repoPath, name string) (string, error) {
 	if s, ok := builtinTemplates[name]; ok {
 		return s, nil
 	}
+	// Validate template name to prevent path traversal.
+	if name == "" || strings.ContainsAny(name, `/\..`) {
+		return "", fmt.Errorf("invalid template name %q", name)
+	}
 	if repoPath != "" {
 		path := filepath.Join(repoPath, "templates", name+".caddytemplate")
 		data, err := readFileString(path)

@@ -161,6 +161,9 @@ func ValidateDraft(cfg EditorConfig, block SiteBlock, templateName string) Valid
 // It inserts just before the fallback "handle {" block (if present), or at the
 // end of the outermost wildcard block.
 func AddEntry(cfg EditorConfig, block SiteBlock, templateName string) error {
+	editorMu.Lock()
+	defer editorMu.Unlock()
+
 	if templateName == "" {
 		templateName = cfg.EntryTemplate
 	}
@@ -190,15 +193,56 @@ func AddEntry(cfg EditorConfig, block SiteBlock, templateName string) error {
 
 // UpdateEntry replaces the existing entry for the given hostname in the Caddyfile.
 func UpdateEntry(cfg EditorConfig, block SiteBlock, templateName string, data TemplateData) error {
-	if err := RemoveEntry(cfg, block.Hostname); err != nil {
+	editorMu.Lock()
+	defer editorMu.Unlock()
+
+	if err := removeEntryLocked(cfg, block.Hostname); err != nil {
 		return fmt.Errorf("removing old entry: %w", err)
 	}
 	block.Upstream = data.Upstream
-	return AddEntry(cfg, block, templateName)
+	return addEntryLocked(cfg, block, templateName)
 }
 
 // RemoveEntry deletes the @matcher line and handle block for the given hostname.
 func RemoveEntry(cfg EditorConfig, hostname string) error {
+	editorMu.Lock()
+	defer editorMu.Unlock()
+	return removeEntryLocked(cfg, hostname)
+}
+
+// addEntryLocked is the lock-free inner implementation of AddEntry.
+// Caller must hold editorMu.
+func addEntryLocked(cfg EditorConfig, block SiteBlock, templateName string) error {
+	if templateName == "" {
+		templateName = cfg.EntryTemplate
+	}
+	if templateName == "" {
+		templateName = "default"
+	}
+
+	path := AbsCaddyfilePath(cfg)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading caddyfile: %w", err)
+	}
+
+	matcherName := matcherNameFromHostname(block.Hostname)
+	snippet, err := renderMatcherBlock(matcherName, block.Hostname, block.Upstream, templateName, cfg.RepoPath, block.Params)
+	if err != nil {
+		return fmt.Errorf("rendering template: %w", err)
+	}
+
+	updated, err := insertEntry(string(data), matcherName, block.Hostname, snippet)
+	if err != nil {
+		return err
+	}
+
+	return writeAndValidate(cfg, path, updated)
+}
+
+// removeEntryLocked is the lock-free inner implementation of RemoveEntry.
+// Caller must hold editorMu.
+func removeEntryLocked(cfg EditorConfig, hostname string) error {
 	path := AbsCaddyfilePath(cfg)
 	data, err := os.ReadFile(path)
 	if err != nil {

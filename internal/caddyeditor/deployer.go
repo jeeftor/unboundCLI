@@ -1,12 +1,17 @@
 package caddyeditor
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
+	"time"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 )
+
+// deployTimeout is the maximum time a deploy command can run.
+const deployTimeout = 5 * time.Minute
 
 // DeployResult holds the final outcome of a deploy pipeline.
 type DeployResult struct {
@@ -24,7 +29,11 @@ type DeployPipelineOptions struct {
 
 // DeployPipeline runs validate → git add → commit → (push) → deploy.
 // Progress lines are written to w as they arrive so the caller can stream them.
+// Only one deploy can run at a time — concurrent calls are serialized by editorMu.
 func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) DeployResult {
+	editorMu.Lock()
+	defer editorMu.Unlock()
+
 	writeLine := func(line string) {
 		_, _ = fmt.Fprintln(w, line)
 		logging.Info("deploy: " + line)
@@ -90,11 +99,17 @@ func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) D
 	}
 
 	writeLine(fmt.Sprintf("Running: %s", cfg.DeployCommand))
-	cmd := exec.Command("sh", "-c", cfg.DeployCommand) //nolint:gosec
+	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", cfg.DeployCommand) //nolint:gosec
 	cmd.Dir = cfg.RepoPath
 	cmd.Stdout = w
 	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			writeError(fmt.Sprintf("FAILED: deploy timed out after %s", deployTimeout))
+			return DeployResult{OK: false, Output: fmt.Sprintf("deploy timed out after %s", deployTimeout)}
+		}
 		writeError(fmt.Sprintf("FAILED: %v", err))
 		return DeployResult{OK: false, Output: err.Error()}
 	}

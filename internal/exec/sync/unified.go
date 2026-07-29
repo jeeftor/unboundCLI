@@ -166,8 +166,10 @@ func syncCaddyWithUnboundInternal(
 
 	// Apply changes if not dry run
 	changesApplied := false
+	var applyFailed bool
+	var failedHostnames []string
 	if !options.DryRun {
-		changesApplied = applyUnboundChanges(
+		changesApplied, applyFailed, failedHostnames = applyUnboundChanges(
 			unboundClient,
 			unboundSyncOptions{
 				EntryDescription: options.EntryDescription,
@@ -182,15 +184,17 @@ func syncCaddyWithUnboundInternal(
 	}
 
 	return &SyncResult{
-		HostnameMap:    hostnameMap,
-		ToAdd:          toAdd,
-		ToUpdate:       toUpdate,
-		ToUpdateDesc:   toUpdateDesc,
-		ToRemove:       toRemove,
-		ChangesApplied: changesApplied,
-		SyncOverrides:  syncCreatedOverrides,
-		OtherOverrides: otherOverrides,
-		ExistingCount:  len(existingOverrides),
+		HostnameMap:     hostnameMap,
+		ToAdd:           toAdd,
+		ToUpdate:        toUpdate,
+		ToUpdateDesc:    toUpdateDesc,
+		ToRemove:        toRemove,
+		ChangesApplied:  changesApplied,
+		SyncOverrides:   syncCreatedOverrides,
+		OtherOverrides:  otherOverrides,
+		ExistingCount:   len(existingOverrides),
+		FailedHostnames: failedHostnames,
+		ApplyFailed:     applyFailed,
 	}, nil
 }
 
@@ -262,8 +266,9 @@ func syncCaddyWithAdguardInternal(
 
 	// Apply changes if not dry run
 	changesApplied := false
+	var failedHostnames []string
 	if !options.DryRun {
-		changesApplied = applyAdguardChanges(
+		changesApplied, failedHostnames = applyAdguardChanges(
 			adguardClient,
 			options,
 			hostnameMap,
@@ -275,13 +280,14 @@ func syncCaddyWithAdguardInternal(
 	}
 
 	return &AdguardSyncResult{
-		HostnameMap:    hostnameMap,
-		ToAdd:          toAdd,
-		ToUpdate:       toUpdate,
-		ToRemove:       toRemove,
-		ChangesApplied: changesApplied,
-		SyncRewrites:   syncCreatedRewrites,
-		OtherRewrites:  otherRewrites,
-		ExistingCount:  len(existingRewrites),
+		HostnameMap:     hostnameMap,
+		ToAdd:           toAdd,
+		ToUpdate:        toUpdate,
+		ToRemove:        toRemove,
+		ChangesApplied:  changesApplied,
+		SyncRewrites:    syncCreatedRewrites,
+		OtherRewrites:   otherRewrites,
+		ExistingCount:   len(existingRewrites),
+		FailedHostnames: failedHostnames,
 	}, nil
 }

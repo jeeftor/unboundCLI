@@ -6,6 +6,49 @@ to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Caddyfile editor mutex** — all file mutations and deploy operations are now
+  serialized via a `sync.Mutex`, preventing concurrent edits from corrupting the
+  Caddyfile or git state.
+- **Deploy timeout** — deploy commands now have a 5-minute timeout via
+  `context.WithTimeout`, preventing hung deploys from blocking indefinitely.
+- **Path traversal protection** — template names are validated to reject `..`,
+  `/`, and `\` sequences, preventing arbitrary file reads.
+- **CLI sync lock** — CLI sync commands now acquire an exclusive file lock
+  (`~/.local/share/caddy-dns-sync/sync.lock`) to prevent concurrent syncs from
+  racing on API writes.
+- **Sync failure tracking** — `SyncResult` and `AdguardSyncResult` now include
+  `FailedHostnames` and `ApplyFailed` fields, tracking individual operation
+  failures during apply instead of silently continuing.
+- **Frontend error boundary** — React `ErrorBoundary` component wraps the app,
+  preventing white-screen crashes on unhandled component errors.
+- **SSE auto-reconnection** — entries SSE stream now auto-reconnects with
+  exponential backoff (1s → 2s → 5s → ... → 30s max) on connection loss.
+- **AbortController support** — `postJSON`, `putJSON`, and `deleteJSON` API
+  client methods now accept optional `AbortSignal` for request cancellation.
+- **Sync confirmation dialog** — SyncModal now shows a confirmation banner
+  before applying changes, preventing accidental syncs.
+- **Race-detection in CI** — `go test` in CI now uses `-race` flag.
+- **Web UI build in CI** — build workflow now builds the React frontend before
+  `go build`, ensuring embedded assets are current.
+- **Node.js in lint CI** — lint workflow now sets up Node.js and installs web
+  deps so the `web-lint` pre-commit hook works in CI.
+
+### Fixed
+
+- **ApplyChanges() failure semantics** — Unbound `ApplyChanges()` (service
+  restart) failure no longer returns `false` for `changesApplied`; entries are
+  already written, only the restart failed. New `ApplyFailed` field tracks this.
+- **Nil pointer dereference in `runSyncAll`** — added nil check for `result`
+  before accessing `result.HostnameMap`.
+- **Authentik enrichment failure** — hosts in `unknown` state are now
+  re-classified when Authentik API fails, matching the CF Access failure path.
+- **SLSA release config** — fixed binary name from `binary-linux-amd64` to
+  `caddy-dns-sync-linux-amd64`, removed template placeholders.
+- **Cosign v3 compatibility** — updated `.goreleaser.yaml` signing config to
+  use `--bundle` flag instead of deprecated `--output-signature`/`--output-certificate`.
+
 ### Changed
 
 - **Split monolithic `server.go`** (2507 lines) into 7 focused files:
