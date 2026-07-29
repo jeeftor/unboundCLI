@@ -145,7 +145,9 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 			issueEntries = append(issueEntries, e)
 		}
 	}
-	_ = tw.Flush()
+	if err := tw.Flush(); err != nil {
+		logging.Warn("Failed to flush status table", "error", err)
+	}
 	fmt.Fprintln(out)
 
 	// ── Issues ─────────────────────────────────────────────────────────────────

@@ -4,6 +4,50 @@ All notable changes to this project are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/) and this project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Split monolithic `server.go`** (2507 lines) into 7 focused files:
+  `server.go` (core), `server_config.go`, `server_entries.go`,
+  `server_cloudflare.go`, `server_diagnostics.go`, `server_probe.go`,
+  `server_auth.go`.
+- **Consolidated duplicate wildcard matching** into exported
+  `api.IsWildcardMatch` / `api.IsWildcardDomain` / `api.IsWildcardOrRootHostname`.
+- **Refactored `LoadDataWithReport`** (227 lines) into `fetchAllData()` and
+  `enrichWithCloudflare()` sub-methods.
+- **Refactored `classifyAuth`** (109 lines) into `classifyWANAuth`,
+  `classifyAPIAuth`, `classifyLANAuth`, and `classifyStatus` sub-functions.
+- **Improved `stripScheme`** to use `strings.TrimPrefix` idiomatically.
+
+### Added
+
+- **`HasDNSMismatch()`** method on `models.Entry` — compares `DNSResolved`
+  against `CaddyServerIP` to detect DNS pointing to the wrong server.
+- **Hostname format validation** on `handleSyncRemove` and
+  `handleCloudflareSetRoute` API handlers.
+- **Service URL validation** on `handleCloudflareSetRoute` — must start with
+  `http://` or `https://`.
+- **12 table-driven tests** for `classifyAuth()` covering all auth patterns
+  (A–F, IdP bypass, open host, LAN-only, service_auth, Authentik provider).
+- **6 unit tests** for `buildCloudflareAction` edge cases (direct mode,
+  non-default tunnel skip, TLS verify change, no-op, stale delete).
+
+### Fixed
+
+- **Deploy handler error swallowing** — `handleCaddyDeploy` now returns 400
+  on malformed JSON instead of silently ignoring the decode error.
+- **AdGuard config load error swallowing** — `list_sources.go` now logs
+  load errors instead of discarding them.
+- **Tabwriter flush error** — `cmd/status.go` now logs flush errors.
+- **Delete confirmation error** — `cmd/delete.go` now handles EOF/read
+  errors gracefully instead of silently ignoring them.
+
+### Removed
+
+- **Unused wrapper functions** in `cmd/util.go` (`NewClient`,
+  `NewCaddyClient`, `NewAdguardClient`) — callers use `api.*` directly.
+
 ## [0.4.0] - 2026-07-27
 
 ### Added

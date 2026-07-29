@@ -70,7 +70,10 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderConfirmation(*targetOverride))
 		fmt.Fprint(cmd.OutOrStdout(), "Confirm deletion (y/N): ")
 		var confirm string
-		_, _ = fmt.Fscanln(cmd.InOrStdin(), &confirm)
+		if _, err := fmt.Fscanln(cmd.InOrStdin(), &confirm); err != nil {
+			fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderWarning("Deletion cancelled (no input)"))
+			return nil
+		}
 		if confirm != "y" && confirm != "Y" {
 			if logging.GetLogLevel() == logging.LogLevelDebug {
 				logging.Info("Delete operation cancelled by user", "uuid", uuid)

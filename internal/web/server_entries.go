@@ -314,6 +314,10 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname required"))
 		return
 	}
+	if !validHostname(req.Hostname) {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid hostname %q", req.Hostname))
+		return
+	}
 	if req.Service == "" {
 		req.Service = "all"
 	}

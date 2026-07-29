@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -606,11 +607,7 @@ func wildcardMatchesDomain(wildcard, hostname string) bool {
 }
 
 func stripScheme(url string) string {
-	if len(url) > 8 && url[:8] == "https://" {
-		return url[8:]
-	}
-	if len(url) > 7 && url[:7] == "http://" {
-		return url[7:]
-	}
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
 	return url
 }
