@@ -170,13 +170,13 @@ export function detectAuthPattern(auth: {
   const hasFA = auth.has_forward_auth;
   const hasConditionalFA = auth.conditional_forward_auth ?? false;
 
-  // Pattern E: CF Access + conditional forward_auth (Caddy skips FA for CF tunnel)
+  // Pattern E (DEPRECATED): CF Access + conditional forward_auth (Caddy skips FA for CF tunnel)
   if (hasCF && hasFA && !hasBypass && hasConditionalFA) {
     return {
-      name: 'CF Access + Conditional Forward Auth',
-      verdict: 'ok',
-      summary: 'CF Access handles WAN auth, forward_auth only applies to LAN — Caddy skips FA for tunnel traffic',
-      detail: 'The Caddyfile uses matchers to conditionally apply forward_auth: CF tunnel traffic (matched by Cf-Connecting-Ip header) skips forward_auth and goes directly to the service, while LAN/Tailscale traffic goes through Authentik forward_auth. This avoids the double-login problem without needing a CF Access bypass policy.',
+      name: 'Conditional Forward Auth (DEPRECATED)',
+      verdict: 'warning',
+      summary: 'Split-horizon forward_auth is deprecated — simplify to CF Access only with auto_redirect_to_identity',
+      detail: 'The Caddyfile uses matchers to conditionally apply forward_auth: CF tunnel traffic (matched by Cf-Connecting-Ip header) skips forward_auth, while LAN/Tailscale traffic goes through Authentik. With CF Access auto_redirect_to_identity now enabled, this split-horizon pattern is no longer needed — it adds complexity and risk (misconfigured matchers can leave hosts open). Simplify by removing the conditional matchers and forward_auth, letting CF Access handle WAN auth with auto-redirect to Authentik.',
     };
   }
 

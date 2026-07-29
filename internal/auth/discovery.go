@@ -487,10 +487,13 @@ func classifyAuth(ha *models.HostAuth) {
 			ha.Status = models.AuthStatusError
 
 		case hasCFAccess && ha.HasForwardAuth && !hasBypassPolicy && ha.ConditionalForwardAuth:
-			// Pattern E: CF Access + conditional forward_auth (Caddy skips FA for CF tunnel)
-			// This is OK — CF Access handles WAN auth, forward_auth only applies to LAN
+			// Pattern E (DEPRECATED): CF Access + conditional forward_auth (Caddy skips FA for CF tunnel)
+			// With CF Access auto_redirect_to_identity, the split-horizon pattern is no longer
+			// needed. It adds complexity and risk (misconfigured matchers can leave hosts open).
+			// Simplify to CF Access only (remove forward_auth + matchers from Caddyfile).
 			ha.WANAuth = models.WANAuthCFAccess
-			notes = append(notes, "CF Access (WAN) + conditional forward_auth (LAN only) — Caddy skips FA for tunnel traffic")
+			ha.Status = models.AuthStatusWarning
+			notes = append(notes, "DEPRECATED: conditional forward_auth — simplify to CF Access only (auto_redirect_to_identity makes split-horizon unnecessary)")
 
 		case hasCFAccess && ha.HasForwardAuth && hasBypassPolicy:
 			// Pattern D: CF Access bypasses, forward_auth handles actual auth
