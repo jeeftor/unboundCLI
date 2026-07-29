@@ -13,7 +13,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -54,7 +53,7 @@ type AccessAppInfo struct {
 
 // ListAccessApps returns all CF Access applications for the account.
 func (c *CloudflareClient) ListAccessApps() ([]AccessAppInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	apps, _, err := c.api.ListAccessApplications(
 		ctx,
 		cloudflare.AccountIdentifier(c.accountID),
@@ -116,7 +115,7 @@ type CreateAccessAppRequest struct {
 
 // CreateAccessApp creates a new CF Access application for a hostname.
 func (c *CloudflareClient) CreateAccessApp(req CreateAccessAppRequest) (*AccessAppInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	sessionDuration := req.SessionDuration
 	if sessionDuration == "" {
@@ -158,7 +157,7 @@ func (c *CloudflareClient) CreateAccessApp(req CreateAccessAppRequest) (*AccessA
 
 // DeleteAccessApp removes a CF Access application by its ID.
 func (c *CloudflareClient) DeleteAccessApp(appID string) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	err := c.api.DeleteAccessApplication(
 		ctx,
 		cloudflare.AccountIdentifier(c.accountID),
@@ -184,7 +183,7 @@ type AccessPolicyInfo struct {
 
 // ListAccessPolicies returns all policies for a given CF Access application.
 func (c *CloudflareClient) ListAccessPolicies(appID string) ([]AccessPolicyInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	policies, _, err := c.api.ListAccessPolicies(
 		ctx,
 		cloudflare.AccountIdentifier(c.accountID),
@@ -224,7 +223,7 @@ type CreateAccessPolicyRequest struct {
 
 // CreateAccessPolicy creates a new CF Access policy on the given application.
 func (c *CloudflareClient) CreateAccessPolicy(req CreateAccessPolicyRequest) (*AccessPolicyInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	params := cloudflare.CreateAccessPolicyParams{
 		ApplicationID: req.AppID,
@@ -258,7 +257,7 @@ func (c *CloudflareClient) CreateAccessPolicy(req CreateAccessPolicyRequest) (*A
 
 // DeleteAccessPolicy removes a CF Access policy by its ID.
 func (c *CloudflareClient) DeleteAccessPolicy(appID, policyID string) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	err := c.api.DeleteAccessPolicy(
 		ctx,
 		cloudflare.AccountIdentifier(c.accountID),
@@ -289,7 +288,7 @@ type ServiceTokenInfo struct {
 
 // ListServiceTokens returns all CF Access service tokens.
 func (c *CloudflareClient) ListServiceTokens() ([]ServiceTokenInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	tokens, _, err := c.api.ListAccessServiceTokens(
 		ctx,
 		cloudflare.AccountIdentifier(c.accountID),
@@ -335,7 +334,7 @@ type CreateServiceTokenRequest struct {
 // IMPORTANT: The ClientSecret is only returned once at creation time.
 // The caller must store it securely — it cannot be retrieved later.
 func (c *CloudflareClient) CreateServiceToken(req CreateServiceTokenRequest) (*ServiceTokenInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	duration := req.Duration
 	if duration == "" {
@@ -368,7 +367,7 @@ func (c *CloudflareClient) CreateServiceToken(req CreateServiceTokenRequest) (*S
 // RotateServiceToken generates a new client secret for an existing service token.
 // The old secret is invalidated. The new secret is only returned once.
 func (c *CloudflareClient) RotateServiceToken(tokenID string) (*ServiceTokenInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	resp, err := c.api.RotateAccessServiceToken(
 		ctx,
@@ -392,7 +391,7 @@ func (c *CloudflareClient) RotateServiceToken(tokenID string) (*ServiceTokenInfo
 
 // DeleteServiceToken removes a CF Access service token by its ID.
 func (c *CloudflareClient) DeleteServiceToken(tokenID string) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	_, err := c.api.DeleteAccessServiceToken(
 		ctx,
 		cloudflare.AccountIdentifier(c.accountID),
@@ -415,7 +414,7 @@ type AccessGroupInfo struct {
 
 // ListAccessGroups returns all CF Access groups.
 func (c *CloudflareClient) ListAccessGroups() ([]AccessGroupInfo, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	groups, _, err := c.api.ListAccessGroups(
 		ctx,
 		cloudflare.AccountIdentifier(c.accountID),

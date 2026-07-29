@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
 	"sort"
 	"strings"
 
@@ -97,7 +99,11 @@ func runCaddyPushCloudflare(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Fetching hostnames from Caddy at %s:%d...\n", caddyIP, caddyPort)
 
-	result, err := sync2.SyncCaddyToCloudflare(caddyClient, cfClient, options)
+	// Use signal-aware context so Ctrl+C cancels pending API calls.
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+
+	result, err := sync2.SyncCaddyToCloudflare(ctx, caddyClient, cfClient, options)
 	if err != nil {
 		logging.Error("Error during sync", "error", err)
 		return fmt.Errorf("error during sync: %w", err)

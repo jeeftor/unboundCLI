@@ -38,10 +38,18 @@ type CaddyToCloudflareSyncResult struct {
 // default Cloudflare tunnel (cfClient.tunnelID), while treating all other account
 // tunnels as read-only. DNS CNAME records are created/removed to match.
 func SyncCaddyToCloudflare(
+	ctx context.Context,
 	caddyClient *api.CaddyClient,
 	cfClient *api.CloudflareClient,
 	options CaddyToCloudflareSyncOptions,
 ) (*CaddyToCloudflareSyncResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// Wrap CF client with context for cancellation support.
+	if cfClient != nil {
+		cfClient = cfClient.WithContext(ctx)
+	}
 	result := &CaddyToCloudflareSyncResult{
 		DryRun:         options.DryRun,
 		StaleElsewhere: make(map[string]string),
@@ -139,7 +147,7 @@ func SyncCaddyToCloudflare(
 	}
 
 	if !options.DryRun {
-		applyResult := syncplan.Apply(context.Background(), syncplan.Clients{Cloudflare: cfClient}, plan, syncplan.ApplyOptions{})
+		applyResult := syncplan.Apply(ctx, syncplan.Clients{Cloudflare: cfClient}, plan, syncplan.ApplyOptions{})
 		if !applyResult.Success {
 			return result, fmt.Errorf("error updating Cloudflare tunnel: %s", strings.Join(applyResult.Errors, "; "))
 		}

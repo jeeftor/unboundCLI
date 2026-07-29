@@ -23,6 +23,28 @@ type CloudflareClient struct {
 	zoneID    string
 	accountID string
 	tunnelID  string
+	ctx       context.Context // default context for API calls
+}
+
+// WithContext returns a shallow copy of the client with the given context.
+// The context is used for all subsequent API calls, enabling cancellation
+// and timeouts. Safe to call concurrently — the original client is unchanged.
+func (c *CloudflareClient) WithContext(ctx context.Context) *CloudflareClient {
+	return &CloudflareClient{
+		api:       c.api,
+		zoneID:    c.zoneID,
+		accountID: c.accountID,
+		tunnelID:  c.tunnelID,
+		ctx:       ctx,
+	}
+}
+
+// getCtx returns the client's context, falling back to context.Background().
+func (c *CloudflareClient) getCtx() context.Context {
+	if c.ctx != nil {
+		return c.ctx
+	}
+	return context.Background()
 }
 
 // CloudflareConfig contains configuration for Cloudflare API
@@ -98,7 +120,7 @@ func NewCloudflareClientWithBaseURL(config CloudflareConfig, baseURL string) (*C
 
 // ListTunnels returns a list of all tunnels for the account
 func (c *CloudflareClient) ListTunnels() ([]CloudflareTunnel, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	if c.accountID == "" {
 		return nil, fmt.Errorf("account ID is required to list tunnels")
@@ -138,7 +160,7 @@ type CloudflareAccount struct {
 
 // ListAccounts returns all accounts accessible with the current API token
 func (c *CloudflareClient) ListAccounts() ([]CloudflareAccount, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	accounts, _, err := c.api.Accounts(ctx, cloudflare.AccountsListParams{})
 	if err != nil {
 		return nil, fmt.Errorf("error listing accounts: %w", err)
@@ -152,7 +174,7 @@ func (c *CloudflareClient) ListAccounts() ([]CloudflareAccount, error) {
 
 // ListZones returns all zones accessible with the current API token
 func (c *CloudflareClient) ListZones() ([]CloudflareZone, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	zones, err := c.api.ListZones(ctx)
 	if err != nil {
@@ -172,7 +194,7 @@ func (c *CloudflareClient) ListZones() ([]CloudflareZone, error) {
 
 // GetTunnelHostnames returns all hostnames configured for the tunnel
 func (c *CloudflareClient) GetTunnelHostnames() (map[string]string, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	// Get tunnel information
 	tunnel, err := c.api.GetTunnel(ctx, cloudflare.ResourceIdentifier(c.accountID), c.tunnelID)
@@ -239,7 +261,7 @@ type CloudflareIngressEntry struct {
 // a consolidated hostname map. First tunnel wins on duplicates (logged as warning).
 // Does NOT use c.tunnelID — scans the whole account.
 func (c *CloudflareClient) GetAllTunnelsHostnames() (map[string]TunnelHostEntry, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	if c.accountID == "" {
 		return nil, fmt.Errorf("account ID is required to scan all tunnels")
@@ -316,7 +338,7 @@ func extractServiceIP(service string) string {
 // rules maps hostname → internal service URL (e.g. "http://10.0.0.15:80").
 // The catch-all rule is preserved when present, or http_status:404 is appended as the last entry.
 func (c *CloudflareClient) SetTunnelIngress(rules map[string]string) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	config, err := c.api.GetTunnelConfiguration(ctx,
 		cloudflare.ResourceIdentifier(c.accountID),
@@ -400,7 +422,7 @@ func servicesEquivalent(existing, desired string) bool {
 // ListManagedDNSRecords returns all CNAME records in the zone that point to
 // cfargotunnel.com, keyed by hostname. Used to diff current vs desired state.
 func (c *CloudflareClient) ListManagedDNSRecords() (map[string]string, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	records, _, err := c.api.ListDNSRecords(ctx,
 		cloudflare.ResourceIdentifier(c.zoneID),
@@ -426,7 +448,7 @@ func (c *CloudflareClient) ListManagedDNSRecords() (map[string]string, error) {
 // error is returned so the caller can prompt the user to resolve the conflict
 // in the Cloudflare dashboard rather than receiving a cryptic API error 81053.
 func (c *CloudflareClient) EnsureDNSRecord(hostname string) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	target := c.tunnelID + ".cfargotunnel.com"
 	proxied := true
 
@@ -499,7 +521,7 @@ func (c *CloudflareClient) EnsureDNSRecord(hostname string) error {
 // DeleteDNSRecord removes the cfargotunnel.com CNAME for hostname, if present.
 // It is a no-op if the record does not exist.
 func (c *CloudflareClient) DeleteDNSRecord(hostname string) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	records, _, err := c.api.ListDNSRecords(ctx,
 		cloudflare.ResourceIdentifier(c.zoneID),
@@ -555,7 +577,7 @@ type IngressRuleSpec struct {
 // unchanged. If the hostname does not currently have a rule it is added before the catch-all.
 // A backup of the pre-edit state is written to ~/.caddy-dns-sync-backups/ automatically.
 func (c *CloudflareClient) UpdateTunnelRule(spec IngressRuleSpec) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	tunnelID := c.tunnelID
 	if spec.TunnelID != "" {
@@ -620,7 +642,7 @@ func (c *CloudflareClient) DeleteTunnelRule(hostname string) error {
 // DeleteTunnelRuleInTunnel removes a single ingress rule from the specified tunnel.
 // If tunnelIDOverride is empty the client's configured tunnel is used.
 func (c *CloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelIDOverride string) error {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	tunnelID := c.tunnelID
 	if tunnelIDOverride != "" {
@@ -784,7 +806,7 @@ func (c *CloudflareClient) saveTunnelBackup(rules []cloudflare.UnvalidatedIngres
 // BackupTunnelConfig fetches the current tunnel ingress rules and saves them to
 // ~/.caddy-dns-sync-backups/. Returns the backup file path.
 func (c *CloudflareClient) BackupTunnelConfig() (string, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 	current, err := c.api.GetTunnelConfiguration(ctx, cloudflare.ResourceIdentifier(c.accountID), c.tunnelID)
 	if err != nil {
 		return "", fmt.Errorf("error getting tunnel config: %w", err)
@@ -817,7 +839,7 @@ func (c *CloudflareClient) RestoreTunnelConfig(backupPath string) error {
 		rules = append(rules, cloudflare.UnvalidatedIngressRule{Service: "http_status:404"})
 	}
 
-	ctx := context.Background()
+	ctx := c.getCtx()
 	_, err = c.api.UpdateTunnelConfiguration(ctx,
 		cloudflare.ResourceIdentifier(c.accountID),
 		cloudflare.TunnelConfigurationParams{
@@ -861,7 +883,7 @@ func (c *CloudflareClient) ListTunnelBackups() ([]string, error) {
 // First tunnel wins on duplicate hostnames (with warning log).
 // Does NOT use c.tunnelID for filtering — scans the whole account.
 func (c *CloudflareClient) GetAllTunnelsDetails() (map[string]CloudflareIngressEntry, error) {
-	ctx := context.Background()
+	ctx := c.getCtx()
 
 	if c.accountID == "" {
 		return nil, fmt.Errorf("account ID is required to scan all tunnels")

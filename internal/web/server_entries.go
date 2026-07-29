@@ -162,6 +162,14 @@ func (s *Server) handleEntriesStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Populate the entries cache so subsequent non-streaming calls (diagnostics,
+	// plan, auth) can reuse this data without re-fetching from all APIs.
+	s.entriesMu.Lock()
+	s.entriesCache = entries
+	s.entriesReport = report
+	s.entriesCacheAt = time.Now()
+	s.entriesMu.Unlock()
+
 	// Send the final entries payload.
 	response := EntriesResponse{
 		Entries: entryResponses(entries),
@@ -270,6 +278,7 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 		result := s.applyActions(r.Context(), actions, false)
 		writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
 		// Refresh auth cache — entries may have changed.
+		s.invalidateEntriesCache()
 		go s.refreshAuthCache()
 		return
 	}
@@ -280,6 +289,7 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 	result := s.applyActions(r.Context(), request.Actions, request.DryRun)
 	writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
 	if !request.DryRun {
+		s.invalidateEntriesCache()
 		go s.refreshAuthCache()
 	}
 }
@@ -379,16 +389,52 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 		"message": msg,
 	})
 	// Refresh auth cache — entries may have changed.
+	s.invalidateEntriesCache()
 	go s.refreshAuthCache()
 }
 
 // ─── Entry/Plan Helpers ─────────────────────────────────────────────────────
 
+const entriesCacheTTL = 30 * time.Second
+
 func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
+	// Check short-lived cache first — avoids re-fetching from all APIs when
+	// multiple endpoints (entries, diagnostics, plan, auth) need the same data.
+	s.entriesMu.Lock()
+	if time.Since(s.entriesCacheAt) < entriesCacheTTL && s.entriesCache != nil {
+		entries := s.entriesCache
+		report := s.entriesReport
+		s.entriesMu.Unlock()
+		return entries, report, nil
+	}
+	s.entriesMu.Unlock()
+
 	runtime := s.runtimeSnapshot()
-	return status.LoadEntries(ctx, runtime.Clients, status.Options{
+	entries, report, err := status.LoadEntries(ctx, runtime.Clients, status.Options{
 		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
 	})
+	if err != nil {
+		return nil, report, err
+	}
+
+	// Populate cache.
+	s.entriesMu.Lock()
+	s.entriesCache = entries
+	s.entriesReport = report
+	s.entriesCacheAt = time.Now()
+	s.entriesMu.Unlock()
+
+	return entries, report, nil
+}
+
+// invalidateEntriesCache clears the entries cache so the next loadEntries
+// call fetches fresh data. Called after mutations (sync apply, remove, etc.).
+func (s *Server) invalidateEntriesCache() {
+	s.entriesMu.Lock()
+	s.entriesCache = nil
+	s.entriesReport = status.LoadReport{}
+	s.entriesCacheAt = time.Time{}
+	s.entriesMu.Unlock()
 }
 
 func entryResponses(entries []*models.Entry) []EntryResponse {

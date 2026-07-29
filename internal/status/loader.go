@@ -232,9 +232,28 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 		wg   sync.WaitGroup
 	)
 
+	// Wrap clients with the loader's context so API calls can be cancelled.
+	ctx := d.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cfClient := d.cfClient
+	if cfClient != nil {
+		cfClient = cfClient.WithContext(ctx)
+	}
+	unboundClient := d.unboundClient
+	if unboundClient != nil {
+		unboundClient = unboundClient.WithContext(ctx)
+	}
+	adguardClient := d.adguardClient
+	if adguardClient != nil {
+		adguardClient = adguardClient.WithContext(ctx)
+	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("loader: caddy hostnames")
 		if d.contextErr() != nil {
 			return
 		}
@@ -250,11 +269,12 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("loader: unbound overrides")
 		if d.contextErr() != nil {
 			return
 		}
 		logging.Info("Loading Unbound DNS overrides...")
-		if d.unboundClient == nil {
+		if unboundClient == nil {
 			data.unboundOverrides = make(map[string]*api.DNSOverride)
 			return
 		}
@@ -270,10 +290,11 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("loader: adguard rewrites")
 		if d.contextErr() != nil {
 			return
 		}
-		if d.adguardClient == nil {
+		if adguardClient == nil {
 			data.adguardRewrites = make(map[string]*api.Rewrite)
 			return
 		}
@@ -290,6 +311,7 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logging.Recover("loader: dhcp leases")
 		if d.contextErr() != nil {
 			return
 		}
@@ -309,15 +331,16 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 		}
 	}()
 
-	if d.cfClient != nil {
+	if cfClient != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("loader: cf tunnel details")
 			if d.contextErr() != nil {
 				return
 			}
 			logging.Info("Loading Cloudflare tunnel details...")
-			data.cfDetails, errs.cf = d.cfClient.GetAllTunnelsDetails()
+			data.cfDetails, errs.cf = cfClient.GetAllTunnelsDetails()
 			if errs.cf != nil {
 				logging.Warn("Failed to load Cloudflare tunnel details", "error", errs.cf)
 			} else {
@@ -328,10 +351,11 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer logging.Recover("loader: cf dns records")
 			if d.contextErr() != nil {
 				return
 			}
-			records, err := d.cfClient.ListManagedDNSRecords()
+			records, err := cfClient.ListManagedDNSRecords()
 			if err != nil {
 				logging.Warn("Failed to load Cloudflare DNS records", "error", err)
 			} else {
@@ -517,19 +541,28 @@ func countUniqueDHCPLeases(leases map[string]*api.DNSMasqLease) int {
 }
 
 // resolveAllDNS resolves DNS for all entries in parallel using a worker pool.
+// It respects the loader's context for cancellation and logs resolution failures.
 func (d *DataLoader) resolveAllDNS(entries []*models.Entry) {
 	const workers = 20
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
 
 	for _, e := range entries {
+		// Skip if context already cancelled.
+		if d.contextErr() != nil {
+			break
+		}
 		e := e
 		wg.Add(1)
 		sem <- struct{}{}
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
+			defer logging.Recover("loader: dns resolution")
 			e.DNSResolved = d.resolveDNS(e.Hostname)
+			if e.DNSResolved == "FAIL" {
+				logging.Warn("DNS resolution failed", "hostname", e.Hostname)
+			}
 		}()
 	}
 	wg.Wait()

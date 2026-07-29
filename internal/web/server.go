@@ -16,6 +16,7 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/auth"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
+	"github.com/jeeftor/caddy-dns-sync/internal/status"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
@@ -48,6 +49,23 @@ type Server struct {
 	// Auth inventory cache — populated at startup and after mutations.
 	authMu    sync.RWMutex
 	authCache *AuthInventoryResponse
+
+	// Auth cache refresh dedup — prevents concurrent refresh goroutines.
+	refreshMu      sync.Mutex
+	refreshRunning bool
+
+	// Entries cache — short-lived cache (30s) to avoid re-fetching from all
+	// APIs when multiple endpoints need the same data (entries, diagnostics,
+	// plan, auth). Invalidated on mutations.
+	entriesMu      sync.Mutex
+	entriesCache   []*models.Entry
+	entriesReport  status.LoadReport
+	entriesCacheAt time.Time
+
+	// Server lifecycle — used for graceful shutdown of background goroutines.
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 type storedPlan struct {
@@ -69,17 +87,76 @@ func NewServerWithOptions(runtime *app.Runtime, options Options) *Server {
 	}
 	// Capture log lines into the ring buffer so the web UI can stream them.
 	logging.EnableBuffer()
-	server := &Server{runtime: runtime, options: options, mux: http.NewServeMux(), plans: make(map[string]storedPlan)}
+	ctx, cancel := context.WithCancel(context.Background())
+	server := &Server{
+		runtime: runtime,
+		options: options,
+		mux:     http.NewServeMux(),
+		plans:   make(map[string]storedPlan),
+		ctx:     ctx,
+		cancel:  cancel,
+	}
 	server.routes()
 	// Pre-populate auth cache at startup so all clients get instant data.
-	go server.refreshAuthCache()
+	server.wg.Add(1)
+	go func() {
+		defer server.wg.Done()
+		defer logging.Recover("server: startup auth cache refresh")
+		server.refreshAuthCache()
+	}()
+	// Start periodic background refresh (every 5 minutes).
+	server.wg.Add(1)
+	go server.periodicAuthRefresh()
 	return server
 }
 
+// Shutdown cancels background goroutines and waits for them to finish.
+func (s *Server) Shutdown() {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.wg.Wait()
+}
+
+// periodicAuthRefresh refreshes the auth cache on a periodic interval.
+// Runs until the server context is cancelled.
+func (s *Server) periodicAuthRefresh() {
+	defer s.wg.Done()
+	defer logging.Recover("server: periodic auth refresh")
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			s.refreshAuthCache()
+		}
+	}
+}
+
 // refreshAuthCache queries auth discovery and stores the result in authCache.
-// Safe to call concurrently; uses authMu for synchronization.
+// Safe to call concurrently — uses refreshMu to dedup concurrent calls so
+// only one refresh runs at a time.
 func (s *Server) refreshAuthCache() {
-	ctx := context.Background()
+	// Dedup: skip if a refresh is already running.
+	s.refreshMu.Lock()
+	if s.refreshRunning {
+		s.refreshMu.Unlock()
+		return
+	}
+	s.refreshRunning = true
+	s.refreshMu.Unlock()
+	defer func() {
+		s.refreshMu.Lock()
+		s.refreshRunning = false
+		s.refreshMu.Unlock()
+	}()
+
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	runtime := s.runtimeSnapshot()
 
 	entries, _, err := s.loadEntries(ctx)

@@ -70,6 +70,7 @@ type SyncStatusDashboard struct {
 	statuses      []SyncStatus
 	caddyServerIP string
 	filters       StatusFilters
+	ctx           context.Context
 }
 
 // NewSyncStatusDashboard creates a new dashboard.
@@ -81,6 +82,12 @@ func NewSyncStatusDashboard(caddyServerIP string) *SyncStatusDashboard {
 	}
 }
 
+// WithContext sets the context for data loading operations.
+func (d *SyncStatusDashboard) WithContext(ctx context.Context) *SyncStatusDashboard {
+	d.ctx = ctx
+	return d
+}
+
 // LoadSyncData loads data from service clients.
 func (d *SyncStatusDashboard) LoadSyncData(
 	caddyClient *api.CaddyClient,
@@ -88,7 +95,11 @@ func (d *SyncStatusDashboard) LoadSyncData(
 	adguardClient *api.AdguardClient,
 	dnsmasqClient *api.DNSMasqClient,
 ) error {
-	entries, _, err := statussvc.LoadEntries(context.Background(), app.ClientSet{
+	ctx := d.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	entries, _, err := statussvc.LoadEntries(ctx, app.ClientSet{
 		Caddy:   caddyClient,
 		Unbound: unboundClient,
 		Adguard: adguardClient,

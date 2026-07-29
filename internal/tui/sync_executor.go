@@ -11,6 +11,13 @@ import (
 type TUISyncExecutor struct {
 	clients syncplan.Clients
 	dryRun  bool
+	ctx     context.Context
+}
+
+// WithContext sets the context for sync operations (enables Ctrl+C cancellation).
+func (e *TUISyncExecutor) WithContext(ctx context.Context) *TUISyncExecutor {
+	e.ctx = ctx
+	return e
 }
 
 // NewTUISyncExecutor creates a new TUI sync executor.
@@ -42,7 +49,11 @@ func (e *TUISyncExecutor) SetDryRun(dryRun bool) {
 // ExecuteSyncAction executes a single sync action.
 func (e *TUISyncExecutor) ExecuteSyncAction(action syncplan.Action) error {
 	action.Enabled = true
-	result := syncplan.Apply(context.Background(), e.clients, syncplan.Plan{Actions: []syncplan.Action{action}}, syncplan.ApplyOptions{
+	ctx := e.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	result := syncplan.Apply(ctx, e.clients, syncplan.Plan{Actions: []syncplan.Action{action}}, syncplan.ApplyOptions{
 		DryRun: e.dryRun,
 	})
 	if result.Success {
@@ -59,7 +70,11 @@ func (e *TUISyncExecutor) ExecuteSyncAction(action syncplan.Action) error {
 
 // ExecuteSyncActions executes multiple sync actions and returns a result.
 func (e *TUISyncExecutor) ExecuteSyncActions(actions []syncplan.Action) *syncplan.Result {
-	return syncplan.Apply(context.Background(), e.clients, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{
+	ctx := e.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return syncplan.Apply(ctx, e.clients, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{
 		DryRun: e.dryRun,
 	})
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -23,6 +24,27 @@ type AdguardClient struct {
 	Password string
 	client   *http.Client
 	Prompt   bool // Enable interactive prompting for API calls
+	ctx      context.Context
+}
+
+// WithContext returns a shallow copy of the client with the given context.
+func (a *AdguardClient) WithContext(ctx context.Context) *AdguardClient {
+	return &AdguardClient{
+		BaseURL:  a.BaseURL,
+		Username: a.Username,
+		Password: a.Password,
+		client:   a.client,
+		Prompt:   a.Prompt,
+		ctx:      ctx,
+	}
+}
+
+// getCtx returns the client's context, falling back to context.Background().
+func (a *AdguardClient) getCtx() context.Context {
+	if a.ctx != nil {
+		return a.ctx
+	}
+	return context.Background()
 }
 
 // AdguardConfig represents configuration for AdguardHome API
@@ -143,7 +165,7 @@ func (a *AdguardClient) makeRequest(method, endpoint string, payload interface{}
 		}
 	}
 
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequestWithContext(a.getCtx(), method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
