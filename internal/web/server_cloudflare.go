@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -222,6 +223,8 @@ func (s *Server) handleCloudflareRemoveRoute(w http.ResponseWriter, r *http.Requ
 
 // handleCloudflareRepairDNS creates missing CNAME DNS records for all CF tunnel entries.
 // POST /api/cloudflare/repair-dns
+// If the Accept header includes text/event-stream, streams progress via SSE;
+// otherwise returns a JSON response.
 func (s *Server) handleCloudflareRepairDNS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
@@ -232,33 +235,105 @@ func (s *Server) handleCloudflareRepairDNS(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare not configured"))
 		return
 	}
-	hostnames, err := runtime.Clients.Cloudflare.GetTunnelHostnames()
+
+	// Wrap CF client with request context for cancellation.
+	cfClient := runtime.Clients.Cloudflare.WithContext(r.Context())
+
+	hostnames, err := cfClient.GetTunnelHostnames()
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to list tunnel hostnames: %w", err))
 		return
 	}
-	existing, err := runtime.Clients.Cloudflare.ListManagedDNSRecords()
+	existing, err := cfClient.ListManagedDNSRecords()
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Errorf("failed to list DNS records: %w", err))
 		return
 	}
 
+	// Build the list of missing hostnames (sorted for deterministic output).
+	missing := make([]string, 0, len(hostnames))
+	for hostname := range hostnames {
+		if _, ok := existing[hostname]; !ok {
+			missing = append(missing, hostname)
+		}
+	}
+	sort.Strings(missing)
+
+	// Check if client wants SSE streaming.
+	wantStream := strings.Contains(r.Header.Get("Accept"), "text/event-stream")
+
+	if !wantStream {
+		// Legacy JSON response — process all and return.
+		fixed := []string{}
+		failed := []string{}
+		for _, hostname := range missing {
+			if err := cfClient.EnsureDNSRecord(hostname); err != nil {
+				logging.Warn("repair-dns: failed to create CNAME", "hostname", hostname, "error", err)
+				failed = append(failed, hostname)
+			} else {
+				logging.Info("repair-dns: created CNAME", "hostname", hostname)
+				fixed = append(fixed, hostname)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"fixed":   fixed,
+			"failed":  failed,
+			"skipped":  len(hostnames) - len(missing),
+		})
+		return
+	}
+
+	// SSE streaming — send progress as each record is created.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("streaming not supported"))
+		return
+	}
+
+	// Send initial summary.
+	sendSSEEvent(w, flusher, "start", map[string]interface{}{
+		"total":   len(hostnames),
+		"missing": len(missing),
+	})
+
 	fixed := []string{}
 	failed := []string{}
-	for hostname := range hostnames {
-		if _, ok := existing[hostname]; ok {
-			continue // already has a CNAME
+	for i, hostname := range missing {
+		if r.Context().Err() != nil {
+			break
 		}
-		if err := runtime.Clients.Cloudflare.EnsureDNSRecord(hostname); err != nil {
+		err := cfClient.EnsureDNSRecord(hostname)
+		if err != nil {
 			logging.Warn("repair-dns: failed to create CNAME", "hostname", hostname, "error", err)
 			failed = append(failed, hostname)
+			sendSSEEvent(w, flusher, "progress", map[string]interface{}{
+				"hostname": hostname,
+				"status":   "failed",
+				"error":    err.Error(),
+				"current":  i + 1,
+				"total":    len(missing),
+			})
 		} else {
 			logging.Info("repair-dns: created CNAME", "hostname", hostname)
 			fixed = append(fixed, hostname)
+			sendSSEEvent(w, flusher, "progress", map[string]interface{}{
+				"hostname": hostname,
+				"status":   "fixed",
+				"current":  i + 1,
+				"total":    len(missing),
+			})
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"fixed":  fixed,
-		"failed": failed,
+
+	// Send final result.
+	sendSSEEvent(w, flusher, "done", map[string]interface{}{
+		"fixed":   fixed,
+		"failed":  failed,
+		"skipped": len(hostnames) - len(missing),
 	})
 }

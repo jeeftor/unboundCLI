@@ -195,6 +195,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// sendSSEEvent marshals data as JSON and writes an SSE event with the given
+// event type, then flushes. Safe to call from any SSE handler.
+func sendSSEEvent(w http.ResponseWriter, flusher http.Flusher, eventType string, data interface{}) {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		logging.Warn("Failed to marshal SSE event", "event", eventType, "error", err)
+		return
+	}
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, payload)
+	flusher.Flush()
+}
+
 func (s *Server) runtimeSnapshot() app.Runtime {
 	s.runtimeMu.RLock()
 	defer s.runtimeMu.RUnlock()
@@ -226,6 +238,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/probe", s.handleProbe)
 	s.mux.HandleFunc("/api/dns-probe", s.handleDNSProbe)
 	s.mux.HandleFunc("/api/diagnostics", s.handleDiagnostics)
+	s.mux.HandleFunc("/api/diagnostics/stream", s.handleDiagnosticsStream)
 	s.mux.HandleFunc("/api/diagnostics/prune", s.handleDiagnosticsPrune)
 	s.mux.HandleFunc("/api/logs", s.handleLogs)
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)

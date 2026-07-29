@@ -309,7 +309,7 @@ func (h *multiHandler) WithGroup(name string) slog.Handler {
 }
 
 // Recover is a deferred panic recovery helper for goroutines.
-// It logs the panic and stack trace, preventing the process from crashing.
+// It logs the panic and prevents the process from crashing.
 // Usage:
 //
 //	go func() {
@@ -320,4 +320,15 @@ func Recover(name string) {
 	if r := recover(); r != nil {
 		Error("goroutine panic recovered", "name", name, "panic", r)
 	}
+}
+
+// GoSafe launches a goroutine with panic recovery. The name is used in log
+// messages if a panic occurs. This is a convenience wrapper for:
+//
+//	go func() { defer Recover(name); fn() }()
+func GoSafe(name string, fn func()) {
+	go func() {
+		defer Recover(name)
+		fn()
+	}()
 }

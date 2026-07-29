@@ -58,12 +58,53 @@ export function DiagnosticsTab() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch('/api/diagnostics');
+      // Use SSE stream for progress feedback during loading.
+      const resp = await fetch('/api/diagnostics/stream', {
+        headers: { 'Accept': 'text/event-stream' },
+      });
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}`);
       }
-      const json = await resp.json() as DiagnosticsResponse;
-      setData(json);
+      const reader = resp.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let lastResult: DiagnosticsResponse | null = null;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        let currentEvent = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ') && currentEvent) {
+            try {
+              const payload = JSON.parse(line.slice(6)) as DiagnosticsResponse;
+              if (currentEvent === 'done') {
+                lastResult = payload;
+              } else if (currentEvent === 'error') {
+                throw new Error((payload as unknown as { error?: string }).error ?? 'Unknown error');
+              }
+            } catch (e) {
+              if (e instanceof SyntaxError) {
+                // partial JSON, skip
+              } else {
+                throw e;
+              }
+            }
+            currentEvent = '';
+          }
+        }
+      }
+      if (lastResult) {
+        setData(lastResult);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
