@@ -34,34 +34,37 @@ export async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T>
   return readJSON<T>(await fetch(path, signal ? { signal } : undefined));
 }
 
-export async function postJSON<T>(path: string, payload: unknown): Promise<T> {
+export async function postJSON<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
   return readJSON<T>(await fetch(path, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-UnboundCLI-Token': window.UNBOUNDCLI_WEB_CONFIG?.applyToken || ''
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    ...(signal ? { signal } : {})
   }));
 }
 
-export async function putJSON<T>(path: string, payload: unknown): Promise<T> {
+export async function putJSON<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
   return readJSON<T>(await fetch(path, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       'X-UnboundCLI-Token': window.UNBOUNDCLI_WEB_CONFIG?.applyToken || ''
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    ...(signal ? { signal } : {})
   }));
 }
 
-export async function deleteJSON<T>(path: string): Promise<T> {
+export async function deleteJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   return readJSON<T>(await fetch(path, {
     method: 'DELETE',
     headers: {
       'X-UnboundCLI-Token': window.UNBOUNDCLI_WEB_CONFIG?.applyToken || ''
-    }
+    },
+    ...(signal ? { signal } : {})
   }));
 }
 

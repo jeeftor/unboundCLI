@@ -14,14 +14,15 @@ type CaddyAdguardSyncOptions struct {
 
 // AdguardSyncResult contains the results of the AdguardHome sync operation
 type AdguardSyncResult struct {
-	HostnameMap    map[string]string
-	ToAdd          []string
-	ToUpdate       []string
-	ToRemove       []string
-	ChangesApplied bool
-	SyncRewrites   []api.Rewrite
-	OtherRewrites  []api.Rewrite
-	ExistingCount  int
+	HostnameMap     map[string]string
+	ToAdd           []string
+	ToUpdate        []string
+	ToRemove        []string
+	ChangesApplied  bool
+	SyncRewrites    []api.Rewrite
+	OtherRewrites   []api.Rewrite
+	ExistingCount   int
+	FailedHostnames []string // hostnames that failed during apply
 }
 
 // SyncCaddyWithAdguard synchronizes DNS rewrites between Caddy and AdguardHome
@@ -154,8 +155,9 @@ func SyncCaddyWithAdguard(
 
 	// If not a dry run, perform the actual changes
 	changesApplied := false
+	var failedHostnames []string
 	if !options.DryRun {
-		changesApplied = applyAdguardChanges(
+		changesApplied, failedHostnames = applyAdguardChanges(
 			adguardClient,
 			options,
 			hostnameMap,
@@ -167,26 +169,29 @@ func SyncCaddyWithAdguard(
 	}
 
 	return &AdguardSyncResult{
-		HostnameMap:    hostnameMap,
-		ToAdd:          toAdd,
-		ToUpdate:       toUpdate,
-		ToRemove:       toRemove,
-		ChangesApplied: changesApplied,
-		SyncRewrites:   syncCreatedRewrites,
-		OtherRewrites:  otherRewrites,
-		ExistingCount:  len(existingRewrites),
+		HostnameMap:     hostnameMap,
+		ToAdd:           toAdd,
+		ToUpdate:        toUpdate,
+		ToRemove:        toRemove,
+		ChangesApplied:  changesApplied,
+		SyncRewrites:    syncCreatedRewrites,
+		OtherRewrites:   otherRewrites,
+		ExistingCount:   len(existingRewrites),
+		FailedHostnames: failedHostnames,
 	}, nil
 }
 
-// applyAdguardChanges applies the changes to the AdguardHome DNS rewrites
+// applyAdguardChanges applies the changes to the AdguardHome DNS rewrites.
+// Returns (changesApplied, failedHostnames).
 func applyAdguardChanges(
 	client *api.AdguardClient,
 	options CaddyAdguardSyncOptions,
 	hostnameMap map[string]string,
 	syncRewriteMap map[string]api.Rewrite,
 	toAdd, toUpdate, toRemove []string,
-) bool {
+) (bool, []string) {
 	changesApplied := false
+	var failed []string
 
 	// Add new rewrites
 	for _, hostname := range toAdd {
@@ -202,6 +207,7 @@ func applyAdguardChanges(
 				"domain", hostname,
 				"answer", serverIP,
 			)
+			failed = append(failed, hostname)
 			continue
 		}
 
@@ -231,6 +237,7 @@ func applyAdguardChanges(
 				"error", err,
 				"domain", hostname,
 			)
+			failed = append(failed, hostname)
 			continue
 		}
 
@@ -252,6 +259,7 @@ func applyAdguardChanges(
 				"error", err,
 				"domain", hostname,
 			)
+			failed = append(failed, hostname)
 			continue
 		}
 
@@ -264,5 +272,5 @@ func applyAdguardChanges(
 		logging.Info("No changes were needed - AdguardHome rewrites are in sync")
 	}
 
-	return changesApplied
+	return changesApplied, failed
 }

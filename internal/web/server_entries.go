@@ -400,6 +400,8 @@ const entriesCacheTTL = 30 * time.Second
 func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
 	// Check short-lived cache first — avoids re-fetching from all APIs when
 	// multiple endpoints (entries, diagnostics, plan, auth) need the same data.
+	// Hold lock for the entire check-and-return to avoid race with concurrent
+	// invalidation.
 	s.entriesMu.Lock()
 	if time.Since(s.entriesCacheAt) < entriesCacheTTL && s.entriesCache != nil {
 		entries := s.entriesCache

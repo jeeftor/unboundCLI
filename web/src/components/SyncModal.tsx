@@ -87,6 +87,7 @@ export function SyncModal({
   // flip immediately without waiting for the next data refresh.
   const [removingService, setRemovingService] = useState<string | null>(null);
   const [localRemoved, setLocalRemoved] = useState<Set<string>>(new Set());
+  const [confirmSync, setConfirmSync] = useState<{ service: string; apply: () => Promise<void> } | null>(null);
 
   // Live server log streaming -- poll /api/logs while an operation is in progress.
   const [liveLog, setLiveLog] = useState<string>('');
@@ -97,6 +98,7 @@ export function SyncModal({
     if (open) {
       setLocalRemoved(new Set());
       setRemovingService(null);
+      setConfirmSync(null);
       setLiveLog('');
       logCursorRef.current = 0;
     }
@@ -182,13 +184,30 @@ export function SyncModal({
   const runServiceSync = async (serviceKey: string) => {
     setSyncService(serviceKey);
     const ok = await onPreviewFor(serviceKey, hostname);
-    if (ok) { await onSync(); onRefresh(); }
+    if (ok) {
+      setConfirmSync({
+        service: serviceKey,
+        apply: async () => { await onSync(); onRefresh(); }
+      });
+    }
   };
 
   const runSyncAll = async () => {
     setSyncService('all');
     const ok = await onPreviewFor('all', hostname);
-    if (ok) { await onSync(); onRefresh(); }
+    if (ok) {
+      setConfirmSync({
+        service: 'all',
+        apply: async () => { await onSync(); onRefresh(); }
+      });
+    }
+  };
+
+  const executeConfirmedSync = async () => {
+    if (!confirmSync) return;
+    const fn = confirmSync.apply;
+    setConfirmSync(null);
+    await fn();
   };
 
   // Any service with a real entry that can be removed.
@@ -210,6 +229,30 @@ export function SyncModal({
           </div>
         </div>
         <div className="modal-body sync-modal-body">
+          {confirmSync && (
+            <div className="sync-confirm-banner" style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '10px 14px',
+              margin: '0 0 12px 0',
+              border: '1px solid var(--border-warn, #e8a838)',
+              borderRadius: '8px',
+              background: 'var(--bg-warn, rgba(232,168,56,0.08))',
+            }}>
+              <CircleAlert size={16} style={{ color: 'var(--text-warn, #e8a838)', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: '13px' }}>
+                Apply sync for <strong>{confirmSync.service === 'all' ? 'all services' : confirmSync.service}</strong>?
+                This will make changes to your DNS configuration.
+              </span>
+              <button type="button" className="btn-primary" onClick={() => void executeConfirmedSync()} disabled={busy}>
+                Apply
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setConfirmSync(null)} disabled={busy}>
+                Cancel
+              </button>
+            </div>
+          )}
           {hostnameDecision && (
             <HostnameDecisionPanel decision={hostnameDecision} hostname={hostname} suppressed={suppressed} onToggleSuppress={onToggleSuppress} />
           )}

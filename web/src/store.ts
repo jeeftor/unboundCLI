@@ -390,9 +390,30 @@ export const SERVICE_META: Record<string, { label: string; icon: string }> = {
 let runtimeSequence = 0;
 let eventSource: EventSource | null = null;
 let configFetched = false;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let reconnectDelay = 1000;
+let pendingOnDataChanged: (() => void) | undefined;
+
+function scheduleReconnect() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+    void refreshEntries(pendingOnDataChanged);
+  }, reconnectDelay);
+}
+
+export function cancelReconnect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  reconnectDelay = 1000;
+}
 
 export async function refreshEntries(onDataChanged?: () => void) {
   const store = useStore.getState();
+  pendingOnDataChanged = onDataChanged;
 
   // Close any existing SSE connection.
   if (eventSource) {
@@ -444,6 +465,8 @@ export async function refreshEntries(onDataChanged?: () => void) {
 
   es.addEventListener('done', (e: MessageEvent) => {
     if (requestID !== runtimeSequence) return;
+    // Reset reconnect delay on successful completion.
+    reconnectDelay = 1000;
     try {
       const data = JSON.parse(e.data) as EntriesResponse;
       useStore.getState().setEntries(data.entries || []);
@@ -479,8 +502,9 @@ export async function refreshEntries(onDataChanged?: () => void) {
       }
       return;
     }
-    if (requestID === runtimeSequence && es.readyState === EventSource.CLOSED) {
-      useStore.getState().setMessage('Connection lost — retry');
+    // Native error — connection lost. Auto-reconnect with backoff.
+    if (requestID === runtimeSequence) {
+      useStore.getState().setMessage(`Connection lost — retrying in ${Math.round(reconnectDelay / 1000)}s...`);
       useStore.getState().setMessageKind('error');
       const shouldHold = window.UNBOUNDCLI_TEST_HOOKS === true &&
         new URLSearchParams(window.location.search).get('e2e')?.split(',').includes('holdloading');
@@ -488,6 +512,10 @@ export async function refreshEntries(onDataChanged?: () => void) {
     }
     es.close();
     eventSource = null;
+    // Schedule auto-reconnect unless this request was superseded.
+    if (requestID === runtimeSequence) {
+      scheduleReconnect();
+    }
   });
 
   void configPromise;

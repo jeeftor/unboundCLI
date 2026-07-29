@@ -87,8 +87,7 @@ signs:
       - "sign-blob"
       - "--yes"
       - "--oidc-issuer=https://token.actions.githubusercontent.com"
-      - "--output-signature=${signature}"
-      - "--output-certificate=${certificate}"
+      - "--bundle=${artifact}.bundle"
       - "${artifact}"
     artifacts: checksum
     output: true
@@ -100,8 +99,7 @@ signs:
       - "sign-blob"
       - "--yes"
       - "--oidc-issuer=https://token.actions.githubusercontent.com"
-      - "--output-signature=${signature}"
-      - "--output-certificate=${certificate}"
+      - "--bundle=${artifact}.bundle"
       - "${artifact}"
     artifacts: sbom
     output: true

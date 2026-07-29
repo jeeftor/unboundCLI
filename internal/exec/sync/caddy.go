@@ -14,15 +14,17 @@ type CaddySyncOptions struct {
 
 // SyncResult contains the results of the sync operation
 type SyncResult struct {
-	HostnameMap    map[string]string
-	ToAdd          []string
-	ToUpdate       []string
-	ToUpdateDesc   []string
-	ToRemove       []string
-	ChangesApplied bool
-	SyncOverrides  map[string]api.DNSOverride
-	OtherOverrides map[string]api.DNSOverride
-	ExistingCount  int
+	HostnameMap     map[string]string
+	ToAdd           []string
+	ToUpdate        []string
+	ToUpdateDesc    []string
+	ToRemove        []string
+	ChangesApplied  bool
+	SyncOverrides   map[string]api.DNSOverride
+	OtherOverrides  map[string]api.DNSOverride
+	ExistingCount   int
+	FailedHostnames []string // hostnames that failed during apply
+	ApplyFailed     bool     // true if ApplyChanges (service restart) failed
 }
 
 // SyncCaddyWithUnbound synchronizes DNS entries between Caddy and Unbound
@@ -140,8 +142,10 @@ func syncHostnamesWithUnbound(
 
 	// If not a dry run, perform the actual changes
 	changesApplied := false
+	var applyFailed bool
+	var failedHostnames []string
 	if !options.DryRun {
-		changesApplied = applyUnboundChanges(
+		changesApplied, applyFailed, failedHostnames = applyUnboundChanges(
 			unboundClient,
 			options,
 			hostnameMap,
@@ -154,27 +158,31 @@ func syncHostnamesWithUnbound(
 	}
 
 	return &SyncResult{
-		HostnameMap:    hostnameMap,
-		ToAdd:          toAdd,
-		ToUpdate:       toUpdate,
-		ToUpdateDesc:   toUpdateDesc,
-		ToRemove:       toRemove,
-		ChangesApplied: changesApplied,
-		SyncOverrides:  syncCreatedOverrides,
-		OtherOverrides: otherOverrides,
-		ExistingCount:  len(existingOverrides),
+		HostnameMap:     hostnameMap,
+		ToAdd:           toAdd,
+		ToUpdate:        toUpdate,
+		ToUpdateDesc:    toUpdateDesc,
+		ToRemove:        toRemove,
+		ChangesApplied:  changesApplied,
+		SyncOverrides:   syncCreatedOverrides,
+		OtherOverrides:  otherOverrides,
+		ExistingCount:   len(existingOverrides),
+		FailedHostnames: failedHostnames,
+		ApplyFailed:     applyFailed,
 	}, nil
 }
 
 // applyUnboundChanges applies planned changes to the Unbound DNS server.
+// Returns (changesApplied, applyFailed, failedHostnames).
 func applyUnboundChanges(
 	client *api.Client,
 	options unboundSyncOptions,
 	hostnameMap map[string]string,
 	syncCreatedOverrides map[string]api.DNSOverride,
 	toAdd, toUpdate, toUpdateDesc, toRemove []string,
-) bool {
+) (bool, bool, []string) {
 	changesApplied := false
+	var failed []string
 
 	// Add new entries
 	for _, hostname := range toAdd {
@@ -202,6 +210,7 @@ func applyUnboundChanges(
 				"domain",
 				domain,
 			)
+			failed = append(failed, hostname)
 			continue
 		}
 
@@ -233,6 +242,7 @@ func applyUnboundChanges(
 				"domain",
 				override.Domain,
 			)
+			failed = append(failed, hostname)
 			continue
 		}
 
@@ -262,6 +272,7 @@ func applyUnboundChanges(
 				"domain",
 				override.Domain,
 			)
+			failed = append(failed, hostname)
 			continue
 		}
 
@@ -288,24 +299,29 @@ func applyUnboundChanges(
 				"domain",
 				override.Domain,
 			)
+			failed = append(failed, hostname)
 			continue
 		}
 
 		changesApplied = true
 	}
 
-	// Apply changes if needed
+	// Apply changes if needed (service restart).
+	// Even if some individual operations failed, we still need to apply
+	// the ones that succeeded.
+	applyFailed := false
 	if changesApplied {
 		logging.Info("Applying changes to Unbound")
 		err := client.ApplyChanges()
 		if err != nil {
-			logging.Error("Failed to apply changes", "error", err)
-			return false
+			logging.Error("Failed to apply changes (service restart)", "error", err)
+			applyFailed = true
+		} else {
+			logging.Info("Changes applied successfully")
 		}
-		logging.Info("Changes applied successfully")
 	} else {
 		logging.Info("No changes were needed - everything is in sync")
 	}
 
-	return changesApplied
+	return changesApplied, applyFailed, failed
 }
