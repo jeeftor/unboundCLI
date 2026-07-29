@@ -37,8 +37,8 @@ help:
 
 all: help
 
-# Build the application
-build:
+# Build the application (depends on web UI assets being built first)
+build: web-build
 	@echo "Building $(BINARY_NAME) for $(GOOS)/$(GOARCH)..."
 	go build $(LDFLAGS) -o $(BINARY_NAME)
 

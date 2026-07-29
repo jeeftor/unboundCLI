@@ -89,12 +89,11 @@ func syncHostnamesWithUnbound(
 		}
 
 		// Split hostname into host and domain parts
-		host, domain := SplitHostname(hostname)
+		_, domain := SplitHostname(hostname)
 		if domain == "" {
 			logging.Warn("Skipping invalid hostname", "hostname", hostname)
 			continue
 		}
-		_ = host // host is used by applyUnboundChanges via SplitHostname again
 
 		// Check if this hostname already exists in Unbound
 		override, existsInSync := syncCreatedOverrides[hostname]

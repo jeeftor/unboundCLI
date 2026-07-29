@@ -17,12 +17,6 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
 )
 
-// DiscoveryOptions controls which auth sources are queried.
-type DiscoveryOptions struct {
-	// If a client is nil, that source is skipped and the corresponding
-	// HostAuth fields are left empty.
-}
-
 // StreamEvent is a single event emitted by DiscoverStream.
 type StreamEvent struct {
 	Type string `json:"type"` // "base", "enrich", "done", "error"

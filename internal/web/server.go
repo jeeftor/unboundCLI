@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -510,7 +511,9 @@ func (s *Server) handleConfigRaw(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("write config: %w", err))
 			return
 		}
-		_ = s.reloadRuntimeFromConfig(cfg)
+		if err := s.reloadRuntimeFromConfig(cfg); err != nil {
+			logging.Warn("Failed to reload runtime after config save", "error", err)
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"path": path, "status": "saved"})
 
 	default:
@@ -1710,7 +1713,9 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				if unboundRemoved > 0 {
-					_ = runtime.Clients.Unbound.ApplyChanges()
+					if err := runtime.Clients.Unbound.ApplyChanges(); err != nil {
+						logging.Warn("Failed to apply Unbound changes after override removal", "error", err)
+					}
 					msgs = append(msgs, fmt.Sprintf("removed %d Unbound override(s)", unboundRemoved))
 				}
 			}
@@ -1813,11 +1818,15 @@ func (s *Server) handleAuthInventory(w http.ResponseWriter, r *http.Request) {
 }
 
 func sortHostAuthByName(hosts []models.HostAuth) {
-	for i := 1; i < len(hosts); i++ {
-		for j := i; j > 0 && hosts[j-1].Hostname > hosts[j].Hostname; j-- {
-			hosts[j-1], hosts[j] = hosts[j], hosts[j-1]
+	slices.SortFunc(hosts, func(a, b models.HostAuth) int {
+		if a.Hostname < b.Hostname {
+			return -1
 		}
-	}
+		if a.Hostname > b.Hostname {
+			return 1
+		}
+		return 0
+	})
 }
 
 // handleAuthInventoryStream streams auth discovery results via Server-Sent Events.
@@ -2392,7 +2401,9 @@ func (s *Server) handleDiagnosticsPrune(w http.ResponseWriter, r *http.Request) 
 							}
 						}
 						if deleted > 0 {
-							_ = runtime.Clients.Unbound.ApplyChanges()
+							if err := runtime.Clients.Unbound.ApplyChanges(); err != nil {
+								logging.Warn("Failed to apply Unbound changes during prune", "error", err)
+							}
 							action.Success = true
 							action.Detail = fmt.Sprintf("Deleted %d Unbound override(s) for %s", deleted, hostname)
 						} else {
