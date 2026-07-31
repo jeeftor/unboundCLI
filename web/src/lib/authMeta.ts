@@ -143,10 +143,20 @@ export function detectAuthPattern(auth: {
   lan_auth: string;
   has_forward_auth: boolean;
   conditional_forward_auth?: boolean;
+  required_forward_auth?: boolean;
   cf_access_app_id?: string;
   cf_access_decisions?: string[];
   notes?: string[];
 }): AuthPattern | null {
+  // Check for missing required forward_auth first — this is a critical error.
+  if (auth.required_forward_auth && !auth.has_forward_auth) {
+    return {
+      name: 'Missing Forward Auth',
+      verdict: 'error',
+      summary: 'forward_auth is required but missing from Caddy',
+      detail: 'This app depends on Authentik headers (X-Authentik-Username, etc.) for user identity. Without forward_auth in the Caddyfile, the app cannot identify logged-in users and will return 403 even when CF Access is active. Add `import forward_auth` and `reverse_proxy /outpost.goauthentik.io/* 192.168.1.112:9000` to the handle block.',
+    };
+  }
   if (!auth.wan_exposed) {
     // LAN-only host
     if (auth.lan_auth === 'forward_auth') {

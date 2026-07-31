@@ -70,6 +70,7 @@ type EntryResponse struct {
 	HasForwardAuth            bool                     `json:"has_forward_auth"`
 	HasConditionalForwardAuth bool                     `json:"has_conditional_forward_auth,omitempty"`
 	HasAuthBypass             bool                     `json:"has_auth_bypass_risk"`
+	MissingRequiredForwardAuth bool                    `json:"missing_required_forward_auth,omitempty"`
 }
 
 type PlanResponse struct {
@@ -481,6 +482,7 @@ func entryResponses(entries []*models.Entry) []EntryResponse {
 			HasForwardAuth:            entry.CaddyRoute.HasForwardAuth,
 			HasConditionalForwardAuth: entry.CaddyRoute.ConditionalForwardAuth,
 			HasAuthBypass:             entry.HasAuthBypassRisk(),
+			MissingRequiredForwardAuth: entry.Auth != nil && entry.Auth.IsMissingRequiredForwardAuth(),
 		})
 	}
 	return out

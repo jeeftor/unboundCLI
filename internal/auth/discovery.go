@@ -329,6 +329,11 @@ func buildBaseAuth(e *models.Entry) *models.HostAuth {
 		Status:                 models.AuthStatusUnknown,
 	}
 
+	// Check the forward_auth registry — some apps depend on Authentik
+	// headers for identity and will break without forward_auth even if
+	// CF Access is active.
+	ha.RequiredForwardAuth = RequiresForwardAuth(e.Hostname)
+
 	// If Caddy has forward_auth, the LAN auth is forward_auth.
 	if e.CaddyRoute.HasForwardAuth {
 		ha.LANAuth = models.LANAuthForwardAuth
@@ -599,6 +604,13 @@ func classifyLANAuth(ha *models.HostAuth) {
 
 // classifyStatus determines the overall auth status and appends relevant notes.
 func classifyStatus(ha *models.HostAuth, notes []string) []string {
+	// Check for missing forward_auth first — this is a critical error for
+	// apps that depend on Authentik headers for user identity.
+	if ha.IsMissingRequiredForwardAuth() {
+		ha.Status = models.AuthStatusError
+		notes = append(notes, "CRITICAL: forward_auth is required by this app but missing from Caddy — the app cannot identify logged-in users (will return 403)")
+		return notes
+	}
 	if ha.Status == models.AuthStatusError {
 		return notes
 	}
