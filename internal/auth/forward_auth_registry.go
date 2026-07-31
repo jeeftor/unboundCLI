@@ -20,6 +20,7 @@ import (
 // forward_auth. These are apps that read Authentik headers for identity.
 var forwardAuthHosts = map[string]bool{
 	"users.vookie.net": true,
+	"sb.vookie.net":    true,
 }
 
 var (
