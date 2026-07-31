@@ -102,6 +102,12 @@ type HostAuth struct {
 	// This prevents the double-login pattern even without a CF Access bypass.
 	ConditionalForwardAuth bool `json:"conditional_forward_auth,omitempty"`
 
+	// RequiredForwardAuth indicates that this hostname requires forward_auth
+	// (e.g., the app depends on Authentik headers for user identity) but it
+	// is missing from the Caddy config. This is set by comparing against a
+	// registry of known forward_auth-dependent apps.
+	RequiredForwardAuth bool `json:"required_forward_auth,omitempty"`
+
 	// Whether this host is WAN-exposed (has a CF tunnel ingress rule)
 	WANExposed bool `json:"wan_exposed"`
 
@@ -124,4 +130,10 @@ func (h *HostAuth) HasAuthentikProvider() bool {
 // this causes the Pattern F double-login anti-pattern.
 func (h *HostAuth) IsDoubleLoginRisk() bool {
 	return h.WANAuth == WANAuthCFAccess && h.HasForwardAuth && h.WANExposed && !h.ConditionalForwardAuth
+}
+
+// IsMissingRequiredForwardAuth returns true if this host requires
+// forward_auth (per the registry) but it's not present in the Caddy config.
+func (h *HostAuth) IsMissingRequiredForwardAuth() bool {
+	return h.RequiredForwardAuth && !h.HasForwardAuth
 }

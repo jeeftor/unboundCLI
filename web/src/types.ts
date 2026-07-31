@@ -77,6 +77,7 @@ export type Entry = {
   has_forward_auth: boolean;
   has_conditional_forward_auth?: boolean;
   has_auth_bypass_risk: boolean;
+  missing_required_forward_auth?: boolean;
 };
 
 export type EntriesResponse = {
@@ -213,6 +214,7 @@ export type HostAuth = {
   authentik_outpost_uuid?: string;
   has_forward_auth: boolean;
   conditional_forward_auth?: boolean;
+  required_forward_auth?: boolean;
   wan_exposed: boolean;
   notes?: string[];
   // Frontend-only: marks hosts that have base auth but are awaiting
