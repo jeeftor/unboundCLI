@@ -2,9 +2,9 @@ name: Lint
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ master ]
     types: [ opened, synchronize, reopened ]
   workflow_dispatch:
 
@@ -34,5 +34,7 @@ jobs:
           go install golang.org/x/tools/cmd/goimports@latest
           go install github.com/segmentio/golines@latest
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run go mod tidy
+        run: go mod tidy
       - name: Run pre-commit
         run: pre-commit run --all-files

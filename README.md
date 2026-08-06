@@ -1,9 +1,11 @@
 # 🌐 caddy-dns-sync
 
-[![Go Version](https://img.shields.io/badge/Go-1.18+-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.25-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/jeeftor/caddy-dns-sync?style=for-the-badge&logo=github)](https://github.com/jeeftor/caddy-dns-sync/releases)
 [![SLSA 3](https://img.shields.io/badge/SLSA-Level%203-green?style=for-the-badge)](https://slsa.dev)
+[![Build](https://github.com/jeeftor/unboundCLI/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/jeeftor/unboundCLI/actions/workflows/build.yml)
+[![Security](https://github.com/jeeftor/unboundCLI/actions/workflows/security.yml/badge.svg?branch=master)](https://github.com/jeeftor/unboundCLI/actions/workflows/security.yml)
 
 > 🚀 A CLI + local web UI that uses Caddy as the source of truth for hostnames and synchronizes them across Unbound DNS (OPNSense), AdGuard Home, dnsmasq/DHCP, and Cloudflare Tunnels — with a git-backed Caddyfile editor.
 

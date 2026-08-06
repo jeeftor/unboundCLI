@@ -3,7 +3,7 @@ name: Update Changelog
 on:
   push:
     branches:
-      - main
+      - master
   # Also update the changelog when preparing for a release
   workflow_dispatch:
     inputs:
