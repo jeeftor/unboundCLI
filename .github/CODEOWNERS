@@ -1,0 +1,10 @@
+# Default owner
+* @jeeftor
+
+# Critical paths require review
+/.github/workflows/ @jeeftor
+/Makefile @jeeftor
+/.goreleaser.yaml @jeeftor
+/.slsa-goreleaser.yml @jeeftor
+/go.mod @jeeftor
+/go.sum @jeeftor
