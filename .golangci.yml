@@ -79,7 +79,6 @@ linters:
     - goerr113     # Golang linter to check the errors handling expressions
     - gomnd        # An analyzer to detect magic numbers
     - goprintffuncname # Checks that printf-like functions are named with `f` at the end
-    - gosec        # Inspects source code for security problems
     - lll          # Reports long lines
     - nakedret     # Finds naked returns in functions greater than a specified function length
     - nolintlint   # Reports ill-formed or insufficient nolint directives
