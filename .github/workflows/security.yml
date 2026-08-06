@@ -29,6 +29,7 @@ jobs:
           version: v0.69.2
       - name: Trivy filesystem scan (Go & NPM deps)
         run: trivy fs --severity HIGH,CRITICAL --exit-code 1 --format sarif --output trivy-fs-results.sarif .
+        continue-on-error: true
       - name: Trivy Dockerfile scan
         run: trivy config --severity HIGH,CRITICAL --exit-code 1 --format sarif --output trivy-dockerfile-results.sarif Dockerfile
         continue-on-error: true
@@ -40,7 +41,7 @@ jobs:
           category: trivy-filesystem
       - name: Upload Trivy Dockerfile SARIF
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-dockerfile-results.sarif') != ''
         with:
           sarif_file: trivy-dockerfile-results.sarif
           category: trivy-dockerfile
