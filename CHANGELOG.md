@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- add SBOM workflow with SPDX + CycloneDX ([4590a68](4590a68ca84cbcdc1144a88fcc5ca5f0617f30bf))
+
 - add sb.vookie.net to forward_auth registry ([649c6cc](649c6cca39b65ccf12737fba986d0594aeb9cc09))
 
 - add forward_auth registry to detect missing auth regressions ([66c9df2](66c9df25888e3295a1f98d7c3e97fda20e51064f))
@@ -42,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([84a7a02](84a7a020382fc782482289ea9b16dde19d8a2c48))
 
 - update changelog ([b84171a](b84171a1447e86ef425a983cbf6ac1cc090b779b))
 
