@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- skip internal/status tests (require OPNSense/Caddy server) ([2cbf174](2cbf17480d01057ad820cc676336e0757035b16d))
+
 - install Caddy for caddyeditor tests, skip race test ([d310be7](d310be71b95c66980839658200f89f2cc92d51f0))
 
 - fix EOF newlines in store.ts and CHANGELOG.md ([e680c51](e680c517f303a0cb5ab36b0ad1b3603adc1f11f2))
@@ -36,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([8dbf817](8dbf8178c05d3692d1dc7ffcf001024aa2886b4b))
 
 - update changelog ([8d0ea68](8d0ea688d3f8139a4dcde4ff9a39178395c85528))
 
