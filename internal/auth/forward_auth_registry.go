@@ -25,8 +25,8 @@ var forwardAuthHosts = map[string]bool{
 
 var (
 	registryMu     sync.RWMutex
-	registryLoaded  bool
-	registryExtras  map[string]bool
+	registryLoaded bool
+	registryExtras map[string]bool
 )
 
 // forwardAuthConfig is the YAML structure for the override file.

@@ -28,15 +28,15 @@ jobs:
 
       - name: Install Git-Cliff
         uses: orhun/git-cliff-action@v4
+        id: git-cliff
         with:
           config: cliff.toml
-          args: --verbose
+          args: --verbose --output CHANGELOG.md
 
-      - name: Generate changelog
+      - name: Prepend header
         run: |
-          echo "# Changelog" > CHANGELOG.md
-          echo "" >> CHANGELOG.md
-          git cliff --output CHANGELOG.md
+          { echo "# Changelog"; echo ""; cat CHANGELOG.md; } > CHANGELOG.md.tmp
+          mv CHANGELOG.md.tmp CHANGELOG.md
 
       - name: Commit and push changes
         run: |

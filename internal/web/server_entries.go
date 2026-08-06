@@ -55,22 +55,22 @@ type CloudflareStatusResponse struct {
 }
 
 type EntryResponse struct {
-	Hostname                  string                   `json:"hostname"`
-	CaddyUpstream             string                   `json:"caddy_upstream"`
-	CaddyIP                   string                   `json:"caddy_ip"`
-	CaddyPort                 string                   `json:"caddy_port"`
-	UnboundStatus             ServiceStatusResponse    `json:"unbound_status"`
-	AdguardStatus             ServiceStatusResponse    `json:"adguard_status"`
-	DHCPStatus                DHCPStatusResponse       `json:"dhcp_status"`
-	DNSResolved               string                   `json:"dns_resolved"`
-	CloudflareStatus          CloudflareStatusResponse `json:"cloudflare_status"`
-	OverallStatus             models.SyncStatus        `json:"overall_status"`
-	StatusLabel               string                   `json:"status_label"`
-	DataSource                string                   `json:"data_source"`
-	HasForwardAuth            bool                     `json:"has_forward_auth"`
-	HasConditionalForwardAuth bool                     `json:"has_conditional_forward_auth,omitempty"`
-	HasAuthBypass             bool                     `json:"has_auth_bypass_risk"`
-	MissingRequiredForwardAuth bool                    `json:"missing_required_forward_auth,omitempty"`
+	Hostname                   string                   `json:"hostname"`
+	CaddyUpstream              string                   `json:"caddy_upstream"`
+	CaddyIP                    string                   `json:"caddy_ip"`
+	CaddyPort                  string                   `json:"caddy_port"`
+	UnboundStatus              ServiceStatusResponse    `json:"unbound_status"`
+	AdguardStatus              ServiceStatusResponse    `json:"adguard_status"`
+	DHCPStatus                 DHCPStatusResponse       `json:"dhcp_status"`
+	DNSResolved                string                   `json:"dns_resolved"`
+	CloudflareStatus           CloudflareStatusResponse `json:"cloudflare_status"`
+	OverallStatus              models.SyncStatus        `json:"overall_status"`
+	StatusLabel                string                   `json:"status_label"`
+	DataSource                 string                   `json:"data_source"`
+	HasForwardAuth             bool                     `json:"has_forward_auth"`
+	HasConditionalForwardAuth  bool                     `json:"has_conditional_forward_auth,omitempty"`
+	HasAuthBypass              bool                     `json:"has_auth_bypass_risk"`
+	MissingRequiredForwardAuth bool                     `json:"missing_required_forward_auth,omitempty"`
 }
 
 type PlanResponse struct {
@@ -476,12 +476,12 @@ func entryResponses(entries []*models.Entry) []EntryResponse {
 				HasAccessPolicy:  entry.CloudflareStatus.HasAccessPolicy,
 				HasDNSRecord:     entry.CloudflareStatus.HasDNSRecord,
 			},
-			OverallStatus:             entry.OverallStatus,
-			StatusLabel:               entry.OverallStatus.Label(),
-			DataSource:                entry.DataSource,
-			HasForwardAuth:            entry.CaddyRoute.HasForwardAuth,
-			HasConditionalForwardAuth: entry.CaddyRoute.ConditionalForwardAuth,
-			HasAuthBypass:             entry.HasAuthBypassRisk(),
+			OverallStatus:              entry.OverallStatus,
+			StatusLabel:                entry.OverallStatus.Label(),
+			DataSource:                 entry.DataSource,
+			HasForwardAuth:             entry.CaddyRoute.HasForwardAuth,
+			HasConditionalForwardAuth:  entry.CaddyRoute.ConditionalForwardAuth,
+			HasAuthBypass:              entry.HasAuthBypassRisk(),
 			MissingRequiredForwardAuth: entry.Auth != nil && entry.Auth.IsMissingRequiredForwardAuth(),
 		})
 	}

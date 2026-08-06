@@ -278,7 +278,7 @@ func (s *Server) handleCloudflareRepairDNS(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"fixed":   fixed,
 			"failed":  failed,
-			"skipped":  len(hostnames) - len(missing),
+			"skipped": len(hostnames) - len(missing),
 		})
 		return
 	}
