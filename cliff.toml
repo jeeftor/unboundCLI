@@ -37,7 +37,7 @@ split_commits = false
 # Filter out commits that didn't change any files
 filter_empty = true
 # Glob patterns for matching commits that should be filtered out
-filter_commits = []
+filter_commits = false
 # Regular expression for skipping tags
 skip_tags = "beta|alpha|test"
 # Regular expression for ignoring tags
