@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- install Caddy for caddyeditor tests, skip race test ([d310be7](d310be71b95c66980839658200f89f2cc92d51f0))
+
 - fix EOF newlines in store.ts and CHANGELOG.md ([e680c51](e680c517f303a0cb5ab36b0ad1b3603adc1f11f2))
 
 - fix trailing whitespace in built/static files, changelog push perms ([553f9f6](553f9f61976e8795af2b155d5c72a58791b03fd9))
@@ -34,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([8d0ea68](8d0ea688d3f8139a4dcde4ff9a39178395c85528))
 
 - update changelog ([a9b2345](a9b234537538775f436efa0e131f29fe77aaa9d0))
 
