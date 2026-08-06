@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-08-06
 
 ### <!-- 0 -->🚀 Features
 
@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 1 -->🐛 Bug Fixes
+
+- add evaluated-envs to SLSA Go builder ([a118af2](a118af2b218b620a5649ea460d7ebbf951574ada))
 
 - skip internal/status tests (require OPNSense/Caddy server) ([2cbf174](2cbf17480d01057ad820cc676336e0757035b16d))
 
@@ -38,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([da99af8](da99af8b566ff6ba21e70795f06415329d18b516))
 
 - update changelog ([8dbf817](8dbf8178c05d3692d1dc7ffcf001024aa2886b4b))
 
