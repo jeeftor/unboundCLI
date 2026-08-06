@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"slices"
+
 	"github.com/jeeftor/caddy-dns-sync/internal/auth"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
-	"slices"
 )
 
 // ─── Auth Inventory Types ───────────────────────────────────────────────────
