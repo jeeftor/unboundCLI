@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### <!-- 0 -->🚀 Features
+
+- cosign-sign Go binary, add CODEOWNERS, Scorecard, Go 1.26 ([886e0dc](886e0dc1cbabe4a6215a0992ab0e164881526003))
+
+
+### <!-- 3 -->📚 Documentation
+
+- update changelog ([2d1e77a](2d1e77a005977bd50dc4425ba690b46a55840470))
+
+
 ## [0.5.0] - 2026-08-06
 
 ### <!-- 0 -->🚀 Features
