@@ -2,9 +2,9 @@ name: Security
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ master ]
     types: [ opened, synchronize, reopened ]
   schedule:
     # Monday 6:00 UTC

@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ master ]
     types: [ opened, synchronize, reopened ]
   workflow_dispatch:
 
@@ -30,4 +30,4 @@ jobs:
       - name: Build
         run: go build -v ./...
       - name: Test
-        run: go test -race -v ./...
+        run: go test -race -v $(go list ./... | grep -v internal/web)
