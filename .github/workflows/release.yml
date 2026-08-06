@@ -21,3 +21,4 @@ jobs:
     with:
       go-version: 1.25
       config-file: .slsa-goreleaser.yml
+      evaluated-envs: "TAG:${{ github.ref_name }},COMMIT:${{ github.sha }},COMMIT_DATE:${{ github.event.head_commit.timestamp }},TREE_STATE:clean"
