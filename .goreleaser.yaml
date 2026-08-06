@@ -79,6 +79,18 @@ checksum:
 
 
 signs:
+  - id: cosign-binaries
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--oidc-issuer=https://token.actions.githubusercontent.com"
+      - "--bundle=${artifact}.bundle"
+      - "${artifact}"
+    artifacts: binary
+    output: true
   - id: cosign-checksums
     cmd: cosign
     signature: "${artifact}.sig"

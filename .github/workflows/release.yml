@@ -19,6 +19,41 @@ jobs:
       actions: read
     uses: slsa-framework/slsa-github-generator/.github/workflows/builder_go_slsa3.yml@v2.1.0
     with:
-      go-version: 1.25
+      go-version: 1.26
       config-file: .slsa-goreleaser.yml
       evaluated-envs: "TAG: ${{ github.ref_name }},COMMIT: ${{ github.sha }},COMMIT_DATE: ${{ github.event.repository.pushed_at }},TREE_STATE: clean"
+
+  cosign-sign:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: caddy-dns-sync-linux-amd64
+          path: ./artifacts
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign binary with cosign
+        working-directory: ./artifacts
+        run: |
+          BINARY=$(find . -type f ! -name "*.intoto.jsonl" ! -name "*.sig" ! -name "*.pem" ! -name "*.bundle" | head -1)
+          echo "Signing: $BINARY"
+          cosign sign-blob --yes \
+            --oidc-issuer=https://token.actions.githubusercontent.com \
+            --bundle="${BINARY}.bundle" \
+            --output-signature="${BINARY}.sig" \
+            --output-certificate="${BINARY}.pem" \
+            "$BINARY"
+
+      - name: Upload signatures to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: ./artifacts
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" *.sig *.pem *.bundle --clobber
