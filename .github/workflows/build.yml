@@ -26,7 +26,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
       - name: Build web UI
-        run: cd web && npm ci && npm run build
+        run: cd web && npm ci --legacy-peer-deps && npm run build
       - name: Build
         run: go build -v ./...
       - name: Test

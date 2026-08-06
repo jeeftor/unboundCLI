@@ -26,7 +26,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
       - name: Install web deps
-        run: cd web && npm ci
+        run: cd web && npm ci --legacy-peer-deps
       - name: Install pre-commit
         run: pip install pre-commit
       - name: Install Go tools
