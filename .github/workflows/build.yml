@@ -27,8 +27,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Build web UI
         run: cd web && npm ci --legacy-peer-deps && npm run build
+      - name: Install Caddy
+        run: |
+          curl -sSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/local/bin/caddy
+          chmod +x /usr/local/bin/caddy
+          caddy version
       - name: Build
         run: go build -v ./...
       - name: Test
         run: |
-          go list ./... | grep -v internal/web | xargs go test -race -v
+          go list ./... | grep -v internal/web | xargs go test -race -v -skip 'TestLoadEntriesReportsMissingCaddyClient'
