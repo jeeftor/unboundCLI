@@ -56,4 +56,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: ./artifacts
         run: |
-          gh release upload "${GITHUB_REF_NAME}" *.sig *.pem *.bundle --clobber
+          gh release upload "${GITHUB_REF_NAME}" --clobber ./*.sig ./*.pem ./*.bundle
