@@ -828,5 +828,3 @@ export function syncFormsFromConfig(config: ConfigResponse | null) {
     return { forms: next, savedForms: next };
   });
 }
-
-
