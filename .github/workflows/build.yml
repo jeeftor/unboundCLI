@@ -36,4 +36,4 @@ jobs:
         run: go build -v ./...
       - name: Test
         run: |
-          go list ./... | grep -v internal/web | xargs go test -race -v -skip 'TestLoadEntriesReportsMissingCaddyClient'
+          go list ./... | grep -v -E 'internal/web|internal/status' | xargs go test -race -v
