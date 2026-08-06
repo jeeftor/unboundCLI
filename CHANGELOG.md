@@ -12,7 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - cosign-sign Go binary, add CODEOWNERS, Scorecard, Go 1.26 ([886e0dc](886e0dc1cbabe4a6215a0992ab0e164881526003))
 
 
+### <!-- 1 -->🐛 Bug Fixes
+
+- use ./*.glob in release upload to satisfy shellcheck ([0316774](0316774ad062ea587d61b4c89fcccb50f850d38f))
+
+
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([25fca6b](25fca6b68b30baa8ef51b63096dcbf99f0193058))
 
 - update changelog ([2d1e77a](2d1e77a005977bd50dc4425ba690b46a55840470))
 
