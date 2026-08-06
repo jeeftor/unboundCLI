@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- fix EOF newlines in store.ts and CHANGELOG.md ([e680c51](e680c517f303a0cb5ab36b0ad1b3603adc1f11f2))
+
 - fix trailing whitespace in built/static files, changelog push perms ([553f9f6](553f9f61976e8795af2b155d5c72a58791b03fd9))
 
 - fix pre-commit formatting issues and changelog workflow ([65582b2](65582b29e8453cac7d445fd01c24570050cf04c8))
@@ -29,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - replace broken trivy-action, fix govulncheck and npm ci ([710cd11](710cd11683d9964983079a50659d172f58dc226f))
 
 - concurrency control, security hardening, and reliability improvements ([c184cb9](c184cb9eda8652f2fdd2c8ea76f270348ce1007d))
+
+
+### <!-- 3 -->📚 Documentation
+
+- update changelog ([a9b2345](a9b234537538775f436efa0e131f29fe77aaa9d0))
 
 
 ### <!-- 7 -->⚙️ Miscellaneous Tasks
