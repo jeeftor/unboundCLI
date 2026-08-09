@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.1] - 2026-08-09
 
 ### <!-- 0 -->🚀 Features
 
@@ -16,10 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- add --repo flag to gh release upload in cosign-sign ([3d2d20b](3d2d20b121ce7cf67a292a20c2c53aec7eadab8a))
+
 - use ./*.glob in release upload to satisfy shellcheck ([0316774](0316774ad062ea587d61b4c89fcccb50f850d38f))
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([0149918](01499184be190678b56863205e875c72ded47431))
 
 - update changelog ([e84d600](e84d60052edf29fab42fefbfe0c61ec9f1b16827))
 
