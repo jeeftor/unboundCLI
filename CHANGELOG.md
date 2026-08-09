@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- add fix-double-login action to create CF Access bypass ([4c4bdf7](4c4bdf7e3af3a31a53c12aa9e07e8342eb63d3e8))
+
 - cosign-sign Go binary, add CODEOWNERS, Scorecard, Go 1.26 ([886e0dc](886e0dc1cbabe4a6215a0992ab0e164881526003))
 
 
@@ -18,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([e84d600](e84d60052edf29fab42fefbfe0c61ec9f1b16827))
 
 - update changelog ([25fca6b](25fca6b68b30baa8ef51b63096dcbf99f0193058))
 
