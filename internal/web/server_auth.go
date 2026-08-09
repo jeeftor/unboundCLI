@@ -134,6 +134,63 @@ func (s *Server) handleAuthInventoryStream(w http.ResponseWriter, r *http.Reques
 
 // ─── Auth Helpers ───────────────────────────────────────────────────────────
 
+// handleAuthFixDoubleLogin creates a CF Access bypass app + policy for a
+// hostname to fix the double-login pattern (Pattern F).
+// POST /api/auth/fix-double-login — body: {"hostname": "users.vookie.net"}
+// This creates a self-hosted CF Access app with a bypass-all policy so
+// CF Access lets traffic through and Caddy's forward_auth becomes the
+// sole auth layer.
+func (s *Server) handleAuthFixDoubleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w)
+		return
+	}
+
+	var req struct {
+		Hostname string `json:"hostname"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
+		return
+	}
+	if req.Hostname == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname is required"))
+		return
+	}
+
+	runtime := s.runtimeSnapshot()
+	if runtime.Clients.Cloudflare == nil {
+		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare client not configured"))
+		return
+	}
+
+	app, policy, err := runtime.Clients.Cloudflare.CreateBypassApp(req.Hostname)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("creating bypass app for %s: %w", req.Hostname, err))
+		return
+	}
+
+	// Invalidate auth cache so next request re-discovers.
+	s.authMu.Lock()
+	s.authCache = nil
+	s.authMu.Unlock()
+
+	response := map[string]interface{}{
+		"hostname":   req.Hostname,
+		"app_id":     app.ID,
+		"app_name":   app.Name,
+		"app_domain": app.Domain,
+		"fixed":      true,
+	}
+	if policy != nil {
+		response["policy_id"] = policy.ID
+		response["policy_decision"] = policy.Decision
+	}
+
+	logging.Info("Fixed double-login via bypass app", "hostname", req.Hostname, "appID", app.ID)
+	writeJSON(w, http.StatusOK, response)
+}
+
 func sortHostAuthByName(hosts []models.HostAuth) {
 	slices.SortFunc(hosts, func(a, b models.HostAuth) int {
 		if a.Hostname < b.Hostname {
