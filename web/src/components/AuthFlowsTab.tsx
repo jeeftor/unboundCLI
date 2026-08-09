@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ShieldX,
   Terminal,
+  Wand2,
   Wifi,
   X,
 } from 'lucide-react';
@@ -253,18 +254,49 @@ function HostRow({
   pendingChanges,
   onBadgeChange,
   onEditHost,
+  onFixed,
 }: {
   host: HostAuth;
   pendingChanges: Map<string, PendingChange>;
   onBadgeChange: (hostname: string, field: AuthField, newValue: string) => void;
   onEditHost: (hostname: string) => void;
+  onFixed?: (hostname: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
+  const [fixed, setFixed] = useState(false);
   const hasDetails = Boolean(
     host.cf_access_app_id ||
     host.authentik_provider_pk ||
     (host.notes && host.notes.length > 0)
   );
+
+  const isDoubleLogin = host.status === 'error' &&
+    host.notes?.some(n => n.toLowerCase().includes('double-login'));
+
+  const handleFixDoubleLogin = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFixing(true);
+    setFixError(null);
+    try {
+      const resp = await fetch('/api/auth/fix-double-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostname: host.hostname }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      setFixed(true);
+      onFixed?.(host.hostname);
+    } catch (err) {
+      setFixError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFixing(false);
+    }
+  };
 
   const isStale = host._stale;
   const wanPending = pendingChanges.get(changesKey(host.hostname, 'wan_auth'))?.newValue;
@@ -357,6 +389,29 @@ function HostRow({
                   <ul>
                     {host.notes.map((n, i) => <li key={i}>{n}</li>)}
                   </ul>
+                </div>
+              )}
+              {isDoubleLogin && (
+                <div className="auth-detail-section auth-fix-section">
+                  {fixed ? (
+                    <span className="auth-fix-done">
+                      <CheckCircle2 size={14} /> Bypass policy created — re-scan to verify.
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="auth-fix-btn"
+                        onClick={handleFixDoubleLogin}
+                        disabled={fixing}
+                        title="Create a CF Access bypass app + policy for this hostname so CF Access lets traffic through and Caddy forward_auth becomes the sole auth layer."
+                      >
+                        {fixing ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />}
+                        {fixing ? 'Creating bypass…' : 'Fix: Create CF Access Bypass'}
+                      </button>
+                      {fixError && <span className="auth-fix-error">{fixError}</span>}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -664,6 +719,7 @@ export function AuthFlowsTab() {
                       pendingChanges={pendingChanges}
                       onBadgeChange={handleBadgeChange}
                       onEditHost={setEditModalHost}
+                      onFixed={() => load()}
                     />
                   ))
                 )}

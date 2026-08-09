@@ -258,6 +258,7 @@ func (s *Server) routes() {
 	// Auth inventory
 	s.mux.HandleFunc("/api/auth/inventory", s.handleAuthInventory)
 	s.mux.HandleFunc("/api/auth/inventory/stream", s.handleAuthInventoryStream)
+	s.mux.HandleFunc("/api/auth/fix-double-login", s.handleAuthFixDoubleLogin)
 }
 
 // ─── Basic Handlers ─────────────────────────────────────────────────────────

@@ -495,6 +495,52 @@ func (c *CloudflareClient) EnsureBypassPolicy(appID string) (*AccessPolicyInfo, 
 	})
 }
 
+// CreateBypassApp creates a new CF Access self-hosted app for a hostname
+// with a bypass-all policy. This is used to fix the double-login pattern
+// (Pattern F) where a host has Caddy forward_auth but is also covered by
+// the wildcard CF Access app. The bypass app takes precedence over the
+// wildcard, so CF Access lets traffic through and Caddy's forward_auth
+// becomes the sole auth layer.
+//
+// If an app already exists for the domain, it returns the existing app
+// and ensures it has a bypass policy.
+func (c *CloudflareClient) CreateBypassApp(domain string) (*AccessAppInfo, *AccessPolicyInfo, error) {
+	// Check if an app already exists for this domain
+	apps, err := c.ListAccessApps()
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing CF Access apps: %w", err)
+	}
+	for _, a := range apps {
+		if a.Domain == domain {
+			logging.Debug("Access app already exists, ensuring bypass policy", "domain", domain, "appID", a.ID)
+			policy, err := c.EnsureBypassPolicy(a.ID)
+			if err != nil {
+				return &a, nil, fmt.Errorf("ensuring bypass policy on existing app: %w", err)
+			}
+			return &a, policy, nil
+		}
+	}
+
+	// Create a new self-hosted app with a descriptive name
+	appName := fmt.Sprintf("Bypass CF (%s)", domain)
+	app, err := c.CreateAccessApp(CreateAccessAppRequest{
+		Name:   appName,
+		Domain: domain,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating CF Access bypass app for %s: %w", domain, err)
+	}
+
+	// Add the bypass-all policy
+	policy, err := c.EnsureBypassPolicy(app.ID)
+	if err != nil {
+		return app, nil, fmt.Errorf("creating bypass policy for %s: %w", domain, err)
+	}
+
+	logging.Info("Created CF Access bypass app", "domain", domain, "appID", app.ID, "policyID", policy.ID)
+	return app, policy, nil
+}
+
 // EnsureServiceAuthPolicy creates a "service_auth" policy on the given CF
 // Access app. This is used for API access — callers send CF-Access-Client-Id
 // and CF-Access-Client-Secret headers instead of doing a browser login.
