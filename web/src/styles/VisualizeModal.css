@@ -472,10 +472,6 @@
   color: var(--text-3);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .visualize-body code {
   font-family: var(--mono, monospace);
   font-size: 11px;

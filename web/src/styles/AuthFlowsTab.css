@@ -919,10 +919,6 @@
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .auth-fix-done {
   display: inline-flex;
   align-items: center;

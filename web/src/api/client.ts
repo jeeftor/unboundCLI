@@ -10,6 +10,7 @@ import type {
   ConfigTestResponse,
   EntriesResponse,
   PlanResponse,
+  PruneResponse,
   ServiceKey,
   SyncAction
 } from '../types';
@@ -123,4 +124,12 @@ export const api = {
 
   // Auth inventory
   authInventory: (signal?: AbortSignal) => getJSON<AuthInventoryResponse>('/api/auth/inventory', signal),
+
+  // Auth fix
+  authFixDoubleLogin: (hostname: string) =>
+    postJSON<{ status: string }>('/api/auth/fix-double-login', { hostname }),
+
+  // Diagnostics
+  diagnosticsPrune: (payload: { dry_run: boolean; hostname?: string; hostnames?: string[] }) =>
+    postJSON<PruneResponse>('/api/diagnostics/prune', payload),
 };

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { SERVICE_META } from '../store';
 import type { ConfigResponse, EntriesResponse, Entry, ProgressEvent } from '../types';
 
 const CONFIG_CACHE_KEY = 'caddy-dns-sync:config';
@@ -20,16 +21,6 @@ function saveCachedConfig(cfg: ConfigResponse) {
     // sessionStorage might be full or unavailable — non-fatal.
   }
 }
-
-// Service display metadata for progress indicators.
-export const SERVICE_META: Record<string, { label: string; icon: string }> = {
-  caddy:      { label: 'Caddy',      icon: '🌐' },
-  unbound:    { label: 'Unbound',    icon: '📋' },
-  adguard:    { label: 'AdGuard',    icon: '🛡️' },
-  dhcp:       { label: 'DHCP',       icon: '📡' },
-  cloudflare: { label: 'Cloudflare', icon: '☁️' },
-  dns:        { label: 'DNS Resolve', icon: '🔍' },
-};
 
 export function useRuntimeData(onDataChanged?: () => void) {
   const [config, setConfig] = useState<ConfigResponse | null>(() => loadCachedConfig());

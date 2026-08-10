@@ -3,7 +3,6 @@ import '../styles/Sidebar.css';
 import {
   FileCode2,
   Gauge,
-  Loader2,
   RefreshCw,
   Settings,
   ShieldCheck,
@@ -17,6 +16,7 @@ import {
   serviceOrder
 } from '../lib/services';
 import type { ConfigResponse, EntriesResponse, ServiceKey } from '../types';
+import { LoadingSpinner } from './LoadingSpinner';
 import { TabBar } from './TabBar';
 import type { TabId } from './TabBar';
 
@@ -36,7 +36,7 @@ export function Topbar({ config, loading, syncLoading, view, setView, onRefresh,
       <TabBar active={view} onChange={setView} />
       {busy && (
         <div className="topbar-activity" role="status" aria-live="polite">
-          <Loader2 size={14} className="spin" />
+          <LoadingSpinner size={14} />
           <span>{busyLabel}</span>
         </div>
       )}
@@ -47,7 +47,7 @@ export function Topbar({ config, loading, syncLoading, view, setView, onRefresh,
       </div>
       <div className="top-actions">
         <button id="refresh" type="button" onClick={onRefresh} disabled={loading}>
-          {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />} Refresh
+          {loading ? <LoadingSpinner size={16} /> : <RefreshCw size={16} />} Refresh
         </button>
         <button id="config-toggle" type="button" onClick={onOpenConfig}>
           <Settings size={16} /> Settings
