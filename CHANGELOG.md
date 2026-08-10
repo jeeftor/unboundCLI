@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- modal accessibility, remove dead Sidebar, log Go write errors ([d32f97b](d32f97b0c43f7d293fbb712dc0bdc8d068396bad))
+
 - Go backend bugs, dead code removal, bundle splitting, CI/CD updates ([52d989d](52d989d2c435253a7b57e628895982f2d2295806))
 
 - resolve all 138 eslint warnings ([fc27a84](fc27a84eed0cc9d5988efd6884f484bf9d7b396b))
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([459e3c9](459e3c91cf28d6311d83ba05923f90cbbd8873ef))
 
 - update changelog ([05117f8](05117f8a4a147cec1d841b270f3b01f4a51cd45d))
 
