@@ -37,7 +37,7 @@ jobs:
           path: ./artifacts
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Sign binary with cosign
         working-directory: ./artifacts

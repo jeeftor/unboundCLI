@@ -1,6 +1,6 @@
 import '../styles/EntriesTable.css';
 import { CircleAlert, Network } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { getHostnameDecision, suppressionKey } from '../lib/hostnameDecision';
 import {
@@ -69,7 +69,7 @@ export function EntriesTable({
   );
 }
 
-function EntryRow({
+const EntryRow = memo(function EntryRow({
   entry,
   selected,
   mutationEnabled,
@@ -152,7 +152,7 @@ function EntryRow({
       </td>
     </tr>
   );
-}
+});
 
 export function StatusChip({ entry }: { entry: Entry }) {
   return <span className={`status-chip ${statusClassByCode(entry.overall_status)}`}>{entry.status_label || 'Unknown'}</span>;

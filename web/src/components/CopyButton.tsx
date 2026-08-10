@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 
-export function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
+export const CopyButton = memo(function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
 
   const onCopy = async (e: React.MouseEvent) => {
@@ -26,4 +26,4 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
       {copied ? <Check size={12} /> : <Copy size={12} />}
     </button>
   );
-}
+});

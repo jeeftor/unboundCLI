@@ -14,6 +14,20 @@ export default defineConfig({
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) return 'styles.[hash].css';
           return 'assets/[name].[hash][extname]';
+        },
+        manualChunks: (id: string) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+              return 'react-vendor';
+            }
+            if (id.includes('@xyflow/react') || id.includes('elkjs')) {
+              return 'diagrams';
+            }
+            if (id.includes('lucide-react')) {
+              return 'icons';
+            }
+            return 'vendor';
+          }
         }
       }
     }

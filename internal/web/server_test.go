@@ -519,7 +519,7 @@ func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
 
 	// Extract the hashed app.js and styles.css paths from the index.html.
 	appJSPath := extractAssetPath(t, idxBody, "app.", ".js")
-	cssPath := extractAssetPath(t, idxBody, "styles.", ".css")
+	cssPaths := extractAllAssetPaths(t, idxBody, "styles.", ".css")
 
 	tests := []struct {
 		path        string
@@ -528,7 +528,6 @@ func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
 	}{
 		{path: "/", contentType: "text/html; charset=utf-8", contains: []byte(`<div id="root"`)},
 		{path: appJSPath, contentType: "text/javascript; charset=utf-8", contains: []byte("data-e2e")},
-		{path: cssPath, contentType: "text/css; charset=utf-8", contains: []byte(".status-chip")},
 	}
 
 	for _, tt := range tests {
@@ -544,6 +543,26 @@ func TestStaticAssetsAreServedWithExpectedContentTypes(t *testing.T) {
 		if !bytes.Contains(rec.Body.Bytes(), tt.contains) {
 			t.Fatalf("%s: response missing %q", tt.path, tt.contains)
 		}
+	}
+
+	// At least one of the CSS files must contain ".status-chip".
+	cssFound := false
+	for _, cssPath := range cssPaths {
+		req := httptest.NewRequest(http.MethodGet, cssPath, nil)
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d: %s", cssPath, rec.Code, rec.Body.String())
+		}
+		if got := rec.Header().Get("Content-Type"); got != "text/css; charset=utf-8" {
+			t.Fatalf("%s: expected content type %q, got %q", cssPath, "text/css; charset=utf-8", got)
+		}
+		if bytes.Contains(rec.Body.Bytes(), []byte(".status-chip")) {
+			cssFound = true
+		}
+	}
+	if !cssFound {
+		t.Fatalf("none of the CSS files (%v) contain %q", cssPaths, ".status-chip")
 	}
 }
 
@@ -563,6 +582,33 @@ func extractAssetPath(t *testing.T, html string, prefix, ext string) string {
 		t.Fatalf("could not find extension %q after %q in index.html", ext, search)
 	}
 	return rest[:extIdx+len(ext)]
+}
+
+// extractAllAssetPaths finds all /static/ asset paths from index.html matching
+// the given prefix and extension (e.g. multiple CSS files from code splitting).
+func extractAllAssetPaths(t *testing.T, html string, prefix, ext string) []string {
+	t.Helper()
+	search := `/static/` + prefix
+	var paths []string
+	offset := 0
+	for {
+		idx := strings.Index(html[offset:], search)
+		if idx < 0 {
+			break
+		}
+		idx += offset
+		rest := html[idx:]
+		extIdx := strings.Index(rest, ext)
+		if extIdx < 0 {
+			break
+		}
+		paths = append(paths, rest[:extIdx+len(ext)])
+		offset = idx + extIdx + len(ext)
+	}
+	if len(paths) == 0 {
+		t.Fatalf("could not find any %q in index.html", search)
+	}
+	return paths
 }
 
 func TestPlanRouteSupportsServiceSelection(t *testing.T) {

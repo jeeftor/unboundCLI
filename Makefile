@@ -1,7 +1,7 @@
-# Makefile for caddy-sync
+# Makefile for caddy-dns-sync
 
 # Variables
-BINARY_NAME=caddy-sync
+BINARY_NAME=caddy-dns-sync
 GOOS?=$(shell go env GOOS)
 GOARCH?=$(shell go env GOARCH)
 REMOTE_HOST?=caddy
@@ -102,7 +102,7 @@ cross-build:
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)_windows_amd64.exe
 
 # Build and deploy linux/amd64 binary to a remote host over SSH
-# Override defaults: make install-remote REMOTE_HOST=myserver REMOTE_PATH=/usr/local/bin/caddy-sync
+# Override defaults: make install-remote REMOTE_HOST=myserver REMOTE_PATH=/usr/local/bin/caddy-dns-sync
 build-linux:
 	@mkdir -p dist
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)_linux_amd64
@@ -112,25 +112,25 @@ dist/$(BINARY_NAME)_linux_amd64: build-linux
 
 install-remote: build-linux
 	@printf '\033[36m  →  \033[0mCopying to \033[97m$(REMOTE_HOST):$(REMOTE_PATH)\033[0m...\n'
-	-ssh $(REMOTE_HOST) systemctl stop caddy-sync 2>/dev/null || true
+	-ssh $(REMOTE_HOST) systemctl stop caddy-dns-sync 2>/dev/null || true
 	scp dist/$(BINARY_NAME)_linux_amd64 $(REMOTE_HOST):$(REMOTE_PATH)
 	ssh $(REMOTE_HOST) chmod +x $(REMOTE_PATH)
 	@printf '\033[33m  ⚠   Service stopped. Restart it:\033[0m\n'
-	@printf '       \033[33mssh $(REMOTE_HOST) systemctl restart caddy-sync\033[0m\n'
+	@printf '       \033[33mssh $(REMOTE_HOST) systemctl restart caddy-dns-sync\033[0m\n'
 	@printf '     or run \033[33mmake install-service\033[0m to also update the unit file.\n\n'
 	@printf '\033[1;32m  ✓  Binary deployed to $(REMOTE_HOST):$(REMOTE_PATH)\033[0m\n\n'
 	@printf '\033[1;36m── Next steps ──────────────────────────────────────────\033[0m\n\n'
 	@printf '  \033[1m1.\033[0m Update config (if needed):\n'
 	@printf '       \033[33mssh $(REMOTE_HOST) $(REMOTE_PATH) web --host 127.0.0.1\033[0m  (one-off)\n\n'
 	@printf '  \033[1m2.\033[0m Restart the service:\n'
-	@printf '       \033[33mssh $(REMOTE_HOST) systemctl restart caddy-sync\033[0m\n\n'
+	@printf '       \033[33mssh $(REMOTE_HOST) systemctl restart caddy-dns-sync\033[0m\n\n'
 	@printf '  \033[1m3.\033[0m Verify everything is wired up:\n'
 	@printf '       \033[33mssh $(REMOTE_HOST) $(REMOTE_PATH) doctor\033[0m\n\n'
 
 # Build, deploy, update unit file, and restart the service on the remote host
 install-service: build-linux
 	@printf '\033[36m  →  \033[0mCopying to \033[97m$(REMOTE_HOST):$(REMOTE_PATH)\033[0m...\n'
-	-ssh $(REMOTE_HOST) systemctl stop caddy-sync 2>/dev/null || true
+	-ssh $(REMOTE_HOST) systemctl stop caddy-dns-sync 2>/dev/null || true
 	scp dist/$(BINARY_NAME)_linux_amd64 $(REMOTE_HOST):$(REMOTE_PATH)
 	ssh $(REMOTE_HOST) chmod +x $(REMOTE_PATH)
 	ssh $(REMOTE_HOST) $(REMOTE_PATH) install-service --start

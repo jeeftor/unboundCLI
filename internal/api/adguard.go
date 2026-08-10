@@ -204,7 +204,10 @@ func (a *AdguardClient) AddRewrite(domain, answer string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logging.Error("Failed to read AdGuard response body", "error", err)
+		}
 		logging.Error("AdguardHome API request failed",
 			"statusCode", resp.StatusCode,
 			"responseBody", string(body),
@@ -226,7 +229,10 @@ func (a *AdguardClient) ListRewrites() ([]Rewrite, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logging.Error("Failed to read AdGuard response body", "error", err)
+		}
 		logging.Error("AdguardHome API request failed",
 			"statusCode", resp.StatusCode,
 			"responseBody", string(body))
@@ -256,7 +262,10 @@ func (a *AdguardClient) UpdateRewrite(target, update Rewrite) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logging.Error("Failed to read AdGuard response body", "error", err)
+		}
 		logging.Error("AdguardHome API request failed",
 			"statusCode", resp.StatusCode,
 			"responseBody", string(body),
@@ -287,7 +296,10 @@ func (a *AdguardClient) DeleteRewrite(domain, answer string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logging.Error("Failed to read AdGuard response body", "error", err)
+		}
 		logging.Error("AdguardHome API request failed",
 			"statusCode", resp.StatusCode,
 			"responseBody", string(body),

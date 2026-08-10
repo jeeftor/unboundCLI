@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { api } from './api/client';
-import { isIssue } from './lib/hostnameDecision';
 import { renderActionLine, serviceEnabled, formatTestDetails } from './lib/services';
 import type {
   ConfigResponse,
@@ -31,16 +30,6 @@ type GitRemoteStatus = {
   branch: string;
   remote: string;
   fetch_error?: string;
-};
-
-type Summary = {
-  entries: number;
-  inSync: number;
-  out: number;
-  caddyOnly: number;
-  stale: number;
-  cloudflare: number;
-  issues: number;
 };
 
 // ─── Store ───────────────────────────────────────────────────────────────────
@@ -303,56 +292,6 @@ export const useStore = create<AppState>((set, _get) => ({
   setPulling: (pulling) => set({ pulling }),
   setPullOutput: (output) => set({ pullOutput: output }),
 }));
-
-// ─── Selectors (derived state) ───────────────────────────────────────────────
-
-export function selectFilteredEntries(state: AppState): Entry[] {
-  const { entries, statusFilter, serviceFilter, search, suppressed, config } = state;
-  const caddyServerIP = config?.caddy?.server_ip ?? '';
-  return entries.filter((entry) => {
-    if (statusFilter === 'synced' && entry.overall_status !== 0 && entry.overall_status !== 1) return false;
-    if (statusFilter === 'out_of_sync' && entry.overall_status !== 2) return false;
-    if (statusFilter === 'caddy_only' && entry.overall_status !== 3) return false;
-    if (statusFilter === 'stale' && entry.overall_status !== 4) return false;
-    if (statusFilter === 'cloudflare' && !entry.cloudflare_status?.configured) return false;
-    if (statusFilter === 'issues' && !isIssue(entry, caddyServerIP, suppressed)) return false;
-    if (serviceFilter === 'unbound' && !entry.unbound_status?.configured) return false;
-    if (serviceFilter === 'adguard' && !entry.adguard_status?.configured) return false;
-    if (serviceFilter === 'dhcp' && !entry.dhcp_status?.configured) return false;
-    if (serviceFilter === 'cloudflare' && !entry.cloudflare_status?.configured) return false;
-    return !search.trim() || entry.hostname.toLowerCase().includes(search.trim().toLowerCase());
-  });
-}
-
-export function selectSummary(state: AppState): Summary {
-  const { entries, suppressed, config } = state;
-  const caddyServerIP = config?.caddy?.server_ip ?? '';
-  return {
-    entries: entries.length,
-    inSync: entries.filter((e) => e.overall_status === 0 || e.overall_status === 1).length,
-    out: entries.filter((e) => e.overall_status === 2).length,
-    caddyOnly: entries.filter((e) => e.overall_status === 3).length,
-    stale: entries.filter((e) => e.overall_status === 4).length,
-    cloudflare: entries.filter((e) => e.cloudflare_status?.configured).length,
-    issues: entries.filter((e) => isIssue(e, caddyServerIP, suppressed)).length,
-  };
-}
-
-export function selectSelectedEntry(state: AppState): Entry | undefined {
-  return state.entries.find((e) => e.hostname === state.selectedHostname);
-}
-
-export function selectCanSyncNow(state: AppState): boolean {
-  return state.mutationEnabled && state.plan.planID !== '' && state.plan.actionIDs.length > 0;
-}
-
-export function selectPlannedActions(state: AppState): SyncAction[] {
-  return state.plan.actions;
-}
-
-export function selectEnabledServices(state: AppState): Partial<Record<ServiceKey, boolean>> {
-  return state.config?.enabled || {};
-}
 
 // ─── Async actions (business logic that was in hooks) ───────────────────────
 
