@@ -757,6 +757,57 @@ export function AuthFlowsTab() {
 
 // ─── Edit host modal ─────────────────────────────────────────────────────────
 
+function FieldRow({
+  label,
+  field,
+  info,
+  value,
+  pendingValue,
+  disabled,
+  hostname,
+  onChange,
+}: {
+  label: string;
+  field: AuthField;
+  info: Record<string, AuthMeta>;
+  value: string;
+  pendingValue?: string;
+  disabled?: boolean;
+  hostname: string;
+  onChange: (hostname: string, field: AuthField, newValue: string) => void;
+}) {
+  const isPending = pendingValue !== undefined && pendingValue !== value;
+  const displayValue = pendingValue ?? value;
+  return (
+    <div className={`auth-edit-field ${disabled ? 'disabled' : ''} ${isPending ? 'pending' : ''}`}>
+      <label>{label}</label>
+      <div className="auth-edit-field-control">
+        {disabled ? (
+          <span className="auth-na">Not exposed</span>
+        ) : (
+          <select
+            value={displayValue}
+            onChange={e => onChange(hostname, field, e.target.value)}
+            className="auth-edit-select"
+          >
+            {Object.entries(info).map(([key, m]) => (
+              <option key={key} value={key}>{m.label}</option>
+            ))}
+          </select>
+        )}
+        {isPending && (
+          <button type="button" className="btn-sm" onClick={() => onChange(hostname, field, value)}>
+            <X size={12} /> Revert
+          </button>
+        )}
+      </div>
+      {info[displayValue] && (
+        <p className="auth-edit-field-desc">{info[displayValue].desc}</p>
+      )}
+    </div>
+  );
+}
+
 function EditHostModal({
   host,
   pendingChanges,
@@ -774,53 +825,6 @@ function EditHostModal({
   const lanPending = pendingChanges.get(changesKey(host.hostname, 'lan_auth'))?.newValue;
   const apiPending = pendingChanges.get(changesKey(host.hostname, 'api_auth'))?.newValue;
   const hostPendingCount = Array.from(pendingChanges.values()).filter(c => c.hostname === host.hostname).length;
-
-  function FieldRow({
-    label,
-    field,
-    info,
-    value,
-    pendingValue,
-    disabled,
-  }: {
-    label: string;
-    field: AuthField;
-    info: Record<string, AuthMeta>;
-    value: string;
-    pendingValue?: string;
-    disabled?: boolean;
-  }) {
-    const isPending = pendingValue !== undefined && pendingValue !== value;
-    const displayValue = pendingValue ?? value;
-    return (
-      <div className={`auth-edit-field ${disabled ? 'disabled' : ''} ${isPending ? 'pending' : ''}`}>
-        <label>{label}</label>
-        <div className="auth-edit-field-control">
-          {disabled ? (
-            <span className="auth-na">Not exposed</span>
-          ) : (
-            <select
-              value={displayValue}
-              onChange={e => onChange(host.hostname, field, e.target.value)}
-              className="auth-edit-select"
-            >
-              {Object.entries(info).map(([key, m]) => (
-                <option key={key} value={key}>{m.label}</option>
-              ))}
-            </select>
-          )}
-          {isPending && (
-            <button type="button" className="btn-sm" onClick={() => onChange(host.hostname, field, value)}>
-              <X size={12} /> Revert
-            </button>
-          )}
-        </div>
-        {info[displayValue] && (
-          <p className="auth-edit-field-desc">{info[displayValue].desc}</p>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="auth-modal-overlay" onClick={onClose}>
@@ -854,6 +858,8 @@ function EditHostModal({
             value={host.wan_auth}
             pendingValue={wanPending}
             disabled={!host.wan_exposed}
+            hostname={host.hostname}
+            onChange={onChange}
           />
           <FieldRow
             label="LAN Auth"
@@ -861,6 +867,8 @@ function EditHostModal({
             info={LAN_AUTH_INFO}
             value={host.lan_auth}
             pendingValue={lanPending}
+            hostname={host.hostname}
+            onChange={onChange}
           />
           <FieldRow
             label="API Auth"
@@ -868,6 +876,8 @@ function EditHostModal({
             info={API_AUTH_INFO}
             value={host.api_auth}
             pendingValue={apiPending}
+            hostname={host.hostname}
+            onChange={onChange}
           />
 
           {/* Current config details */}
