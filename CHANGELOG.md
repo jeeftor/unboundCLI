@@ -12,9 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - selective prune with checkboxes + Prune All button ([1ee9c94](1ee9c94ee9a9e5e6724c0437495b8133d29312bd))
 
 
+### <!-- 2 -->🚜 Refactor
+
+- extract reusable components, fix bugs, consolidate CSS ([425034c](425034c7016045a732854f508f5e95bfab025932))
+
+
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([add8cfe](add8cfe4f9e707505fcdae61b559d2071b9f0d76))
+
 - update changelog ([ba5a18a](ba5a18a86f46ebd30bfc00057369116a4e347249))
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- migrate to @eslint-react/eslint-plugin for ESLint 10 support ([4f619d9](4f619d9641b0d9abac8a068466e823b5b29fa239))
 
 
 ## [0.5.1] - 2026-08-09
