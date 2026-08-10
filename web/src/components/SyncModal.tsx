@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { getHostnameDecision, suppressionKey } from '../lib/hostnameDecision';
 import {
   disabledSyncValues,
@@ -171,6 +172,8 @@ export function SyncModal({
     if (!open) hasAutoSyncedRef.current = false;
   }, [open, autoSync, hostname, onPreviewFor, onSync, onRefresh]);
 
+  const modalRef = useFocusTrap<HTMLDivElement>(open, onClose);
+
   if (!open) return null;
 
   const serviceRows: Array<{ key: string; label: string; status?: { configured: boolean; in_sync: boolean; ip: string } }> = [
@@ -234,7 +237,7 @@ export function SyncModal({
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
-      <div className="modal sync-modal">
+      <div className="modal sync-modal" ref={modalRef}>
         <div className="modal-header">
           <h3><Zap size={15} />{hostname || 'Sync'}</h3>
           <div className="modal-header-actions">

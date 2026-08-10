@@ -281,7 +281,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		body = []byte(strings.Replace(string(body), "</head>", "  <script>window.UNBOUNDCLI_TEST_HOOKS = true;</script>\n</head>", 1))
 	}
 	body = []byte(strings.Replace(string(body), "</head>", s.clientConfigScript()+"\n</head>", 1))
-	_, _ = w.Write(body)
+	if _, err := w.Write(body); err != nil {
+		logging.Warn("Failed to write index.html response", "error", err)
+	}
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -388,7 +390,9 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(value)
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		logging.Warn("Failed to encode JSON response", "error", err)
+	}
 }
 
 // validHostname performs a basic sanity check that a hostname looks like a
