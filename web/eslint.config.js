@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
-import react from 'eslint-plugin-react';
+import eslintReact from '@eslint-react/eslint-plugin';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 // Custom rule: flag Zustand selectors that return new references
@@ -19,6 +19,8 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  // ESLint React recommended preset (replaces eslint-plugin-react)
+  eslintReact.configs.recommended,
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
@@ -36,7 +38,6 @@ export default tseslint.config(
     },
     plugins: {
       'react-hooks': reactHooks,
-      react,
       'react-refresh': reactRefresh,
       'local-rules': {
         rules: {
@@ -52,26 +53,14 @@ export default tseslint.config(
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
 
-      // ── React best practices ──
-      'react/jsx-key': 'error',                    // missing key in .map()
-      'react/jsx-no-script-url': 'error',          // href="javascript:..."
-      'react/jsx-no-duplicate-props': 'error',     // same prop twice
-      'react/jsx-no-useless-fragment': 'warn',     // <></> with single child
-      'react/no-array-index-key': 'warn',          // key={index} (can cause bugs)
-      'react/no-children-prop': 'error',           // <Component children={...} />
-      'react/no-danger': 'warn',                   // dangerouslySetInnerHTML
-      'react/no-deprecated': 'error',              // deprecated React APIs
-      'react/no-direct-mutation-state': 'error',   // this.state = ...
-      'react/no-find-dom-node': 'error',           // findDOMNode (deprecated)
-      'react/no-is-mounted': 'error',              // isMounted (deprecated)
-      'react/no-render-return-value': 'error',     // using ReactDOM.render return
-      'react/no-string-refs': 'error',             // ref="foo" (legacy)
-      'react/no-unknown-property': 'warn',         // typos in DOM props
-      'react/no-unescaped-entities': 'warn',       // unescaped quotes in JSX text
-      'react/react-in-jsx-scope': 'off',           // not needed with new JSX transform
-      'react/prop-types': 'off',                   // using TS, not propTypes
-      'react/self-closing-comp': 'warn',           // <Foo></Foo> → <Foo />
-      'react/wrap-multilines': 'off',              // stylistic, skip
+      // ── React best practices (migrated from eslint-plugin-react) ──
+      // Most rules are already in the recommended preset; override severity here.
+      '@eslint-react/no-array-index-key': 'warn',
+      '@eslint-react/jsx-no-children-prop': 'error',
+      '@eslint-react/no-direct-mutation-state': 'error',
+      '@eslint-react/jsx-no-useless-fragment': 'warn',
+      '@eslint-react/dom-no-missing-button-type': 'warn',
+      '@eslint-react/dom-no-unknown-property': 'warn',
 
       // ── React Refresh (Vite HMR) ──
       'react-refresh/only-export-components': [
