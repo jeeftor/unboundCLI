@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### <!-- 0 -->🚀 Features
+
+- selective prune with checkboxes + Prune All button ([1ee9c94](1ee9c94ee9a9e5e6724c0437495b8133d29312bd))
+
+
+### <!-- 3 -->📚 Documentation
+
+- update changelog ([ba5a18a](ba5a18a86f46ebd30bfc00057369116a4e347249))
+
+
 ## [0.5.1] - 2026-08-09
 
 ### <!-- 0 -->🚀 Features
