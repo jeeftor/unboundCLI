@@ -15,7 +15,7 @@ import {
   Trash2,
   Wrench,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   DiagnosticCategory,
   DiagnosticIssue,
@@ -53,6 +53,7 @@ export function DiagnosticsTab() {
   const [pruneLoading, setPruneLoading] = useState(false);
   const [pruneResult, setPruneResult] = useState<PruneResponse | null>(null);
   const [pruneError, setPruneError] = useState<string | null>(null);
+  const [pruneSelected, setPruneSelected] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,20 +113,28 @@ export function DiagnosticsTab() {
     }
   }, []);
 
-  const pruneDryRun = useCallback(async (hostname?: string) => {
+  const pruneDryRun = useCallback(async (hostname?: string, hostnames?: string[]) => {
     setPruneLoading(true);
     setPruneError(null);
     setPruneResult(null);
     try {
-      const body = JSON.stringify({ dry_run: true, ...(hostname ? { hostname } : {}) });
+      const payload: Record<string, unknown> = { dry_run: true };
+      if (hostnames && hostnames.length > 0) {
+        payload.hostnames = hostnames;
+      } else if (hostname) {
+        payload.hostname = hostname;
+      }
       const resp = await fetch('/api/diagnostics/prune', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body,
+        body: JSON.stringify(payload),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json() as PruneResponse;
       setPrunePreview(json);
+      // Pre-select all hostnames in the preview
+      const allHosts = new Set(json.actions.map(a => a.hostname));
+      setPruneSelected(allHosts);
     } catch (e) {
       setPruneError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -133,20 +142,24 @@ export function DiagnosticsTab() {
     }
   }, []);
 
-  const pruneExecute = useCallback(async (hostname?: string) => {
+  const pruneExecute = useCallback(async (hostnames?: string[]) => {
     setPruneLoading(true);
     setPruneError(null);
     try {
-      const body = JSON.stringify({ dry_run: false, ...(hostname ? { hostname } : {}) });
+      const payload: Record<string, unknown> = { dry_run: false };
+      if (hostnames && hostnames.length > 0) {
+        payload.hostnames = hostnames;
+      }
       const resp = await fetch('/api/diagnostics/prune', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body,
+        body: JSON.stringify(payload),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json() as PruneResponse;
       setPruneResult(json);
       setPrunePreview(null);
+      setPruneSelected(new Set());
       // Reload diagnostics after prune
       void load();
     } catch (e) {
@@ -175,6 +188,12 @@ export function DiagnosticsTab() {
     }
   }
 
+  // Unique hostnames in the prune preview, sorted
+  const pruneHostnames = useMemo(() => {
+    if (!prunePreview) return [];
+    return Array.from(new Set(prunePreview.actions.map(a => a.hostname))).sort();
+  }, [prunePreview]);
+
   // Group issues by hostname for display
   const byHostname = new Map<string, DiagnosticIssue[]>();
   for (const issue of filteredIssues) {
@@ -200,9 +219,22 @@ export function DiagnosticsTab() {
             </span>
           )}
         </div>
-        <button type="button" className="btn-sm" onClick={() => void load()} disabled={loading}>
-          {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Refresh
-        </button>
+        <div className="diagnostics-header-actions">
+          {staleHostnames.size > 0 && (
+            <button
+              type="button"
+              className="btn-sm prune-all-btn"
+              onClick={() => void pruneDryRun(undefined, Array.from(staleHostnames))}
+              disabled={pruneLoading || loading}
+              title="Preview pruning all stale entries (in DNS/Cloudflare but not in Caddy)"
+            >
+              {pruneLoading ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />} Prune All Stale ({staleHostnames.size})
+            </button>
+          )}
+          <button type="button" className="btn-sm" onClick={() => void load()} disabled={loading}>
+            {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -372,12 +404,12 @@ export function DiagnosticsTab() {
 
       {/* Prune preview / result modal */}
       {(prunePreview || pruneResult || pruneError) && (
-        <div className="prune-modal-overlay" onClick={() => { setPrunePreview(null); setPruneResult(null); setPruneError(null); }}>
+        <div className="prune-modal-overlay" onClick={() => { setPrunePreview(null); setPruneResult(null); setPruneError(null); setPruneSelected(new Set()); }}>
           <div className="prune-modal" onClick={e => e.stopPropagation()}>
             <div className="prune-modal-header">
               <Trash2 size={18} />
               <h3>{pruneResult ? 'Prune Results' : 'Prune Preview (Dry Run)'}</h3>
-              <button type="button" className="btn-sm" onClick={() => { setPrunePreview(null); setPruneResult(null); setPruneError(null); }}>Close</button>
+              <button type="button" className="btn-sm" onClick={() => { setPrunePreview(null); setPruneResult(null); setPruneError(null); setPruneSelected(new Set()); }}>Close</button>
             </div>
             {pruneError && (
               <div className="auth-error">
@@ -388,18 +420,59 @@ export function DiagnosticsTab() {
             {prunePreview && (
               <>
                 <p className="prune-modal-desc">
-                  Found <strong>{prunePreview.total}</strong> action{prunePreview.total !== 1 ? 's' : ''} to clean up stale entries.
-                  This will remove DNS overrides, CF tunnel routes, and CF DNS records for hostnames not in Caddy.
+                  Found <strong>{prunePreview.total}</strong> action{prunePreview.total !== 1 ? 's' : ''} across <strong>{pruneHostnames.length}</strong> hostname{pruneHostnames.length !== 1 ? 's' : ''}.
+                  Select which hostnames to prune, then confirm.
                 </p>
                 <div className="prune-actions-list">
-                  {prunePreview.actions.map((a, i) => <PruneActionRow key={i} action={a} />)}
+                  {pruneHostnames.map(hn => {
+                    const hostActions = prunePreview.actions.filter(a => a.hostname === hn);
+                    const checked = pruneSelected.has(hn);
+                    return (
+                      <div key={hn} className={`prune-host-group ${checked ? 'selected' : 'deselected'}`}>
+                        <label className="prune-host-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              setPruneSelected(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(hn);
+                                else next.delete(hn);
+                                return next;
+                              });
+                            }}
+                          />
+                          <Network size={13} />
+                          <strong>{hn}</strong>
+                          <span className="prune-host-action-count">{hostActions.length} action{hostActions.length !== 1 ? 's' : ''}</span>
+                        </label>
+                        {checked && (
+                          <div className="prune-host-actions">
+                            {hostActions.map((a, i) => <PruneActionRow key={i} action={a} />)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 {prunePreview.total > 0 && (
                   <div className="prune-modal-footer">
-                    <button type="button" className="btn-sm" onClick={() => setPrunePreview(null)}>Cancel</button>
-                    <button type="button" className="btn-sm danger" onClick={() => void pruneExecute()} disabled={pruneLoading}>
-                      {pruneLoading ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />} Confirm & Delete
-                    </button>
+                    <div className="prune-select-controls">
+                      <button type="button" className="btn-sm" onClick={() => setPruneSelected(new Set(pruneHostnames))}>Select All</button>
+                      <button type="button" className="btn-sm" onClick={() => setPruneSelected(new Set())}>Deselect All</button>
+                      <span className="prune-selected-count">{pruneSelected.size} of {pruneHostnames.length} selected</span>
+                    </div>
+                    <div className="prune-confirm-controls">
+                      <button type="button" className="btn-sm" onClick={() => { setPrunePreview(null); setPruneSelected(new Set()); }}>Cancel</button>
+                      <button
+                        type="button"
+                        className="btn-sm danger"
+                        onClick={() => void pruneExecute(Array.from(pruneSelected))}
+                        disabled={pruneLoading || pruneSelected.size === 0}
+                      >
+                        {pruneLoading ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />} Delete {pruneSelected.size > 0 ? `(${pruneSelected.size})` : ''}
+                      </button>
+                    </div>
                   </div>
                 )}
               </>
