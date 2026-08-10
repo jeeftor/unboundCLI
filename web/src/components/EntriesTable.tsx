@@ -168,7 +168,7 @@ function ServiceBadges({ entry }: { entry: Entry }) {
   );
 }
 
-function ServiceBadge({ name, status }: { name: string; status: { configured: boolean; in_sync: boolean; ip: string } }) {
+const ServiceBadge = memo(function ServiceBadge({ name, status }: { name: string; status: { configured: boolean; in_sync: boolean; ip: string } }) {
   let tone = 'missing';
   let label = 'Missing';
   if (status.configured && status.in_sync) {
@@ -179,9 +179,9 @@ function ServiceBadge({ name, status }: { name: string; status: { configured: bo
     label = status.ip || 'Mismatch';
   }
   return <span className={`service-badge ${tone}`}><strong>{name}</strong>{label}</span>;
-}
+});
 
-function AlertBadge({ title, summary, facts, actions, variant, onMarkIntentional }: {
+const AlertBadge = memo(function AlertBadge({ title, summary, facts, actions, variant, onMarkIntentional }: {
   title: string;
   summary: string;
   facts: string[];
@@ -238,4 +238,4 @@ function AlertBadge({ title, summary, facts, actions, variant, onMarkIntentional
       )}
     </span>
   );
-}
+});
