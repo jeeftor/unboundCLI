@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { api } from '../api/client';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import type { CaddyEditorForm, ConfigForms, TestResults } from '../hooks/useConfigForms';
 import {
   compactSourceKind,
@@ -58,10 +59,11 @@ export function ConfigModal({
   onSaveCaddyEditor: () => Promise<void>;
   onTest: (service: ServiceKey) => Promise<void>;
 }) {
+  const modalRef = useFocusTrap<HTMLElement>(open, onClose);
   return (
     <div id="config-panel" className={`config-modal ${open ? 'open' : ''}`} hidden={!open} role="dialog" aria-modal="true" aria-labelledby="config-modal-title">
       <div className="config-backdrop" onClick={onClose} />
-      <section className="config-sheet panel">
+      <section className="config-sheet panel" ref={modalRef}>
         <header className="config-sheet-header">
           <div>
             <strong id="config-modal-title"><FileSliders size={16} /> Configuration</strong>
