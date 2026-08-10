@@ -102,7 +102,7 @@ export function PruneModal({
                     </label>
                     {checked && (
                       <div className="prune-host-actions">
-                        {hostActions.map((a, i) => <PruneActionRow key={i} action={a} />)}
+                        {hostActions.map((a) => <PruneActionRow key={`${hn}-${a.service}`} action={a} />)}
                       </div>
                     )}
                   </div>
@@ -137,7 +137,7 @@ export function PruneModal({
               Completed <strong>{pruneResult.total}</strong> action{pruneResult.total !== 1 ? 's' : ''}.
             </p>
             <div className="prune-actions-list">
-              {pruneResult.actions.map((a, i) => <PruneActionRow key={i} action={a} />)}
+              {pruneResult.actions.map((a) => <PruneActionRow key={`${a.hostname}-${a.service}`} action={a} />)}
             </div>
           </>
         )}

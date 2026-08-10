@@ -23,7 +23,6 @@ import { SyncModal } from './SyncModal';
 import { Topbar } from './Topbar';
 import { VisualizeModal } from './VisualizeModal';
 import type { TabId } from './TabBar';
-import type { ConfigForms } from '../hooks/useConfigForms';
 import {
   useStore,
   refreshEntries,
@@ -91,10 +90,6 @@ export function AppShell() {
     cloudflare: allEntries.filter((e) => e.cloudflare_status?.configured).length,
     issues: allEntries.filter((e) => isIssue(e, caddyServerIP, suppressed)).length,
   }), [allEntries, caddyServerIP, suppressed]);
-  const selectedEntry = useMemo(
-    () => allEntries.find((e) => e.hostname === selectedHostname),
-    [allEntries, selectedHostname]
-  );
   const canSyncNow = mutationEnabled && plan.planID !== '' && plan.actionIDs.length > 0;
   const plannedActions = plan.actions;
   const enabledServices = config?.enabled ?? ({} as Partial<Record<ServiceKey, boolean>>);
@@ -142,7 +137,7 @@ export function AppShell() {
       const res = await api.caddyGitPull();
       setPullOutput(res.output || 'Already up to date.');
       await checkRemote();
-      await refreshEntries();
+      void refreshEntries();
     } catch (err) { setPullOutput(`Error: ${String(err)}`); }
     finally { setPulling(false); }
   }, [checkRemote]);
@@ -176,6 +171,7 @@ export function AppShell() {
       // Clear hash so refresh doesn't re-open
       history.replaceState(null, '', window.location.pathname);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps
   }, [allEntriesForModal, setVisualizeHostname, setVisualizeOpen]);
 
   const openModify = (hostname: string) => {

@@ -144,7 +144,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
         nodeType: 'upstream',
         label: serviceName,
         sublabel: upstream,
-        stepNum: n++,
+        stepNum: n,
         arrowLabel: isDoubleLogin ? 'login again!' : 'authorized',
         arrowWarn: isDoubleLogin,
       });
@@ -156,7 +156,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
         nodeType: 'upstream',
         label: serviceName,
         sublabel: upstream,
-        stepNum: n++,
+        stepNum: n,
         arrowLabel: 'direct (FA skipped)',
       });
     } else {
@@ -167,12 +167,13 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
         nodeType: 'upstream',
         label: serviceName,
         sublabel: upstream,
-        stepNum: n++,
+        stepNum: n,
         arrowLabel: '',
       });
     }
 
     return steps;
+    // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps
   }, [hasCF, hasCFAccess, hasBypass, hasForwardAuth, cf, cfAppDomain, authentikSlug, entry.caddy_ip, upstream]);
 
   // ── Build LAN flow steps for React Flow ──
@@ -204,7 +205,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
         nodeType: 'upstream',
         label: serviceName,
         sublabel: upstream,
-        stepNum: n++,
+        stepNum: n,
         arrowLabel: 'authorized',
       });
     } else {
@@ -215,12 +216,13 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
         nodeType: 'upstream',
         label: serviceName,
         sublabel: upstream,
-        stepNum: n++,
+        stepNum: n,
         arrowLabel: '',
       });
     }
 
     return steps;
+    // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps
   }, [hasDNS, hasForwardAuth, entry.dns_resolved, entry.unbound_status?.ip, entry.caddy_ip, upstream, authentikSlug]);
 
   return (
@@ -348,7 +350,7 @@ export function VisualizeContent({ entry, auth, authLoading }: { entry: Entry; a
           {authNotes && authNotes.length > 0 && (
             <div className="visualize-auth-notes">
               <ul>
-                {authNotes.map((n, i) => <li key={i}>{n}</li>)}
+                {authNotes.map((n) => <li key={n}>{n}</li>)}
               </ul>
             </div>
           )}

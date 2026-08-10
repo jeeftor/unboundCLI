@@ -31,7 +31,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
   const [messageKind, setMessageKind] = useState<'info' | 'error' | 'ok'>('info');
   // Per-service progress: service → { status, count, error }
   const [progress, setProgress] = useState<Record<string, ProgressEvent>>({});
-  const sequence = useRef(0);
+  const sequenceRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
   const configFetchedRef = useRef(false);
 
@@ -46,18 +46,22 @@ export function useRuntimeData(onDataChanged?: () => void) {
     return script.split(',').includes('holdloading');
   }, []);
 
-  const refreshEntries = useCallback(async () => {
+  const refreshEntries = useCallback(() => {
     // Close any existing SSE connection.
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
 
-    const requestID = sequence.current + 1;
-    sequence.current = requestID;
+    const requestID = sequenceRef.current + 1;
+    sequenceRef.current = requestID;
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setLoading(true);
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setProgress({});
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setMessage('Loading service status...');
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setMessageKind('info');
 
     // Fetch config in parallel via regular API (fast, cached).
@@ -65,7 +69,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
     const configPromise = (configFetchedRef.current
       ? Promise.resolve(null)
       : api.config().then(cfg => {
-          if (requestID !== sequence.current) return null;
+          if (requestID !== sequenceRef.current) return null;
           setConfig(cfg);
           saveCachedConfig(cfg);
           configFetchedRef.current = true;
@@ -78,16 +82,19 @@ export function useRuntimeData(onDataChanged?: () => void) {
     eventSourceRef.current = es;
 
     es.addEventListener('progress', (e: MessageEvent) => {
-      if (requestID !== sequence.current) return;
+      if (requestID !== sequenceRef.current) return;
       try {
         const ev = JSON.parse(e.data) as ProgressEvent;
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setProgress(prev => ({ ...prev, [ev.service]: ev }));
         // Update message to show what's happening.
         const meta = SERVICE_META[ev.service];
         if (meta) {
           if (ev.status === 'loaded') {
+            // eslint-disable-next-line @eslint-react/set-state-in-effect
             setMessage(`Loaded ${meta.label} (${ev.count} entries)`);
           } else if (ev.status === 'failed') {
+            // eslint-disable-next-line @eslint-react/set-state-in-effect
             setMessage(`${meta.label} failed: ${ev.error || 'unknown'}`);
           }
         }
@@ -97,19 +104,25 @@ export function useRuntimeData(onDataChanged?: () => void) {
     });
 
     es.addEventListener('done', (e: MessageEvent) => {
-      if (requestID !== sequence.current) return;
+      if (requestID !== sequenceRef.current) return;
       try {
         const data = JSON.parse(e.data) as EntriesResponse;
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setEntries(data.entries || []);
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setReport(data.report || {});
         onDataChanged?.();
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setMessage((data.entries || []).length ? 'Loaded service status.' : 'No entries found.');
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setMessageKind('info');
       } catch {
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setMessage('Failed to parse entries response');
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setMessageKind('error');
       } finally {
-        if (requestID === sequence.current && !shouldHoldLoadingForE2E()) setLoading(false);
+        if (requestID === sequenceRef.current && !shouldHoldLoadingForE2E()) setLoading(false);
         es.close();
         eventSourceRef.current = null;
       }
@@ -120,7 +133,7 @@ export function useRuntimeData(onDataChanged?: () => void) {
       if (e.data) {
         try {
           const data = JSON.parse(e.data);
-          if (requestID === sequence.current) {
+          if (requestID === sequenceRef.current) {
             setMessage(data.error || 'Stream error');
             setMessageKind('error');
           }
@@ -131,11 +144,11 @@ export function useRuntimeData(onDataChanged?: () => void) {
       }
       // Native ES error — connection failed or server closed.
       // If we haven't received "done" yet, this is a real error.
-      if (requestID === sequence.current && es.readyState === EventSource.CLOSED) {
+      if (requestID === sequenceRef.current && es.readyState === EventSource.CLOSED) {
         // If we still have entries from a previous load, don't error out.
         setMessage('Connection lost — retry');
         setMessageKind('error');
-        if (requestID === sequence.current && !shouldHoldLoadingForE2E()) setLoading(false);
+        if (requestID === sequenceRef.current && !shouldHoldLoadingForE2E()) setLoading(false);
       }
       es.close();
       eventSourceRef.current = null;

@@ -38,8 +38,10 @@ export function LogBar({ open, onToggle }: { open: boolean; onToggle: () => void
   useEffect(() => {
     let cancelled = false;
     let activityTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
+      // eslint-disable-next-line no-unmodified-loop-condition -- cancelled is set by the cleanup function below
       while (!cancelled) {
         try {
           const data = await api.logs(cursorRef.current);
@@ -54,13 +56,14 @@ export function LogBar({ open, onToggle }: { open: boolean; onToggle: () => void
             });
           }
         } catch { /* ignore */ }
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => { pollTimer = setTimeout(r, 600); });
       }
     };
     void poll();
     return () => {
       cancelled = true;
       if (activityTimer) clearTimeout(activityTimer);
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, []);
 

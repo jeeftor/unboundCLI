@@ -21,7 +21,7 @@ export function CopyButton({ value, label = 'Copy' }: { value: string; label?: s
       className="copy-btn"
       title={copied ? 'Copied!' : `Copy ${label}`}
       aria-label={copied ? 'Copied' : `Copy ${label}`}
-      onClick={onCopy}
+      onClick={(e) => { void onCopy(e); }}
     >
       {copied ? <Check size={12} /> : <Copy size={12} />}
     </button>

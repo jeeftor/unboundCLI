@@ -11,8 +11,7 @@ import {
   X,
   Zap
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
 import { getHostnameDecision, suppressionKey } from '../lib/hostnameDecision';
 import {
@@ -23,7 +22,7 @@ import { InlineProgress } from './InlineProgress';
 import { CloudflareRoutePanel } from './CloudflarePanel';
 import { EntryModal } from './CaddyEntryModal';
 import { Select } from './Select';
-import type { Entry, ServiceKey, SyncAction } from '../types';
+import type { CaddyEntry, Entry, ServiceKey, SyncAction } from '../types';
 
 export function SyncModal({
   open,
@@ -35,16 +34,16 @@ export function SyncModal({
   caddyServerIP,
   suppressed,
   onToggleSuppress,
-  syncService,
+  syncService: _syncService,
   setSyncService,
   syncLoading,
   syncProgress,
   syncLog,
-  plannedActions,
-  canSyncNow,
+  plannedActions: _plannedActions,
+  canSyncNow: _canSyncNow,
   mutationEnabled,
   onPreviewFor,
-  onDryRun,
+  onDryRun: _onDryRun,
   onSync,
   onRefresh,
   onRemoveEntry,
@@ -75,18 +74,18 @@ export function SyncModal({
   const isStale = entry?.overall_status === 4;
   const hostnameDecision = entry ? getHostnameDecision(entry, caddyServerIP) : null;
   const [caddyRaw, setCaddyRaw] = useState('');
-  const [caddyEntry, setCaddyEntry] = useState<import('../types').CaddyEntry | null>(null);
+  const [caddyEntry, setCaddyEntry] = useState<CaddyEntry | null>(null);
   const [caddyTemplates, setCaddyTemplates] = useState<string[]>([]);
   const [caddyDefaultTemplate, setCaddyDefaultTemplate] = useState('default');
   const [caddyRepoPath, setCaddyRepoPath] = useState('');
   const [caddyOpen, setCaddyOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const hasAutoSynced = useRef(false);
+  const hasAutoSyncedRef = useRef(false);
 
   // Track which services have been removed in this modal session so buttons
   // flip immediately without waiting for the next data refresh.
   const [removingService, setRemovingService] = useState<string | null>(null);
-  const [localRemoved, setLocalRemoved] = useState<Set<string>>(new Set());
+  const [localRemoved, setLocalRemoved] = useState<Set<string>>(() => new Set());
   const [confirmSync, setConfirmSync] = useState<{ service: string; apply: () => Promise<void> } | null>(null);
 
   // Live server log streaming -- poll /api/logs while an operation is in progress.
@@ -96,9 +95,13 @@ export function SyncModal({
   // Reset local remove state and log whenever the modal opens for a new hostname.
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setLocalRemoved(new Set());
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setRemovingService(null);
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setConfirmSync(null);
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setLiveLog('');
       logCursorRef.current = 0;
     }
@@ -110,7 +113,9 @@ export function SyncModal({
   useEffect(() => {
     if (!busy) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      // eslint-disable-next-line no-unmodified-loop-condition
       while (!cancelled) {
         try {
           const data = await api.logs(logCursorRef.current);
@@ -122,17 +127,26 @@ export function SyncModal({
             });
           }
         } catch { /* ignore */ }
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => { timer = setTimeout(r, 400); });
       }
     };
     void poll();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [busy]);
 
   const [caddyError, setCaddyError] = useState('');
 
   useEffect(() => {
-    if (!open || !hostname) { setCaddyRaw(''); setCaddyEntry(null); setCaddyError(''); return; }
+    if (!open || !hostname) {
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
+      setCaddyRaw('');
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
+      setCaddyEntry(null);
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
+      setCaddyError('');
+      return;
+    }
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setCaddyError('');
     Promise.all([api.caddyEntries(), api.caddyTemplates()]).then(([res, tmpl]) => {
       const found = res.entries.find(e => e.hostname === hostname) ?? null;
@@ -147,14 +161,14 @@ export function SyncModal({
   }, [open, hostname]);
 
   useEffect(() => {
-    if (open && autoSync && !hasAutoSynced.current) {
-      hasAutoSynced.current = true;
+    if (open && autoSync && !hasAutoSyncedRef.current) {
+      hasAutoSyncedRef.current = true;
       void (async () => {
         const ok = await onPreviewFor('all', hostname);
         if (ok) { await onSync(); onRefresh(); }
       })();
     }
-    if (!open) hasAutoSynced.current = false;
+    if (!open) hasAutoSyncedRef.current = false;
   }, [open, autoSync, hostname, onPreviewFor, onSync, onRefresh]);
 
   if (!open) return null;
@@ -474,7 +488,7 @@ function HostnameDecisionPanel({ decision, hostname, suppressed, onToggleSuppres
 
 export function SyncPanel({
   enabledServices,
-  caddyServerIP,
+  caddyServerIP: _caddyServerIP,
   syncService,
   setSyncService,
   syncLoading,

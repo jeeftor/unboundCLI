@@ -25,10 +25,6 @@ type GitRemoteStatus = { remote_ahead: number; local_ahead: number; branch: stri
 
 export function CaddyEditor({
   mutationEnabled,
-  remoteStatus,
-  remoteChecking,
-  pulling,
-  onPull,
   onCheckRemote
 }: {
   mutationEnabled: boolean;
@@ -87,6 +83,7 @@ export function CaddyEditor({
   }, [load, loadDiff, onCheckRemote]);
 
   const handleDelete = useCallback(async (hostname: string) => {
+    // eslint-disable-next-line no-alert
     if (!confirm(`Remove ${hostname} from Caddyfile?`)) return;
     try {
       await api.caddyDeleteEntry(hostname);
@@ -154,7 +151,7 @@ export function CaddyEditor({
           entries={data?.entries ?? []}
           mutationEnabled={mutationEnabled}
           onEdit={(entry) => { setEditTarget(entry); setModalOpen(true); }}
-          onDelete={handleDelete}
+          onDelete={(hostname) => { void handleDelete(hostname); }}
         />
       )}
 
@@ -169,7 +166,7 @@ export function CaddyEditor({
           defaultTemplate={defaultTemplate}
           repoPath={data?.editor.repo_path ?? ''}
           onClose={() => { setModalOpen(false); setEditTarget(null); }}
-          onSaved={handleSaved}
+          onSaved={() => { void handleSaved(); }}
         />
       )}
 
@@ -262,7 +259,7 @@ function EntriesTable({
               </td>
               <td className="caddy-directives">
                 {entry.directives?.length > 0
-                  ? entry.directives.map((d, i) => <span key={i} className="directive-tag">{d}</span>)
+                  ? entry.directives.map((d) => <span key={`${entry.hostname}-${d}`} className="directive-tag">{d}</span>)
                   : <span className="muted">—</span>}
               </td>
               <td className="caddy-source">{entry.source_file?.split('/').slice(-2).join('/')}</td>
@@ -271,7 +268,7 @@ function EntriesTable({
                   <button type="button" onClick={() => onEdit(entry)} title="Edit">
                     <Edit3 size={14} />
                   </button>
-                  <button type="button" className="btn-danger" onClick={() => onDelete(entry.hostname)} title="Remove">
+                  <button type="button" className="btn-danger" onClick={() => { void onDelete(entry.hostname); }} title="Remove">
                     <Trash2 size={14} />
                   </button>
                 </td>

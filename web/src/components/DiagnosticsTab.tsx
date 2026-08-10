@@ -53,7 +53,7 @@ export function DiagnosticsTab() {
   const [pruneLoading, setPruneLoading] = useState(false);
   const [pruneResult, setPruneResult] = useState<PruneResponse | null>(null);
   const [pruneError, setPruneError] = useState<string | null>(null);
-  const [pruneSelected, setPruneSelected] = useState<Set<string>>(new Set());
+  const [pruneSelected, setPruneSelected] = useState<Set<string>>(() => new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -351,13 +351,13 @@ export function DiagnosticsTab() {
                   )}
                 </div>
                 <div className="diagnostics-host-issues">
-                  {hostIssues.map((issue, i) => {
+                  {hostIssues.map((issue) => {
                     const sev = SEVERITY_META[issue.severity];
                     const cat = CATEGORY_META[issue.category];
                     const SevIcon = sev.icon;
                     const CatIcon = cat.icon;
                     return (
-                      <div key={i} className={`diagnostics-issue ${sev.cls}`}>
+                      <div key={`${hostname}-${issue.title}`} className={`diagnostics-issue ${sev.cls}`}>
                         <div className="diagnostics-issue-header">
                           <div className="diagnostics-issue-icon">
                             <SevIcon size={14} />

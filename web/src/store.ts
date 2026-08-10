@@ -11,8 +11,7 @@ import type {
   ServiceKey,
   SyncAction,
 } from './types';
-import type { CaddyEditorForm, ConfigForms, TestResults } from './hooks/useConfigForms';
-import { emptyForms } from './hooks/useConfigForms';
+import { emptyForms, type ConfigForms, type TestResults } from './hooks/useConfigForms';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -163,7 +162,7 @@ type AppState = {
   setPullOutput: (output: string) => void;
 };
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>((set, _get) => ({
   // ── View / UI ──
   view: 'dashboard',
   configOpen: false,
@@ -411,7 +410,7 @@ export function cancelReconnect() {
   reconnectDelay = 1000;
 }
 
-export async function refreshEntries(onDataChanged?: () => void) {
+export function refreshEntries(onDataChanged?: () => void) {
   const store = useStore.getState();
   pendingOnDataChanged = onDataChanged;
 
@@ -628,7 +627,7 @@ export async function syncNow(): Promise<void> {
     });
     store.setSyncLog(`${data.result.message}\nadded=${data.result.items_added} updated=${data.result.items_updated} deleted=${data.result.items_deleted}`);
     store.clearPlan();
-    await refreshEntries();
+    void refreshEntries();
     // Refresh auth cache — backend also refreshes its cache, but this
     // updates the frontend store so the VisualizeModal shows fresh data.
     void useStore.getState().refreshAuth();
@@ -641,7 +640,7 @@ export async function syncNow(): Promise<void> {
 
 export async function removeEntry(hostname: string, service: 'all' | 'unbound' | 'adguard' = 'all'): Promise<void> {
   await api.removeEntry(hostname, service);
-  await refreshEntries();
+  void refreshEntries();
   void useStore.getState().refreshAuth();
 }
 
@@ -649,7 +648,7 @@ export async function syncAll(): Promise<void> {
   const ok = await previewSync('all', '');
   if (ok) {
     await syncNow();
-    await refreshEntries();
+    void refreshEntries();
     void useStore.getState().refreshAuth();
   }
 }

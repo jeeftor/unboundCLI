@@ -25,8 +25,7 @@ import type {
   HostAuth,
 } from '../types';
 import { AuthBadge } from './AuthBadge';
-import { EditableAuthBadge, changesKey } from './EditableAuthBadge';
-import type { AuthField, PendingChange } from './EditableAuthBadge';
+import { EditableAuthBadge, changesKey, type AuthField, type PendingChange } from './EditableAuthBadge';
 import { StatusIcon } from './StatusIcon';
 import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
 import {
@@ -34,8 +33,8 @@ import {
   LAN_AUTH_INFO,
   API_AUTH_INFO,
   STATUS_INFO,
+  type AuthMeta,
 } from '../lib/authMeta';
-import type { AuthMeta } from '../lib/authMeta';
 
 // Section metadata — color-coded by traffic type
 const SECTION_META = {
@@ -257,7 +256,7 @@ function HostRow({
                 <div className="auth-detail-section">
                   <strong>Notes</strong>
                   <ul>
-                    {host.notes.map((n, i) => <li key={i}>{n}</li>)}
+                    {host.notes.map(n => <li key={n}>{n}</li>)}
                   </ul>
                 </div>
               )}
@@ -272,7 +271,7 @@ function HostRow({
                       <button
                         type="button"
                         className="auth-fix-btn"
-                        onClick={handleFixDoubleLogin}
+                        onClick={(e) => void handleFixDoubleLogin(e)}
                         disabled={fixing}
                         title="Create a CF Access bypass app + policy for this hostname so CF Access lets traffic through and Caddy forward_auth becomes the sole auth layer."
                       >
@@ -297,13 +296,13 @@ function HostRow({
 type StreamState = 'idle' | 'loading-base' | 'enriching' | 'done' | 'error';
 
 export function AuthFlowsTab() {
-  const [hosts, setHosts] = useState<Map<string, HostAuth>>(new Map());
+  const [hosts, setHosts] = useState<Map<string, HostAuth>>(() => new Map());
   const [streamState, setStreamState] = useState<StreamState>('idle');
   const [sources, setSources] = useState<{ cloudflare_access: boolean; authentik: boolean } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [legendOpen, setLegendOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(new Map());
+  const [pendingChanges, setPendingChanges] = useState<Map<string, PendingChange>>(() => new Map());
   const [editModalHost, setEditModalHost] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [confirmDeploy, setConfirmDeploy] = useState(false);
@@ -316,9 +315,13 @@ export function AuthFlowsTab() {
       eventSourceRef.current = null;
     }
 
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setHosts(new Map());
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setErrors([]);
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setSources(null);
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setStreamState('loading-base');
 
     const es = new EventSource('/api/auth/inventory/stream');
@@ -332,12 +335,15 @@ export function AuthFlowsTab() {
         h._stale = true;
         newMap.set(h.hostname, h);
       }
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setHosts(newMap);
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setStreamState('enriching');
     });
 
     es.addEventListener('enrich', (e: MessageEvent) => {
       const data = JSON.parse(e.data);
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setHosts(prev => {
         const next = new Map(prev);
         for (const h of data.hosts ?? []) {
@@ -353,8 +359,10 @@ export function AuthFlowsTab() {
       if (e.data) {
         try {
           const data = JSON.parse(e.data);
+          // eslint-disable-next-line @eslint-react/set-state-in-effect
           setErrors(prev => [...prev, `${data.source ?? 'unknown'}: ${data.error ?? 'unknown error'}`]);
         } catch {
+          // eslint-disable-next-line @eslint-react/set-state-in-effect
           setErrors(prev => [...prev, 'Unknown stream error']);
         }
       }
@@ -362,15 +370,18 @@ export function AuthFlowsTab() {
 
     es.addEventListener('done', (e: MessageEvent) => {
       const data = JSON.parse(e.data);
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setSources(data.sources ?? null);
       // Mark all remaining stale hosts as non-stale.
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setHosts(prev => {
         const next = new Map(prev);
-        for (const [key, h] of next) {
+        for (const [, h] of next) {
           h._stale = false;
         }
         return next;
       });
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setStreamState('done');
       es.close();
       eventSourceRef.current = null;
@@ -379,11 +390,13 @@ export function AuthFlowsTab() {
     // Native error handler (connection failed, not server-sent error event).
     es.onerror = () => {
       if (streamState !== 'done') {
+        // eslint-disable-next-line @eslint-react/set-state-in-effect
         setStreamState(prev => prev === 'done' ? prev : 'error');
         es.close();
         eventSourceRef.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -527,7 +540,7 @@ export function AuthFlowsTab() {
           <div>
             <strong>Some auth sources failed:</strong>
             <ul>
-              {errors.map((err, i) => <li key={i}>{err}</li>)}
+              {errors.map(err => <li key={err}>{err}</li>)}
             </ul>
           </div>
         </div>
@@ -909,7 +922,7 @@ function EditHostModal({
             <div className="auth-edit-notes">
               <AlertTriangle size={14} />
               <ul>
-                {host.notes.map((n, i) => <li key={i}>{n}</li>)}
+                {host.notes.map(n => <li key={n}>{n}</li>)}
               </ul>
             </div>
           )}

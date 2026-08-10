@@ -3,8 +3,7 @@ import {
   CircleAlert,
   Trash2
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { api } from '../api/client';
 import type { Entry } from '../types';
 import { LoadingSpinner } from './LoadingSpinner';

@@ -3,7 +3,6 @@ import {
   ArrowLeftRight,
   Cloud,
   Fingerprint,
-  HelpCircle,
   KeyRound,
   LockKeyhole,
   Monitor,
@@ -14,8 +13,8 @@ import {
   Ticket,
   Unlock,
   UnlockKeyhole,
+  type LucideIcon,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 
 // ── Shared auth metadata (used by AuthFlowsTab + VisualizeModal) ──
 
@@ -332,7 +331,7 @@ export function buildWanRequestFlow(auth: {
     steps.push({ step: n++, actor: 'Caddy', action: 'No forward_auth configured', result: 'Forwards directly to upstream' });
   }
 
-  steps.push({ step: n++, actor: 'Service', action: `Receives request at ${auth.upstream}`, result: 'Serves content' });
+  steps.push({ step: n, actor: 'Service', action: `Receives request at ${auth.upstream}`, result: 'Serves content' });
 
   return steps;
 }
@@ -362,7 +361,7 @@ export function buildLanRequestFlow(auth: {
     steps.push({ step: n++, actor: 'Caddy', action: 'No forward_auth', result: 'Forwards directly to upstream' });
   }
 
-  steps.push({ step: n++, actor: 'Service', action: `Receives request at ${auth.upstream}`, result: 'Serves content' });
+  steps.push({ step: n, actor: 'Service', action: `Receives request at ${auth.upstream}`, result: 'Serves content' });
 
   return steps;
 }

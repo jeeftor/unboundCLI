@@ -1,9 +1,6 @@
 import '../styles/VisualizeModal.css';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import { buildLanRequestFlow, buildWanRequestFlow, detectAuthPattern } from '../lib/authMeta';
-import { ReactFlowDiagram } from './ReactFlowDiagram';
-import type { Step } from './ReactFlowDiagramNodes';
 import { useStore } from '../store';
 import { api } from '../api/client';
 import type { Entry } from '../types';

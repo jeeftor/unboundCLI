@@ -1,11 +1,10 @@
 import '@xyflow/react/dist/style.css';
 
 import ELK from 'elkjs/lib/elk.bundled.js';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Background,
   BackgroundVariant,
-  BaseEdge,
   Controls,
   EdgeLabelRenderer,
   getBezierPath,
@@ -18,8 +17,10 @@ import {
 import {
   nodeTypes,
   stepsToNodesEdges,
+  type DiagramEdge,
+  type DiagramNode,
+  type Step,
 } from './ReactFlowDiagramNodes';
-import type { DiagramEdge, DiagramNode, Step } from './ReactFlowDiagramNodes';
 
 const elk = new ELK();
 
@@ -81,12 +82,12 @@ function ArrowEdge({
   sourcePosition,
   targetPosition,
   label,
-  labelStyle,
-  labelBgStyle,
-  labelBgPadding,
+  _labelStyle,
+  _labelBgStyle,
+  _labelBgPadding,
   animated,
   data,
-  markerEnd,
+  _markerEnd,
 }: any) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -168,7 +169,6 @@ function FlowDiagramInner({ steps, height }: { steps: Step[]; height: number }) 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const { fitView } = useReactFlow();
-  const layoutDone = useRef(false);
 
   // Set edge type to our custom arrow edge
   useEffect(() => {
@@ -178,13 +178,13 @@ function FlowDiagramInner({ steps, height }: { steps: Step[]; height: number }) 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    layoutNodes(initialNodes, initialEdges).then(({ nodes: ln, edges: le }) => {
+    void layoutNodes(initialNodes, initialEdges).then(({ nodes: ln, edges: le }) => {
       if (cancelled) return;
       setNodes(ln);
       setEdges(le.map(e => ({ ...e, type: 'arrow' })));
       timer = setTimeout(() => {
         if (cancelled) return;
-        fitView({ padding: 0.1, maxZoom: 1.5 });
+        void fitView({ padding: 0.1, maxZoom: 1.5 });
       }, 50);
     });
     return () => {
