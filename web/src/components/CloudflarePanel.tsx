@@ -1,13 +1,13 @@
 import {
   CheckCircle2,
   CircleAlert,
-  Loader2,
   Trash2
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { api } from '../api/client';
 import type { Entry } from '../types';
+import { LoadingSpinner } from './LoadingSpinner';
 
 const DNS_RETRY_INTERVAL_MS = 10_000;
 
@@ -15,11 +15,18 @@ export function DNSProbe({ hostname }: { hostname: string }) {
   const [state, setState] = useState<'idle' | 'loading' | 'ok' | 'fail'>('idle');
   const [tip, setTip] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const probe = useCallback(async () => {
     setState('loading');
     try {
       const res = await api.dnsProbe(hostname);
+      if (!mountedRef.current) return;
       if (res.resolved) {
         const detail = res.cname ? `-> ${res.cname}` : (res.addresses?.[0] ?? '');
         setTip(`Resolves via 1.1.1.1: ${detail}`);
@@ -30,6 +37,7 @@ export function DNSProbe({ hostname }: { hostname: string }) {
         setCountdown(DNS_RETRY_INTERVAL_MS / 1000);
       }
     } catch {
+      if (!mountedRef.current) return;
       setTip('Probe failed');
       setState('fail');
       setCountdown(DNS_RETRY_INTERVAL_MS / 1000);
@@ -180,32 +188,32 @@ export function CloudflareRoutePanel({ entry, caddyServerIP, mutationEnabled, on
             <>
               {isViaCaddy ? (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('direct')} disabled={saving || !directService} title={directService}>
-                  {saving ? <Loader2 size={11} className="spin" /> : null} Switch to Direct
+                  {saving ? <LoadingSpinner size={11} /> : null} Switch to Direct
                 </button>
               ) : (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('caddy')} disabled={saving || !caddyService} title={caddyService}>
-                  {saving ? <Loader2 size={11} className="spin" /> : null} Switch to Caddy
+                  {saving ? <LoadingSpinner size={11} /> : null} Switch to Caddy
                 </button>
               )}
               <button type="button" className="btn-sm btn-danger-sm" onClick={() => void removeRoute()} disabled={saving}>
-                {saving ? <Loader2 size={11} className="spin" /> : <Trash2 size={12} />} Remove
+                {saving ? <LoadingSpinner size={11} /> : <Trash2 size={12} />} Remove
               </button>
             </>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
               {caddyService && (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('caddy')} disabled={saving}>
-                  {saving ? <Loader2 size={11} className="spin" /> : null} Route via Caddy ({caddyServerIP})
+                  {saving ? <LoadingSpinner size={11} /> : null} Route via Caddy ({caddyServerIP})
                 </button>
               )}
               {directService && (
                 <button type="button" className="btn-sm" onClick={() => void setRoute('direct')} disabled={saving}>
-                  {saving ? <Loader2 size={11} className="spin" /> : null} Route direct ({directService})
+                  {saving ? <LoadingSpinner size={11} /> : null} Route direct ({directService})
                 </button>
               )}
             </div>
           )}
-          {saving && <span className="cf-route-saving"><Loader2 size={12} className="spin" /> Updating tunnel + DNS...</span>}
+          {saving && <span className="cf-route-saving"><LoadingSpinner size={12} /> Updating tunnel + DNS...</span>}
         </div>
       )}
 
@@ -251,7 +259,7 @@ export function CFRepairBanner({ entries, mutationEnabled, cfEnabled, onRepaired
       </span>
       {mutationEnabled && (
         <button type="button" className="btn-sm btn-primary" onClick={() => void repair()} disabled={repairing}>
-          {repairing ? <Loader2 size={11} className="spin" /> : null}
+          {repairing ? <LoadingSpinner size={11} /> : null}
           {repairing ? ' Repairing...' : 'Repair all missing CNAMEs'}
         </button>
       )}

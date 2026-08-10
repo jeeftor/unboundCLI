@@ -177,15 +177,20 @@ function FlowDiagramInner({ steps, height }: { steps: Step[]; height: number }) 
 
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     layoutNodes(initialNodes, initialEdges).then(({ nodes: ln, edges: le }) => {
       if (cancelled) return;
       setNodes(ln);
       setEdges(le.map(e => ({ ...e, type: 'arrow' })));
-      setTimeout(() => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
         fitView({ padding: 0.1, maxZoom: 1.5 });
       }, 50);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [initialNodes, initialEdges, setNodes, setEdges, fitView]);
 
   return (

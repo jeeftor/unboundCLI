@@ -425,10 +425,6 @@
 .deploy-result.ok    { background: var(--green-bg); color: var(--green); }
 .deploy-result.error { background: var(--red-bg); color: var(--red); }
 
-/* Spinner animation */
-@keyframes spin { to { transform: rotate(360deg); } }
-.spin { animation: spin .8s linear infinite; }
-
 /* Disabled editor notice */
 .caddy-editor-disabled {
   display: flex;

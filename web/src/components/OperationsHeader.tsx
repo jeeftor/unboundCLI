@@ -1,4 +1,4 @@
-import { SERVICE_META } from '../hooks/useRuntimeData';
+import { SERVICE_META } from '../store';
 import type { ProgressEvent } from '../types';
 
 const SERVICE_ORDER = ['caddy', 'unbound', 'adguard', 'dhcp', 'cloudflare', 'dns'];

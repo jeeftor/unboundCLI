@@ -1,7 +1,6 @@
 import '../styles/Dashboard.css';
 import {
   GitBranch,
-  Loader2,
   RefreshCw,
   X,
 } from 'lucide-react';
@@ -13,6 +12,7 @@ import { AuthFlowsTab } from './AuthFlowsTab';
 import { CaddyEditor } from './CaddyEditor';
 import { CFRepairBanner } from './CloudflarePanel';
 import { ConfigModal } from './ConfigModal';
+import { LoadingSpinner } from './LoadingSpinner';
 import { DiagnosticsTab } from './DiagnosticsTab';
 import { EntriesTable } from './EntriesTable';
 import { EntriesToolbar } from './EntriesToolbar';
@@ -232,11 +232,11 @@ export function AppShell() {
             <div className="git-remote-banner-actions">
               {remoteStatus.remote_ahead > 0 && mutationEnabled && (
                 <button type="button" className="btn-sm btn-warn" onClick={() => void handlePull()} disabled={pulling}>
-                  {pulling ? <><Loader2 size={12} className="spin" /> Pulling…</> : '⬇ Pull'}
+                  {pulling ? <><LoadingSpinner size={12} /> Pulling…</> : '⬇ Pull'}
                 </button>
               )}
               <button type="button" className="btn-sm" onClick={() => void checkRemote()} disabled={remoteChecking}>
-                {remoteChecking ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />}
+                {remoteChecking ? <LoadingSpinner size={12} /> : <RefreshCw size={12} />}
               </button>
             </div>
           </div>

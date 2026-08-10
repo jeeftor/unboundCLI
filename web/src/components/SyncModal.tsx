@@ -21,7 +21,7 @@ import {
 } from '../lib/services';
 import { InlineProgress } from './InlineProgress';
 import { CloudflareRoutePanel } from './CloudflarePanel';
-import { EntryModal } from './CaddyEditor';
+import { EntryModal } from './CaddyEntryModal';
 import { Select } from './Select';
 import type { Entry, ServiceKey, SyncAction } from '../types';
 
@@ -129,8 +129,11 @@ export function SyncModal({
     return () => { cancelled = true; };
   }, [busy]);
 
+  const [caddyError, setCaddyError] = useState('');
+
   useEffect(() => {
-    if (!open || !hostname) { setCaddyRaw(''); setCaddyEntry(null); return; }
+    if (!open || !hostname) { setCaddyRaw(''); setCaddyEntry(null); setCaddyError(''); return; }
+    setCaddyError('');
     Promise.all([api.caddyEntries(), api.caddyTemplates()]).then(([res, tmpl]) => {
       const found = res.entries.find(e => e.hostname === hostname) ?? null;
       setCaddyRaw(found?.raw ?? '');
@@ -138,7 +141,9 @@ export function SyncModal({
       setCaddyRepoPath(res.editor?.repo_path ?? '');
       setCaddyTemplates(tmpl.templates);
       setCaddyDefaultTemplate(tmpl.default);
-    }).catch(() => {});
+    }).catch((e: unknown) => {
+      setCaddyError(e instanceof Error ? e.message : 'Failed to load Caddy data');
+    });
   }, [open, hostname]);
 
   useEffect(() => {
@@ -336,6 +341,10 @@ export function SyncModal({
             </div>
           )}
 
+          {caddyError && (
+            <div className="sync-modal-error" role="alert">{caddyError}</div>
+          )}
+
           {(caddyRaw || caddyEntry) && (
             <div className="sync-modal-caddy">
               <div className="sync-caddy-header">
@@ -367,7 +376,9 @@ export function SyncModal({
                   const found = res.entries.find(e => e.hostname === hostname) ?? null;
                   setCaddyRaw(found?.raw ?? '');
                   setCaddyEntry(found);
-                }).catch(() => {});
+                }).catch((e: unknown) => {
+                  setCaddyError(e instanceof Error ? e.message : 'Failed to refresh Caddy data');
+                });
                 onRefresh();
               }}
             />

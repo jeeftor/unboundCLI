@@ -152,11 +152,15 @@ function CaddyEditorSetupPanel({
 }) {
   const dirty = JSON.stringify(form) !== JSON.stringify(savedForm);
   const [availableTemplates, setAvailableTemplates] = useState<string[]>([]);
+  const [templateError, setTemplateError] = useState('');
   const set = <K extends keyof CaddyEditorForm>(key: K, value: CaddyEditorForm[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
   useEffect(() => {
-    api.caddyTemplates().then((res) => setAvailableTemplates(res.templates)).catch(() => {});
+    setTemplateError('');
+    api.caddyTemplates().then((res) => setAvailableTemplates(res.templates)).catch((e: unknown) => {
+      setTemplateError(e instanceof Error ? e.message : 'Failed to load templates');
+    });
   }, []);
   return (
     <section className="caddy-editor-setup">
@@ -171,6 +175,10 @@ function CaddyEditorSetupPanel({
           <input id="ce-enabled" type="checkbox" checked={form.enabled} onChange={(e) => set('enabled', e.target.checked)} />
           Enabled
         </label>
+
+        {templateError && (
+          <div className="config-test-result error" role="alert">{templateError}</div>
+        )}
 
         {/* Paths */}
         <div className="ce-section-label">Paths</div>

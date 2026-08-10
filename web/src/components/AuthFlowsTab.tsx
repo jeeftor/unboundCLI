@@ -2,12 +2,10 @@ import '../styles/AuthFlowsTab.css';
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
   Cloud,
   Fingerprint,
   Globe,
   HelpCircle,
-  Loader2,
   Network,
   Pencil,
   RefreshCw,
@@ -20,11 +18,16 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
+import { LoadingSpinner } from './LoadingSpinner';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '../api/client';
 import type {
-  AuthStatus,
   HostAuth,
 } from '../types';
+import { AuthBadge } from './AuthBadge';
+import { EditableAuthBadge, changesKey } from './EditableAuthBadge';
+import type { AuthField, PendingChange } from './EditableAuthBadge';
+import { StatusIcon } from './StatusIcon';
 import { FlowArrow, FlowExplanation, FlowNode, FlowRow } from './FlowDiagram';
 import {
   WAN_AUTH_INFO,
@@ -34,9 +37,6 @@ import {
 } from '../lib/authMeta';
 import type { AuthMeta } from '../lib/authMeta';
 
-// Re-export for local use (AuthBadge, EditableAuthBadge, etc. use these)
-// Auth type metadata now lives in lib/authMeta.ts (shared with VisualizeModal)
-
 // Section metadata — color-coded by traffic type
 const SECTION_META = {
   wan: { label: 'WAN Auth', subtitle: 'internet-facing traffic', icon: Globe, color: 'blue' },
@@ -44,128 +44,6 @@ const SECTION_META = {
   api: { label: 'API Auth', subtitle: 'scripts & automation — how non-browser clients authenticate', icon: Terminal, color: 'purple' },
   status: { label: 'Status', subtitle: 'overall health', icon: ShieldCheck, color: 'gray' },
 } as const;
-
-// ─── Badge component with tooltip ────────────────────────────────────────────
-
-function AuthBadge({ value, info, showIcon = true }: { value: string; info: Record<string, AuthMeta>; showIcon?: boolean }) {
-  const meta = info[value] ?? { label: value, desc: '', icon: HelpCircle, tone: 'gray' };
-  const cls = value === 'none' ? 'auth-badge none' : `auth-badge ${value.replace(/_/g, '-')}`;
-  const Icon = meta.icon;
-  return (
-    <span className={cls} title={meta.desc}>
-      {showIcon && <Icon size={12} className="auth-badge-icon" />}
-      {meta.label}
-      <HelpCircle size={11} className="auth-badge-help" />
-    </span>
-  );
-}
-
-// ─── Pending changes tracking ────────────────────────────────────────────────
-
-type AuthField = 'wan_auth' | 'lan_auth' | 'api_auth';
-
-type PendingChange = {
-  hostname: string;
-  field: AuthField;
-  oldValue: string;
-  newValue: string;
-};
-
-function changesKey(hostname: string, field: AuthField) {
-  return `${hostname}::${field}`;
-}
-
-// ─── Editable auth badge with inline dropdown ────────────────────────────────
-
-function EditableAuthBadge({
-  hostname,
-  field,
-  value,
-  info,
-  disabled,
-  pendingValue,
-  onChange,
-}: {
-  hostname: string;
-  field: AuthField;
-  value: string;
-  info: Record<string, AuthMeta>;
-  disabled?: boolean;
-  pendingValue?: string;
-  onChange: (hostname: string, field: AuthField, newValue: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-  const displayValue = pendingValue ?? value;
-  const isPending = pendingValue !== undefined && pendingValue !== value;
-  const meta = info[displayValue] ?? { label: displayValue, desc: '', icon: HelpCircle, tone: 'gray' };
-  const Icon = meta.icon;
-  const cls = displayValue === 'none' ? 'auth-badge none' : `auth-badge ${displayValue.replace(/_/g, '-')}`;
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  if (disabled) {
-    return <span className="auth-na" title="This host is not exposed to the internet (no Cloudflare tunnel). WAN auth doesn't apply.">Not exposed</span>;
-  }
-
-  return (
-    <span className="auth-badge-editable" ref={ref}>
-      <button
-        type="button"
-        className={`${cls} ${isPending ? 'pending' : ''}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(o => !o);
-        }}
-        title={meta.desc + (isPending ? ' (pending change)' : '')}
-      >
-        <Icon size={12} className="auth-badge-icon" />
-        {meta.label}
-        {isPending && <span className="auth-badge-pending-dot" />}
-        <ChevronDown size={10} className="auth-badge-chevron" />
-      </button>
-      {open && (
-        <div className="auth-dropdown" onClick={e => e.stopPropagation()}>
-          {Object.entries(info).map(([key, m]) => {
-            const ItemIcon = m.icon;
-            const isSelected = key === displayValue;
-            return (
-              <button
-                key={key}
-                type="button"
-                className={`auth-dropdown-item ${isSelected ? 'selected' : ''}`}
-                onClick={() => {
-                  onChange(hostname, field, key);
-                  setOpen(false);
-                }}
-                title={m.desc}
-              >
-                <ItemIcon size={13} className="auth-dropdown-item-icon" />
-                <span className="auth-dropdown-item-label">{m.label}</span>
-                {isSelected && <CheckCircle2 size={12} className="auth-dropdown-item-check" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </span>
-  );
-}
-
-function StatusIcon({ status }: { status: AuthStatus }) {
-  const meta = STATUS_INFO[status] ?? STATUS_INFO.unknown;
-  const Icon = meta.icon;
-  return <span title={meta.desc}><Icon size={16} className={`auth-status-icon ${status}`} /></span>;
-}
 
 // ─── Legend section card ────────────────────────────────────────────────────
 
@@ -280,15 +158,7 @@ function HostRow({
     setFixing(true);
     setFixError(null);
     try {
-      const resp = await fetch('/api/auth/fix-double-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostname: host.hostname }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${resp.status}`);
-      }
+      await api.authFixDoubleLogin(host.hostname);
       setFixed(true);
       onFixed?.(host.hostname);
     } catch (err) {
@@ -406,7 +276,7 @@ function HostRow({
                         disabled={fixing}
                         title="Create a CF Access bypass app + policy for this hostname so CF Access lets traffic through and Caddy forward_auth becomes the sole auth layer."
                       >
-                        {fixing ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />}
+                        {fixing ? <LoadingSpinner size={14} /> : <Wand2 size={14} />}
                         {fixing ? 'Creating bypass…' : 'Fix: Create CF Access Bypass'}
                       </button>
                       {fixError && <span className="auth-fix-error">{fixError}</span>}
@@ -608,12 +478,12 @@ export function AuthFlowsTab() {
         <div className="auth-header-title">
           <ShieldCheck size={20} />
           <h2>Auth Flows</h2>
-          {isLoading && <span className="auth-phase-tag"><Loader2 size={12} className="spin" /> Loading hosts…</span>}
-          {isEnriching && <span className="auth-phase-tag enriching"><Loader2 size={12} className="spin" /> Enriching ({staleCount} pending)…</span>}
+          {isLoading && <span className="auth-phase-tag"><LoadingSpinner size={12} /> Loading hosts…</span>}
+          {isEnriching && <span className="auth-phase-tag enriching"><LoadingSpinner size={12} /> Enriching ({staleCount} pending)…</span>}
           {streamState === 'done' && <span className="auth-phase-tag done"><CheckCircle2 size={12} /> Complete</span>}
         </div>
         <button type="button" className="btn-sm" onClick={() => void load()} disabled={isLoading}>
-          {isLoading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Refresh
+          {isLoading ? <LoadingSpinner size={14} /> : <RefreshCw size={14} />} Refresh
         </button>
       </div>
 
@@ -665,7 +535,7 @@ export function AuthFlowsTab() {
 
       {isLoading && sortedHosts.length === 0 ? (
         <div className="auth-loading">
-          <Loader2 size={24} className="spin" />
+          <LoadingSpinner size={24} />
           <span>Loading auth inventory...</span>
         </div>
       ) : (
