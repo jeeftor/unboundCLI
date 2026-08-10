@@ -12,12 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - selective prune with checkboxes + Prune All button ([1ee9c94](1ee9c94ee9a9e5e6724c0437495b8133d29312bd))
 
 
+### <!-- 1 -->🐛 Bug Fixes
+
+- resolve all 138 eslint warnings ([fc27a84](fc27a84eed0cc9d5988efd6884f484bf9d7b396b))
+
+
 ### <!-- 2 -->🚜 Refactor
 
 - extract reusable components, fix bugs, consolidate CSS ([425034c](425034c7016045a732854f508f5e95bfab025932))
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([f5a80bb](f5a80bb4e7bde04653531de6e8095da80911808c))
 
 - update changelog ([add8cfe](add8cfe4f9e707505fcdae61b559d2071b9f0d76))
 
