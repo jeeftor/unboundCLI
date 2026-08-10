@@ -6,13 +6,13 @@ import {
   ShieldX,
   Trash2,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { LoadingSpinner } from './LoadingSpinner';
 import type { PruneAction, PruneResponse } from '../types';
 
 // ─── Prune action row ───────────────────────────────────────────────────────
 
-function PruneActionRow({ action }: { action: PruneAction }) {
+const PruneActionRow = memo(function PruneActionRow({ action }: { action: PruneAction }) {
   const serviceIcon = action.service === 'unbound' ? <Globe size={12} />
     : action.service === 'adguard' ? <ShieldX size={12} />
     : action.service === 'cloudflare_tunnel' ? <Route size={12} />
@@ -27,7 +27,7 @@ function PruneActionRow({ action }: { action: PruneAction }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── Prune modal ────────────────────────────────────────────────────────────
 

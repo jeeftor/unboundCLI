@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { LoadingSpinner } from './LoadingSpinner';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type {
   HostAuth,
@@ -126,7 +126,7 @@ function AuthLegend({ open, onToggle }: { open: boolean; onToggle: () => void })
 
 // ─── Host row ────────────────────────────────────────────────────────────────
 
-function HostRow({
+const HostRow = memo(function HostRow({
   host,
   pendingChanges,
   onBadgeChange,
@@ -289,7 +289,7 @@ function HostRow({
       )}
     </>
   );
-}
+});
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
