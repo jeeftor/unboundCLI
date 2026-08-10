@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { renderActionLine, serviceEnabled } from '../lib/services';
 import type { ConfigResponse, ServiceKey, SyncAction } from '../types';
@@ -16,9 +16,9 @@ const emptyPlan: PlanState = { actions: [], actionIDs: [], planID: '', service: 
 export function useSyncPlan(args: {
   config: ConfigResponse | null;
   mutationEnabled: boolean;
-  refreshEntries: () => Promise<void>;
+  refreshEntries: () => void | Promise<void>;
 }) {
-  const [syncService, setSyncServiceState] = useState('all');
+  const [syncService, setSyncService] = useState('all');
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncProgress, setSyncProgress] = useState({ title: 'Planning sync', detail: 'Building a server-issued action plan...' });
   const [syncLog, setSyncLog] = useState('No actions planned.');
@@ -26,7 +26,10 @@ export function useSyncPlan(args: {
   const planRef = useRef<PlanState>(emptyPlan);
   const syncServiceRef = useRef('all');
 
-  const enabledServices: Partial<Record<ServiceKey, boolean>> = args.config?.enabled || {};
+  const enabledServices: Partial<Record<ServiceKey, boolean>> = useMemo(
+    () => args.config?.enabled || {},
+    [args.config?.enabled]
+  );
   const canSyncNow = args.mutationEnabled && plan.planID !== '' && plan.actionIDs.length > 0;
 
   const clearPlan = useCallback((message?: string) => {
@@ -35,9 +38,9 @@ export function useSyncPlan(args: {
     if (message) setSyncLog(message);
   }, []);
 
-  const setSyncService = useCallback((service: string) => {
+  const updateSyncService = useCallback((service: string) => {
     syncServiceRef.current = service;
-    setSyncServiceState(service);
+    setSyncService(service);
     clearPlan('No actions planned.');
   }, [clearPlan]);
 
@@ -142,7 +145,7 @@ export function useSyncPlan(args: {
 
   return {
     syncService,
-    setSyncService,
+    setSyncService: updateSyncService,
     syncLoading,
     syncProgress,
     syncLog,

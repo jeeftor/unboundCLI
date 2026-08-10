@@ -8,7 +8,7 @@ export function OperationsHeader({
   message,
   messageKind,
   progress,
-  summary
+  summary: _summary,
 }: {
   loading: boolean;
   message: string;
@@ -16,7 +16,6 @@ export function OperationsHeader({
   progress: Record<string, ProgressEvent>;
   summary: { entries: number; inSync: number; out: number; caddyOnly: number; stale: number; cloudflare: number; issues: number };
 }) {
-  const totalSignals = Math.max(1, summary.entries + summary.cloudflare + summary.out + summary.stale);
   const progressPct = loading ? 72 : 100;
 
   // Count how many services have completed (loaded/failed/skipped).

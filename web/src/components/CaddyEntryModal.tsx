@@ -28,7 +28,6 @@ export function EntryModal({
   entry,
   templates,
   defaultTemplate,
-  repoPath,
   onClose,
   onSaved
 }: {
@@ -55,12 +54,17 @@ export function EntryModal({
 
   // Reset params and validation whenever template changes.
   useEffect(() => {
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setParams({});
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setValidateResult(null);
   }, [template]);
 
   // Reset validation whenever other inputs change.
-  useEffect(() => { setValidateResult(null); }, [hostname, upstream, params]);
+  useEffect(() => {
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
+    setValidateResult(null);
+  }, [hostname, upstream, params]);
 
   const updatePreview = useCallback(async (h: string, u: string, t: string, p: Record<string, string>) => {
     if (!h || !u) { setPreview(''); return; }
@@ -82,7 +86,7 @@ export function EntryModal({
   // Load initial preview for edit mode.
   useEffect(() => {
     if (entry) void updatePreview(entry.hostname, entry.upstream, template, params);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps
   }, []);
 
   const handleValidate = async () => {

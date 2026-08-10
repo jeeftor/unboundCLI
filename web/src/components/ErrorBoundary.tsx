@@ -32,6 +32,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             {this.state.error?.message || 'An unexpected error occurred.'}
           </p>
           <button
+            type="button"
             onClick={() => this.setState({ hasError: false, error: null })}
             style={{
               padding: '8px 20px',

@@ -1,8 +1,7 @@
 import '../styles/EntriesTable.css';
 import { CircleAlert, Network } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import type { KeyboardEvent } from 'react';
 import { getHostnameDecision, suppressionKey } from '../lib/hostnameDecision';
 import {
   dnsResultClass,
@@ -16,7 +15,7 @@ export function EntriesTable({
   entries,
   selectedHostname,
   mutationEnabled,
-  enabledServices,
+  enabledServices: _enabledServices,
   caddyServerIP,
   suppressed,
   onToggleSuppress,

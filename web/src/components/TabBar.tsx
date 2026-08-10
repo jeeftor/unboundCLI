@@ -18,12 +18,14 @@ const TABS: TabDef[] = [
 
 const VALID_IDS = new Set(TABS.map(t => t.id));
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function tabFromHash(): TabId {
   const hash = window.location.hash.replace(/^#\/?/, '');
   if (VALID_IDS.has(hash as TabId)) return hash as TabId;
   return 'dashboard';
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function setTabHash(tab: TabId) {
   const target = `#/${tab}`;
   if (window.location.hash !== target) {

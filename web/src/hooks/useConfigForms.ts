@@ -80,6 +80,7 @@ export function useConfigForms(args: {
     const nextConfig = args.config;
     if (!nextConfig) return;
     const ce = nextConfig.caddy_editor;
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setForms((current) => {
       const next: ConfigForms = {
         unbound: {

@@ -11,6 +11,7 @@ export type PendingChange = {
   newValue: string;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function changesKey(hostname: string, field: AuthField) {
   return `${hostname}::${field}`;
 }

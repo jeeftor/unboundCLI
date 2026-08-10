@@ -1,5 +1,4 @@
-import { ArrowLeftRight, Cloud, Globe, LockKeyhole, Monitor, Server, ShieldCheck, ShieldX, Unlock } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, Cloud, Globe, LockKeyhole, Monitor, Server, ShieldCheck, type LucideIcon } from 'lucide-react';
 
 // ── Flow diagram primitives (shared between AuthFlowsTab legend and per-entry VisualizeModal) ──
 

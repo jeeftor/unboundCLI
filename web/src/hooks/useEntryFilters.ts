@@ -7,7 +7,7 @@ export function useEntryFilters(entries: Entry[], caddyServerIP = '') {
   const [serviceFilter, setServiceFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedHostname, setSelectedHostname] = useState('');
-  const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+  const [suppressed, setSuppressed] = useState<Set<string>>(() => new Set());
 
   const toggleSuppress = useCallback((key: string) => {
     setSuppressed(prev => {
@@ -33,6 +33,7 @@ export function useEntryFilters(entries: Entry[], caddyServerIP = '') {
 
   useEffect(() => {
     if (selectedHostname && filteredEntries.some((entry) => entry.hostname === selectedHostname)) return;
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setSelectedHostname(filteredEntries[0]?.hostname || '');
   }, [filteredEntries, selectedHostname]);
 

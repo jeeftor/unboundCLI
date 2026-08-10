@@ -15,10 +15,9 @@ import {
   serviceMeta,
   serviceOrder
 } from '../lib/services';
-import type { ConfigResponse, EntriesResponse, ServiceKey } from '../types';
+import type { ConfigResponse, EntriesResponse } from '../types';
 import { LoadingSpinner } from './LoadingSpinner';
-import { TabBar } from './TabBar';
-import type { TabId } from './TabBar';
+import { TabBar, type TabId } from './TabBar';
 
 export function Topbar({ config, loading, syncLoading, view, setView, onRefresh, onOpenConfig }: { config: ConfigResponse | null; loading: boolean; syncLoading: boolean; view: TabId; setView: (v: TabId) => void; onRefresh: () => void; onOpenConfig: () => void }) {
   const busy = loading || syncLoading;

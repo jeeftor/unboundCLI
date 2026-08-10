@@ -4,8 +4,7 @@ import {
   FileCode2,
   FileSliders
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { api } from '../api/client';
 import type { CaddyEditorForm, ConfigForms, TestResults } from '../hooks/useConfigForms';
 import {
@@ -111,6 +110,7 @@ function ConfigWorkspace(props: {
         {configTabOrder.map((tab) => (
           <button
             key={tab}
+            type="button"
             role="tab"
             aria-selected={activeTab === tab}
             className={`cfg-tab ${activeTab === tab ? 'active' : ''}`}
@@ -157,6 +157,7 @@ function CaddyEditorSetupPanel({
     setForm((prev) => ({ ...prev, [key]: value }));
 
   useEffect(() => {
+    // eslint-disable-next-line @eslint-react/set-state-in-effect
     setTemplateError('');
     api.caddyTemplates().then((res) => setAvailableTemplates(res.templates)).catch((e: unknown) => {
       setTemplateError(e instanceof Error ? e.message : 'Failed to load templates');

@@ -8,9 +8,9 @@ import {
   Monitor,
   Server,
   ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { Handle, MarkerType, Position } from '@xyflow/react';
+import { Handle, type MarkerType, Position } from '@xyflow/react';
 
 // ── Node type definitions ──
 
@@ -49,6 +49,7 @@ export type FlowNodeData = {
   stepNum?: number;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 function FlowNodeComponent({ data }: { data: FlowNodeData }) {
   const cfg = NODE_CONFIG[data.nodeType];
   const Icon = cfg.icon;

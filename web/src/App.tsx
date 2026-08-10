@@ -19,7 +19,7 @@ export function App() {
   const setConfigOpen = useStore((s) => s.setConfigOpen);
   const setMobile = useStore((s) => s.setMobile);
   const setTableScrolls = useStore((s) => s.setTableScrolls);
-  const e2eRan = useRef(false);
+  const e2eRanRef = useRef(false);
 
   useEffect(() => {
     const onHashChange = () => useStore.getState().setView(tabFromHash());
@@ -67,8 +67,8 @@ export function App() {
 
   // E2E test hooks.
   useEffect(() => {
-    if (!config || e2eRan.current || window.UNBOUNDCLI_TEST_HOOKS !== true) return;
-    e2eRan.current = true;
+    if (!config || e2eRanRef.current || window.UNBOUNDCLI_TEST_HOOKS !== true) return;
+    e2eRanRef.current = true;
     const script = new URLSearchParams(window.location.search).get('e2e');
     if (!script) return;
     const run = async () => {
