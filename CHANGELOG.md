@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([6faf806](6faf806961fca4708f1d13023abdfd44dc1d2310))
+
 - update changelog ([84ed5c9](84ed5c9d03c28fac242a3aa80d9c52b4838a64f4))
 
 - update changelog ([459e3c9](459e3c91cf28d6311d83ba05923f90cbbd8873ef))
@@ -41,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - update changelog ([add8cfe](add8cfe4f9e707505fcdae61b559d2071b9f0d76))
 
 - update changelog ([ba5a18a](ba5a18a86f46ebd30bfc00057369116a4e347249))
+
+
+### <!-- 4 -->⚡ Performance
+
+- memoize remaining list-rendered components ([c20f033](c20f0335a22591d86f34f032c69e00f82ec7a38d))
 
 
 ### <!-- 7 -->⚙️ Miscellaneous Tasks
