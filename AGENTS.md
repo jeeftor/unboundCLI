@@ -40,7 +40,7 @@ exploration.
 
 ## Coding Style & Naming Conventions
 
-Use Go 1.25 as declared in `go.mod`. Keep package names short, lowercase, and
+Use Go 1.26 as declared in `go.mod`. Keep package names short, lowercase, and
 aligned with their directory names. Add new Cobra commands as focused files in
 `cmd/`, following the existing `add.go`, `list.go`, and `caddy-push-cloudflare.go`
 pattern. Run `go fmt` and keep imports organized with `goimports`; the pre-commit

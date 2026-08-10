@@ -559,6 +559,9 @@ func (d *DataLoader) resolveAllDNS(entries []*models.Entry) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			defer logging.Recover("loader: dns resolution")
+			if d.contextErr() != nil {
+				return
+			}
 			e.DNSResolved = d.resolveDNS(e.Hostname)
 			if e.DNSResolved == "FAIL" {
 				logging.Warn("DNS resolution failed", "hostname", e.Hostname)

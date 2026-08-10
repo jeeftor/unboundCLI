@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { AppShell } from './components/Dashboard';
+import { LoadingSpinner } from './components/LoadingSpinner';
 import { tabFromHash } from './components/TabBar';
-import { VisualizePage } from './components/VisualizePage';
 import { useStore, refreshEntries, syncFormsFromConfig, previewSync, dryRunSync, syncNow, saveConfig, testConfig } from './store';
+
+const VisualizePage = lazy(() => import('./components/VisualizePage').then(m => ({ default: m.VisualizePage })));
 
 export function App() {
   const config = useStore((s) => s.config);
@@ -113,7 +115,9 @@ export function App() {
   if (visualizeMatch) {
     return (
       <div id="app" data-visualize-page="true">
-        <VisualizePage hostname={decodeURIComponent(visualizeMatch[1])} />
+        <Suspense fallback={<LoadingSpinner />}>
+          <VisualizePage hostname={decodeURIComponent(visualizeMatch[1])} />
+        </Suspense>
       </div>
     );
   }

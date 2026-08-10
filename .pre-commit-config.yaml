@@ -23,13 +23,21 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
-  # Go tools as managed hooks
-  - repo: https://github.com/dnephin/pre-commit-golang
-    rev: v0.5.1
+  # Go tools as local hooks (dnephin/pre-commit-golang was archived)
+  - repo: local
     hooks:
       - id: go-mod-tidy
-      - id: go-imports
+        name: go mod tidy
+        entry: go mod tidy
+        language: system
+        files: go.mod$
+        pass_filenames: false
       - id: go-fmt
+        name: go fmt
+        entry: go fmt ./...
+        language: system
+        files: \.go$
+        pass_filenames: false
 
 
   # For golines, you can still use local since it's not in the above repo

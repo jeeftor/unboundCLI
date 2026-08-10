@@ -168,6 +168,9 @@ func probeCaddyUpstreams(ctx context.Context, entries []CaddyEntryResponse) {
 			defer workers.Done()
 			defer logging.Recover("caddy: upstream probe worker")
 			for index := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
 				entries[index].UpstreamStatus, entries[index].UpstreamError = probeCaddyUpstream(ctx, entries[index].Upstream)
 			}
 		}()
@@ -472,7 +475,7 @@ func (s *Server) handleCaddyDeploy(w http.ResponseWriter, r *http.Request) {
 
 	pr := &sseWriter{w: w, flusher: flusher, canFlush: canFlush}
 
-	result := caddyeditor.DeployPipeline(cfg, caddyeditor.DeployPipelineOptions{
+	result := caddyeditor.DeployPipeline(r.Context(), cfg, caddyeditor.DeployPipelineOptions{
 		SkipValidate:  opts.SkipValidate,
 		CommitMessage: opts.CommitMessage,
 	}, pr)

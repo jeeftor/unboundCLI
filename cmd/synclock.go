@@ -36,9 +36,15 @@ func acquireSyncLock() (func(), error) {
 	}
 
 	// Write our PID.
-	_ = f.Truncate(0)
-	_, _ = f.Seek(0, 0)
-	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
+	if err := f.Truncate(0); err != nil {
+		return nil, fmt.Errorf("truncate lock file: %w", err)
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("seek lock file: %w", err)
+	}
+	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
+		return nil, fmt.Errorf("write PID to lock file: %w", err)
+	}
 
 	cleanup := func() {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)

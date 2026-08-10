@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { HelpCircle } from 'lucide-react';
 import type { AuthMeta } from '../lib/authMeta';
 
-export function AuthBadge({ value, info, showIcon = true }: { value: string; info: Record<string, AuthMeta>; showIcon?: boolean }) {
+export const AuthBadge = memo(function AuthBadge({ value, info, showIcon = true }: { value: string; info: Record<string, AuthMeta>; showIcon?: boolean }) {
   const meta = info[value] ?? { label: value, desc: '', icon: HelpCircle, tone: 'gray' };
   const cls = value === 'none' ? 'auth-badge none' : `auth-badge ${value.replace(/_/g, '-')}`;
   const Icon = meta.icon;
@@ -12,4 +13,4 @@ export function AuthBadge({ value, info, showIcon = true }: { value: string; inf
       <HelpCircle size={11} className="auth-badge-help" />
     </span>
   );
-}
+});

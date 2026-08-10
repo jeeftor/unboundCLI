@@ -10,7 +10,7 @@ RUN adduser -D caddydnssync
 WORKDIR /app
 
 # Copy the binary from the build
-COPY caddy-sync /app/caddy-dns-sync
+COPY caddy-dns-sync /app/caddy-dns-sync
 
 # Set executable permissions
 RUN chmod +x /app/caddy-dns-sync

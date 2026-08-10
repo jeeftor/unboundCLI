@@ -13,6 +13,7 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  type EdgeProps,
 } from '@xyflow/react';
 import {
   nodeTypes,
@@ -77,18 +78,14 @@ function ArrowEdge({
   id,
   sourceX,
   sourceY,
+  sourcePosition,
   targetX,
   targetY,
-  sourcePosition,
   targetPosition,
   label,
-  _labelStyle,
-  _labelBgStyle,
-  _labelBgPadding,
   animated,
   data,
-  _markerEnd,
-}: any) {
+}: EdgeProps) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,

@@ -30,7 +30,7 @@ type DeployPipelineOptions struct {
 // DeployPipeline runs validate → git add → commit → (push) → deploy.
 // Progress lines are written to w as they arrive so the caller can stream them.
 // Only one deploy can run at a time — concurrent calls are serialized by editorMu.
-func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) DeployResult {
+func DeployPipeline(ctx context.Context, cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) DeployResult {
 	editorMu.Lock()
 	defer editorMu.Unlock()
 
@@ -99,14 +99,14 @@ func DeployPipeline(cfg EditorConfig, opts DeployPipelineOptions, w io.Writer) D
 	}
 
 	writeLine(fmt.Sprintf("Running: %s", cfg.DeployCommand))
-	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
+	deployCtx, cancel := context.WithTimeout(ctx, deployTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", cfg.DeployCommand) //nolint:gosec
+	cmd := exec.CommandContext(deployCtx, "sh", "-c", cfg.DeployCommand) //nolint:gosec
 	cmd.Dir = cfg.RepoPath
 	cmd.Stdout = w
 	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if deployCtx.Err() == context.DeadlineExceeded {
 			writeError(fmt.Sprintf("FAILED: deploy timed out after %s", deployTimeout))
 			return DeployResult{OK: false, Output: fmt.Sprintf("deploy timed out after %s", deployTimeout)}
 		}
