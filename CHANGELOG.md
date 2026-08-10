@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- Go backend bugs, dead code removal, bundle splitting, CI/CD updates ([52d989d](52d989d2c435253a7b57e628895982f2d2295806))
+
 - resolve all 138 eslint warnings ([fc27a84](fc27a84eed0cc9d5988efd6884f484bf9d7b396b))
 
 
@@ -23,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([05117f8](05117f8a4a147cec1d841b270f3b01f4a51cd45d))
 
 - update changelog ([f5a80bb](f5a80bb4e7bde04653531de6e8095da80911808c))
 
