@@ -389,12 +389,78 @@
 .prune-action-error { color: #f0506e; }
 .prune-action-success { color: #9ece6a; }
 
+/* Prune host group with checkbox */
+.prune-host-group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.prune-host-group.deselected { opacity: .55; }
+
+.prune-host-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  background: var(--bg-2);
+  font-size: 13px;
+}
+.prune-host-checkbox input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #f0506e;
+}
+.prune-host-checkbox svg { color: var(--text-2); }
+.prune-host-action-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.prune-host-actions {
+  padding: 6px 12px 8px 36px;
+}
+
+/* Prune modal footer with select controls */
 .prune-modal-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--border-subtle);
+}
+.prune-select-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.prune-selected-count {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.prune-confirm-controls {
+  display: flex;
+  gap: 8px;
+}
+
+/* Prune All button in header */
+.prune-all-btn {
+  color: #f0506e;
+  border-color: rgba(240, 80, 110, .3);
+}
+.prune-all-btn:hover:not(:disabled) {
+  background: rgba(240, 80, 110, .1);
+}
+
+/* Header actions container */
+.diagnostics-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .btn-sm.danger {

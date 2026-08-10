@@ -326,13 +326,23 @@ func (s *Server) handleDiagnosticsPrune(w http.ResponseWriter, r *http.Request) 
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
-		DryRun   bool   `json:"dry_run"`
-		Hostname string `json:"hostname"` // optional: prune only this hostname
+		DryRun    bool     `json:"dry_run"`
+		Hostname  string   `json:"hostname"`   // optional: prune only this hostname
+		Hostnames []string `json:"hostnames"`  // optional: prune specific hostnames
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
 		// dry_run defaults to true if not specified
 	} else {
 		req.DryRun = true
+	}
+
+	// Build a set of requested hostnames for filtering (case-insensitive)
+	requestedHosts := make(map[string]bool)
+	if req.Hostname != "" {
+		requestedHosts[strings.ToLower(req.Hostname)] = true
+	}
+	for _, h := range req.Hostnames {
+		requestedHosts[strings.ToLower(h)] = true
 	}
 
 	entries, _, err := s.loadEntries(r.Context())
@@ -353,8 +363,8 @@ func (s *Server) handleDiagnosticsPrune(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 
-		// If a specific hostname was requested, skip others
-		if req.Hostname != "" && !strings.EqualFold(hostname, req.Hostname) {
+		// If specific hostnames were requested, skip others
+		if len(requestedHosts) > 0 && !requestedHosts[strings.ToLower(hostname)] {
 			continue
 		}
 
