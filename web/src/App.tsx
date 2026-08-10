@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { AppShell } from './components/Dashboard';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { tabFromHash } from './components/TabBar';
 import { useStore, refreshEntries, syncFormsFromConfig, previewSync, dryRunSync, syncNow, saveConfig, testConfig } from './store';
@@ -115,9 +116,11 @@ export function App() {
   if (visualizeMatch) {
     return (
       <div id="app" data-visualize-page="true">
-        <Suspense fallback={<LoadingSpinner />}>
-          <VisualizePage hostname={decodeURIComponent(visualizeMatch[1])} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<LoadingSpinner />}>
+            <VisualizePage hostname={decodeURIComponent(visualizeMatch[1])} />
+          </Suspense>
+        </ErrorBoundary>
       </div>
     );
   }
