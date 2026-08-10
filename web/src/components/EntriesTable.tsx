@@ -154,9 +154,9 @@ const EntryRow = memo(function EntryRow({
   );
 });
 
-export function StatusChip({ entry }: { entry: Entry }) {
+export const StatusChip = memo(function StatusChip({ entry }: { entry: Entry }) {
   return <span className={`status-chip ${statusClassByCode(entry.overall_status)}`}>{entry.status_label || 'Unknown'}</span>;
-}
+});
 
 function ServiceBadges({ entry }: { entry: Entry }) {
   return (
