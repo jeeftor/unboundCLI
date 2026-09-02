@@ -14,7 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([d3fdab5](d3fdab55dbcf087ab4d603403388a3e1cca6a238))
+
 - update changelog ([e3096ae](e3096ae3722951f1aab3ee97b6242e7d1416d3ec))
+
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- add missing .PHONY targets and fix help text alignment ([3e0a022](3e0a022e549ef570a61c3a72e0b8b5a2af07fbe1))
 
 
 ## [0.5.2] - 2026-09-02
