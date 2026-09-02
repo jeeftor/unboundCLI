@@ -29,12 +29,12 @@ help:
 	@echo "  install        : Install the application"
 	@echo "  cross-build    : Cross-compile for multiple platforms"
 	@echo "  install-remote  : Build linux/amd64 and deploy to REMOTE_HOST (default: caddy)"
-	@echo "  install-service : Deploy and install as a systemd service on REMOTE_HOST"
+	@echo "  install-service : Deploy and restart as a systemd service on REMOTE_HOST"
 	@echo "  uninstall-service: Remove the systemd service from REMOTE_HOST"
 	@echo "  release-dry-run : Run GoReleaser in dry-run mode"
 	@echo "  help           : Show this help message"
 
-.PHONY: all help build clean test vet fmt web-install web-build web-dev web-lint check install cross-build install-remote release-dry-run
+.PHONY: all help build clean test vet fmt web-install web-build web-dev web-lint check install cross-build build-linux install-remote install-service uninstall-service release-dry-run
 
 all: help
 
