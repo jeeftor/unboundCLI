@@ -41,6 +41,9 @@ func SyncCaddyWithUnbound(
 		return nil, fmt.Errorf("error fetching Caddy hostnames: %w", err)
 	}
 
+	// DNS overrides must point to the Caddy server IP, not the upstream backend.
+	NormalizeHostnameMapToCaddyIP(hostnameMap, options.CaddyServerIP)
+
 	return syncHostnamesWithUnbound(unboundClient, hostnameMap, unboundSyncOptions{
 		Source:             "Caddy config",
 		EntryDescription:   options.EntryDescription,

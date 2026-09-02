@@ -79,3 +79,15 @@ type BaseSyncOptions struct {
 	LegacyDescriptions []string
 	Verbose            bool
 }
+
+// NormalizeHostnameMapToCaddyIP replaces every upstream target value in the
+// hostname map with the Caddy server IP. DNS overrides and rewrites must point
+// clients at the Caddy reverse proxy (which handles TLS and forwarding), not at
+// the upstream backend. Without this, a co-located service whose Caddyfile
+// reverse_proxy target is 127.0.0.1 would result in a DNS rewrite of 127.0.0.1,
+// which is unreachable from other LAN clients.
+func NormalizeHostnameMapToCaddyIP(hostnameMap map[string]string, caddyServerIP string) {
+	for h := range hostnameMap {
+		hostnameMap[h] = caddyServerIP
+	}
+}

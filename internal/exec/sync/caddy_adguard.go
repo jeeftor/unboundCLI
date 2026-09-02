@@ -39,6 +39,9 @@ func SyncCaddyWithAdguard(
 		return nil, fmt.Errorf("error fetching Caddy hostnames: %w", err)
 	}
 
+	// DNS rewrites must point to the Caddy server IP, not the upstream backend.
+	NormalizeHostnameMapToCaddyIP(hostnameMap, options.CaddyServerIP)
+
 	if len(hostnameMap) == 0 {
 		logging.Warn("No hostnames found in Caddy config")
 		return &AdguardSyncResult{HostnameMap: hostnameMap}, nil
@@ -129,10 +132,9 @@ func SyncCaddyWithAdguard(
 					"hostname", hostname)
 			}
 		} else if existsInSync {
-			// Created by sync, check if it needs updating
-			// Note: Since we only include rewrites pointing to CaddyServerIP in syncRewriteMap,
-			// and serverIP is always CaddyServerIP, this should rarely trigger unless there's
-			// an edge case like IP address changes
+			// Created by sync, check if it needs updating.
+			// After NormalizeHostnameMapToCaddyIP, serverIP is always CaddyServerIP,
+			// so this only triggers when the Caddy server IP itself changes.
 			if existingRewrite.Answer != serverIP {
 				if options.Verbose {
 					logging.Info("AdguardHome rewrite needs IP update",
