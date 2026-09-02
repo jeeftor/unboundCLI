@@ -43,7 +43,7 @@ func TestSyncStatusDashboardLoadSyncDataLoadsRealEntries(t *testing.T) {
 	defer caddy.Close()
 
 	host, port := splitDashboardServerHostPort(t, caddy.URL)
-	dashboard := NewSyncStatusDashboard("192.168.1.15")
+	dashboard := NewSyncStatusDashboard("10.0.0.15")
 
 	if err := dashboard.LoadSyncData(api.NewCaddyClient(host, port), nil, nil, nil); err != nil {
 		t.Fatalf("LoadSyncData failed: %v", err)

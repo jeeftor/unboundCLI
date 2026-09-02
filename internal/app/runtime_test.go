@@ -35,7 +35,7 @@ func TestNewRuntimeFromConfigsBuildsCoreClientsWithDefaults(t *testing.T) {
 	if runtime.CaddyEndpoint.ServerPort != DefaultCaddyServerPort {
 		t.Fatalf("expected default Caddy port %d, got %d", DefaultCaddyServerPort, runtime.CaddyEndpoint.ServerPort)
 	}
-	if runtime.CaddyServiceURL != "http://192.168.1.15:80" {
+	if runtime.CaddyServiceURL != "http://10.0.0.15:80" {
 		t.Fatalf("unexpected Caddy service URL %q", runtime.CaddyServiceURL)
 	}
 }

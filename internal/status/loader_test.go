@@ -19,7 +19,7 @@ import (
 
 func TestLoadEntriesReportsMissingCaddyClient(t *testing.T) {
 	entries, report, err := LoadEntries(context.Background(), app.ClientSet{}, Options{
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 	if err == nil {
 		t.Fatal("expected missing Caddy client error")

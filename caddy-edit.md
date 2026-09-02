@@ -68,7 +68,7 @@ Add to `~/.caddy-dns-sync.json` under a `"caddy_editor"` key:
 ### `default` — bare reverse proxy
 ```caddyfile
 service.vookie.net {
-    reverse_proxy 192.168.1.112:3000
+    reverse_proxy 10.0.0.112:3000
 }
 ```
 
@@ -78,14 +78,14 @@ service.vookie.net {
     tls {
         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
-    reverse_proxy 192.168.1.112:3000
+    reverse_proxy 10.0.0.112:3000
 }
 ```
 
 ### `headers` — pass real IP + strip HTTPS redirect
 ```caddyfile
 service.vookie.net {
-    reverse_proxy 192.168.1.112:3000 {
+    reverse_proxy 10.0.0.112:3000 {
         header_up Host {upstream_hostport}
         header_up X-Real-IP {remote_host}
     }
@@ -117,7 +117,7 @@ internal/caddyeditor/
 ```go
 type SiteBlock struct {
     Hostname    string            // "service.vookie.net"
-    Upstream    string            // "192.168.1.112:3000"
+    Upstream    string            // "10.0.0.112:3000"
     Directives  []string          // raw extra lines (tls block, headers, etc.)
     SourceFile  string            // absolute path of the .conf file
     LineStart   int               // for targeted editing
@@ -178,14 +178,14 @@ User clicks Deploy
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Caddy Editor                               [+ Add entry]  [Deploy] │
 ├─────────────────────────────────────────────────────────────────────┤
-│  service.vookie.net        192.168.1.112:3000   [Edit]  [Remove]    │
-│  other.vookie.net          192.168.1.100:8080   [Edit]  [Remove]    │
+│  service.vookie.net        10.0.0.112:3000   [Edit]  [Remove]    │
+│  other.vookie.net          10.0.0.100:8080   [Edit]  [Remove]    │
 │  …                                                                  │
 ├─────────────────────────────────────────────────────────────────────┤
 │  Git status:  2 files changed                                       │
 │  ┌ diff ───────────────────────────────────────────────────────┐    │
 │  │ + new.vookie.net {                                          │    │
-│  │ +   reverse_proxy 192.168.1.5:9090                         │    │
+│  │ +   reverse_proxy 10.0.0.5:9090                         │    │
 │  │ + }                                                         │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
@@ -195,14 +195,14 @@ User clicks Deploy
 
 ```
 Hostname:   [_________________________]   e.g. myapp.vookie.net
-Upstream:   [_________________________]   e.g. 192.168.1.112:3000
+Upstream:   [_________________________]   e.g. 10.0.0.112:3000
 Template:   [default ▾]
 Options:    [✓] No TLS verify   [ ] Disable chunked encoding
             [ ] HTTP/2 origin
 
 Preview ────────────────────────────────────
 myapp.vookie.net {
-    reverse_proxy 192.168.1.112:3000
+    reverse_proxy 10.0.0.112:3000
 }
 ────────────────────────────────────────────
 

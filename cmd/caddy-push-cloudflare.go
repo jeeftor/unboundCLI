@@ -200,7 +200,7 @@ func init() {
 		IntVar(&cpCFCaddyPort, "caddy-port", 0, "Caddy Admin API port (default 2019)")
 	caddyPushCloudflareCmd.Flags().
 		StringVar(&cpCFCaddyServiceURL, "caddy-service-url", "",
-			"Internal service URL for tunnel ingress rules (e.g. http://192.168.1.15:80)")
+			"Internal service URL for tunnel ingress rules (e.g. http://10.0.0.15:80)")
 	caddyPushCloudflareCmd.Flags().
 		StringSliceVar(&cpCFHostFilter, "host-filter", nil,
 			"Only sync hostnames matching these domain suffixes (repeatable)")

@@ -306,7 +306,7 @@ func (s *Server) caddyServerIP() string {
 	if rt.CaddyEndpoint.ServerIP != "" {
 		return rt.CaddyEndpoint.ServerIP
 	}
-	return "192.168.1.15" // fallback
+	return "10.0.0.15" // fallback
 }
 
 // POST /api/diagnostics/prune

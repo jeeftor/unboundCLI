@@ -46,7 +46,7 @@ func TestLoadConfig_NewEnvVars(t *testing.T) {
 
 	t.Setenv(EnvAPIKey, "new-key")
 	t.Setenv(EnvAPISecret, "new-secret")
-	t.Setenv(EnvBaseURL, "https://192.168.1.1")
+	t.Setenv(EnvBaseURL, "https://10.0.0.1")
 	t.Setenv(EnvInsecure, "true")
 
 	cfg, err := LoadConfig()
@@ -59,8 +59,8 @@ func TestLoadConfig_NewEnvVars(t *testing.T) {
 	if cfg.APISecret != "new-secret" {
 		t.Errorf("Expected APISecret='new-secret', got '%s'", cfg.APISecret)
 	}
-	if cfg.BaseURL != "https://192.168.1.1" {
-		t.Errorf("Expected BaseURL='https://192.168.1.1', got '%s'", cfg.BaseURL)
+	if cfg.BaseURL != "https://10.0.0.1" {
+		t.Errorf("Expected BaseURL='https://10.0.0.1', got '%s'", cfg.BaseURL)
 	}
 	if !cfg.Insecure {
 		t.Errorf("Expected Insecure=true, got %v", cfg.Insecure)

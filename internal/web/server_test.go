@@ -718,7 +718,7 @@ func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
 	host, port := splitWebTestServerHostPort(t, caddy.URL)
 	server := NewServer(&app.Runtime{
 		CaddyEndpoint:   app.CaddyEndpoint{ServerIP: host, ServerPort: port},
-		CaddyServiceURL: "http://192.168.1.15:80",
+		CaddyServiceURL: "http://10.0.0.15:80",
 		Clients: app.ClientSet{
 			Caddy:      api.NewCaddyClient(host, port),
 			Cloudflare: cfClient,
@@ -733,7 +733,7 @@ func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
 	if action.Service != "cloudflare" || action.Type != "add" {
 		t.Fatalf("expected Cloudflare add action, got %#v", action)
 	}
-	if action.NewService != "https://192.168.1.15" ||
+	if action.NewService != "https://10.0.0.15" ||
 		action.NewHTTPHostHeader != "cf-plan.example.test" ||
 		action.OriginServerName != "cf-plan.example.test" {
 		t.Fatalf("unexpected Cloudflare action details: %#v", action)
@@ -883,7 +883,7 @@ func TestApplyRejectsOversizedRequestBody(t *testing.T) {
 func TestApplyRouteAllowsDryRunOnly(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 	action := syncplan.Action{
-		Type: "add", Service: "unbound", Hostname: "dryrun.example.test", NewIP: "192.168.1.15", Enabled: true,
+		Type: "add", Service: "unbound", Hostname: "dryrun.example.test", NewIP: "10.0.0.15", Enabled: true,
 	}
 	body, err := json.Marshal(ApplyRequest{DryRun: true, Actions: []syncplan.Action{action}})
 	if err != nil {
@@ -913,7 +913,7 @@ func TestApplyRouteAllowsDryRunOnly(t *testing.T) {
 func TestApplyRouteRejectsUnsupportedDHCPDryRun(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 	action := syncplan.Action{
-		Type: "add", Service: "dhcp", Hostname: "dhcp.example.test", NewIP: "192.168.1.55", Enabled: true,
+		Type: "add", Service: "dhcp", Hostname: "dhcp.example.test", NewIP: "10.0.0.55", Enabled: true,
 	}
 	body, err := json.Marshal(ApplyRequest{DryRun: true, Actions: []syncplan.Action{action}})
 	if err != nil {
@@ -937,7 +937,7 @@ func TestApplyRejectsRealMutationRequests(t *testing.T) {
 				Type:     "add",
 				Service:  "unbound",
 				Hostname: "unsafe.example.test",
-				NewIP:    "192.168.1.15",
+				NewIP:    "10.0.0.15",
 				Enabled:  true,
 			},
 		},
@@ -1004,7 +1004,7 @@ func TestMutatingApplyRejectsPostedActionsEvenWithToken(t *testing.T) {
 	body, err := json.Marshal(map[string]any{
 		"dry_run": false,
 		"actions": []syncplan.Action{
-			{Type: "add", Service: "unbound", Hostname: "forged.example.test", NewIP: "192.168.1.15", Enabled: true},
+			{Type: "add", Service: "unbound", Hostname: "forged.example.test", NewIP: "10.0.0.15", Enabled: true},
 		},
 	})
 	if err != nil {

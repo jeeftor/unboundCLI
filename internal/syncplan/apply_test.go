@@ -21,7 +21,7 @@ func TestApplyUpdatesUnboundByFullHostnameAndRestartsOnce(t *testing.T) {
 			Service:  "unbound",
 			Hostname: "app.example.com",
 			OldIP:    "10.0.0.99",
-			NewIP:    "192.168.1.15",
+			NewIP:    "10.0.0.15",
 			Enabled:  true,
 		},
 	}}, ApplyOptions{})
@@ -52,14 +52,14 @@ func TestApplyRecordsPerActionFailures(t *testing.T) {
 			Type:     "add",
 			Service:  "unbound",
 			Hostname: "missing.example.com",
-			NewIP:    "192.168.1.15",
+			NewIP:    "10.0.0.15",
 			Enabled:  true,
 		},
 		{
 			Type:     "add",
 			Service:  "adguard",
 			Hostname: "missing.example.com",
-			NewIP:    "192.168.1.15",
+			NewIP:    "10.0.0.15",
 			Enabled:  false,
 		},
 	}}, ApplyOptions{})
@@ -89,7 +89,7 @@ func TestApplyDryRunCountsEnabledActionsWithoutMutating(t *testing.T) {
 			Type:     "add",
 			Service:  "unbound",
 			Hostname: "dry.example.com",
-			NewIP:    "192.168.1.15",
+			NewIP:    "10.0.0.15",
 			Enabled:  true,
 		},
 	}}, ApplyOptions{DryRun: true})
@@ -113,7 +113,7 @@ func TestApplyReportsUnboundRestartFailure(t *testing.T) {
 			Type:     "add",
 			Service:  "unbound",
 			Hostname: "restart.example.com",
-			NewIP:    "192.168.1.15",
+			NewIP:    "10.0.0.15",
 			Enabled:  true,
 		},
 	}}, ApplyOptions{})
@@ -134,22 +134,22 @@ func TestApplyAdguardActions(t *testing.T) {
 			Type:     "add",
 			Service:  "adguard",
 			Hostname: "new.example.com",
-			NewIP:    "192.168.1.15",
+			NewIP:    "10.0.0.15",
 			Enabled:  true,
 		},
 		{
 			Type:     "update",
 			Service:  "adguard",
 			Hostname: "update.example.com",
-			OldIP:    "192.168.1.10",
-			NewIP:    "192.168.1.15",
+			OldIP:    "10.0.0.10",
+			NewIP:    "10.0.0.15",
 			Enabled:  true,
 		},
 		{
 			Type:     "delete",
 			Service:  "adguard",
 			Hostname: "old.example.com",
-			OldIP:    "192.168.1.10",
+			OldIP:    "10.0.0.10",
 			Enabled:  true,
 		},
 	}}, ApplyOptions{})
@@ -163,7 +163,7 @@ func TestApplyAdguardActions(t *testing.T) {
 	if len(adguard.added) != 1 || len(adguard.updated) != 1 || len(adguard.deleted) != 1 {
 		t.Fatalf("unexpected adguard mutations: added=%#v updated=%#v deleted=%#v", adguard.added, adguard.updated, adguard.deleted)
 	}
-	if adguard.updated[0].target.Answer != "192.168.1.10" || adguard.updated[0].update.Answer != "192.168.1.15" {
+	if adguard.updated[0].target.Answer != "10.0.0.10" || adguard.updated[0].update.Answer != "10.0.0.15" {
 		t.Fatalf("unexpected update payload: %#v", adguard.updated[0])
 	}
 }
@@ -176,7 +176,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 			Type:              "add",
 			Service:           "cloudflare",
 			Hostname:          "new.example.com",
-			NewService:        "http://192.168.1.15:80",
+			NewService:        "http://10.0.0.15:80",
 			NewHTTPHostHeader: "new.example.com",
 			Enabled:           true,
 		},
@@ -184,7 +184,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 			Type:              "update",
 			Service:           "cloudflare",
 			Hostname:          "update.example.com",
-			NewService:        "http://192.168.1.15:80",
+			NewService:        "http://10.0.0.15:80",
 			NewHTTPHostHeader: "update.example.com",
 			Enabled:           true,
 		},
@@ -206,7 +206,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 		t.Fatalf("expected two Cloudflare rule updates, got %#v", cloudflare.updatedRules)
 	}
 	if cloudflare.updatedRules[0].Hostname != "new.example.com" ||
-		cloudflare.updatedRules[0].Service != "http://192.168.1.15:80" ||
+		cloudflare.updatedRules[0].Service != "http://10.0.0.15:80" ||
 		cloudflare.updatedRules[0].HTTPHostHeader != "new.example.com" {
 		t.Fatalf("unexpected add rule spec: %#v", cloudflare.updatedRules[0])
 	}
@@ -229,7 +229,7 @@ func TestApplyCloudflareDryRunDoesNotMutate(t *testing.T) {
 			Type:              "add",
 			Service:           "cloudflare",
 			Hostname:          "dry.example.com",
-			NewService:        "http://192.168.1.15:80",
+			NewService:        "http://10.0.0.15:80",
 			NewHTTPHostHeader: "dry.example.com",
 			Enabled:           true,
 		},

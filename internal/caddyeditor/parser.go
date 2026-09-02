@@ -11,7 +11,7 @@ import (
 // expressed as an @matcher + handle block inside a wildcard Caddyfile block.
 type SiteBlock struct {
 	Hostname    string            // e.g. "sonarr.vookie.net"
-	Upstream    string            // e.g. "http://192.168.1.112:8989"
+	Upstream    string            // e.g. "http://10.0.0.112:8989"
 	MatcherName string            // e.g. "sonarr" (the @name used in the file)
 	Directives  []string          // extra raw directives inside the handle block
 	SourceFile  string            // absolute path of the Caddyfile

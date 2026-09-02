@@ -522,7 +522,7 @@ func (s *Server) handleCaddyPreview(w http.ResponseWriter, r *http.Request) {
 		tmplName = "default"
 	}
 	// Collect any param_* query args into the Params map.
-	// e.g. ?param_authentik_url=192.168.1.112:9000
+	// e.g. ?param_authentik_url=10.0.0.112:9000
 	var params map[string]string
 	for key, vals := range q {
 		if after, ok := strings.CutPrefix(key, "param_"); ok && len(vals) > 0 && vals[0] != "" {

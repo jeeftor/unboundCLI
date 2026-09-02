@@ -12,7 +12,7 @@ func TestLoadCloudflareConfig_FromEnv(t *testing.T) {
 	t.Setenv(EnvCFAccountID, "test-account-id")
 	t.Setenv(EnvCFZoneID, "test-zone-id")
 	t.Setenv(EnvCFTunnelID, "test-tunnel-id")
-	t.Setenv(EnvCFCaddyServiceURL, "http://192.168.1.15:80")
+	t.Setenv(EnvCFCaddyServiceURL, "http://10.0.0.15:80")
 
 	cfg, err := LoadCloudflareConfig()
 	if err != nil {
@@ -34,8 +34,8 @@ func TestLoadCloudflareConfig_FromEnv(t *testing.T) {
 	if cfg.TunnelID != "test-tunnel-id" {
 		t.Errorf("Expected TunnelID='test-tunnel-id', got '%s'", cfg.TunnelID)
 	}
-	if cfg.CaddyServiceURL != "http://192.168.1.15:80" {
-		t.Errorf("Expected CaddyServiceURL='http://192.168.1.15:80', got '%s'", cfg.CaddyServiceURL)
+	if cfg.CaddyServiceURL != "http://10.0.0.15:80" {
+		t.Errorf("Expected CaddyServiceURL='http://10.0.0.15:80', got '%s'", cfg.CaddyServiceURL)
 	}
 }
 

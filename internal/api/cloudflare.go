@@ -247,7 +247,7 @@ type CloudflareIngressEntry struct {
 	TunnelName       string
 	Hostname         string
 	Path             string
-	Service          string // LAN endpoint, e.g. "http://192.168.1.15:8096"
+	Service          string // LAN endpoint, e.g. "http://10.0.0.15:8096"
 	HTTPHostHeader   string // empty = not configured (common Caddy routing issue)
 	OriginServerName string // TLS SNI hostname for connecting to origin
 	NoTLSVerify      bool
@@ -335,7 +335,7 @@ func extractServiceIP(service string) string {
 }
 
 // SetTunnelIngress updates the desired hostname rules while preserving existing rule metadata.
-// rules maps hostname → internal service URL (e.g. "http://192.168.1.15:80").
+// rules maps hostname → internal service URL (e.g. "http://10.0.0.15:80").
 // The catch-all rule is preserved when present, or http_status:404 is appended as the last entry.
 func (c *CloudflareClient) SetTunnelIngress(rules map[string]string) error {
 	ctx := c.getCtx()

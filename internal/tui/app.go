@@ -715,7 +715,7 @@ func (m *AppModel) initializeConfigEditor() {
 					Key:         "caddy_ip",
 					Label:       "Caddy Server IP",
 					Value:       m.caddyServerIP,
-					Placeholder: "192.168.1.15",
+					Placeholder: "10.0.0.15",
 					IsRequired:  true,
 					HelpText:    "IP address of the Caddy server (source of truth)",
 				},

@@ -95,7 +95,7 @@ Replace the stub `AddTunnelHostname`/`DeleteTunnelHostname` with a proper full-r
 
 ```go
 // SetTunnelIngress replaces the entire ingress rule list atomically.
-// rules: map of hostname → internal service URL (e.g. "http://192.168.1.15:80")
+// rules: map of hostname → internal service URL (e.g. "http://10.0.0.15:80")
 // The catch-all rule is appended automatically.
 func (c *CloudflareClient) SetTunnelIngress(rules map[string]string) error
 
@@ -128,7 +128,7 @@ type CaddyToCloudflareSyncOptions struct {
     DryRun           bool
     CaddyServerIP    string
     CaddyServerPort  int
-    CaddyServiceURL  string   // target for tunnel ingress rules, e.g. "http://192.168.1.15:80"
+    CaddyServiceURL  string   // target for tunnel ingress rules, e.g. "http://10.0.0.15:80"
     EntryDescription string   // tag used in CF DNS record comments
     // Optional filter: if non-empty, only sync hostnames matching these suffixes
     HostFilter       []string // e.g. ["vookie.net"]
@@ -195,7 +195,7 @@ Extend `caddy-sync-all` / `SyncAll()` with a `--cloudflare` flag so a single inv
 
 ## Auth Bypass Warning: Direct CF Tunnel vs Caddy/Authentik
 
-When a CF tunnel ingress rule points **directly** to a service (e.g. `http://192.168.1.15:8096`)
+When a CF tunnel ingress rule points **directly** to a service (e.g. `http://10.0.0.15:8096`)
 instead of routing through Caddy (`https://caddy:443`), any authentication provided by Caddy's
 `forward_auth` middleware (Authentik) is **completely bypassed**. The request never touches Caddy,
 so Authentik never gates it.
@@ -243,7 +243,7 @@ Relevant types/methods:
 cloudflare.TunnelConfigurationParams{
     Config: cloudflare.TunnelConfiguration{
         Ingress: []cloudflare.UnvalidatedIngressRule{
-            {Hostname: "app.vookie.net", Service: "http://192.168.1.15:80"},
+            {Hostname: "app.vookie.net", Service: "http://10.0.0.15:80"},
             {Service: "http_status:404"}, // catch-all — must be last
         },
     },

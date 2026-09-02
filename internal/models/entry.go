@@ -6,11 +6,11 @@ type Entry struct {
 	Hostname string // e.g., "jellyfin.vookie.net"
 
 	// Caddy (Source of Truth)
-	CaddyUpstream string         // e.g., "192.168.1.112:8096"
-	CaddyIP       string         // Extracted IP: "192.168.1.112"
+	CaddyUpstream string         // e.g., "10.0.0.112:8096"
+	CaddyIP       string         // Extracted IP: "10.0.0.112"
 	CaddyPort     string         // Extracted port: "8096"
 	CaddyRoute    CaddyRouteInfo // full handler chain from Caddy config
-	CaddyServerIP string         // IP of the Caddy reverse proxy itself (e.g., "192.168.1.15")
+	CaddyServerIP string         // IP of the Caddy reverse proxy itself (e.g., "10.0.0.15")
 
 	// DNS Services
 	UnboundStatus ServiceStatus

@@ -35,7 +35,7 @@ type DNSProbeResponse struct {
 // ─── Probe Handlers ─────────────────────────────────────────────────────────
 
 // handleProbe does a quick HTTP/HTTPS HEAD probe to an upstream address.
-// GET /api/probe?upstream=192.168.1.15:6868&hostname=foo.example.com
+// GET /api/probe?upstream=10.0.0.15:6868&hostname=foo.example.com
 // The scheme is inferred from the port: 443/8443 → https, everything else → http.
 func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

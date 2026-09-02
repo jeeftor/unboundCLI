@@ -19,7 +19,7 @@ func makeTestEditor() *ConfigEditorWidget {
 		{
 			Title: "Server",
 			Fields: []ConfigField{
-				{Key: "base_url", Label: "Base URL", Value: "https://192.168.1.1"},
+				{Key: "base_url", Label: "Base URL", Value: "https://10.0.0.1"},
 				{Key: "insecure", Label: "Skip SSL", Value: "false"},
 			},
 		},
@@ -84,7 +84,7 @@ func TestGetAllValues_ReturnsAllFields(t *testing.T) {
 		"username": "admin",
 		"password": "s3cr3t",
 		"api_key":  "mykey123",
-		"base_url": "https://192.168.1.1",
+		"base_url": "https://10.0.0.1",
 		"insecure": "false",
 	}
 	for key, want := range expected {

@@ -27,7 +27,7 @@ type CloudflareDiscoverResponse struct {
 
 type CloudflareSetRouteRequest struct {
 	Hostname         string `json:"hostname"`
-	Service          string `json:"service"`            // full URL, e.g. "https://192.168.1.15" or "http://192.168.1.112:8006"
+	Service          string `json:"service"`            // full URL, e.g. "https://10.0.0.15" or "http://10.0.0.112:8006"
 	HTTPHostHeader   string `json:"http_host_header"`   // set when routing via Caddy
 	OriginServerName string `json:"origin_server_name"` // TLS SNI hostname for origin
 	NoTLSVerify      bool   `json:"no_tls_verify"`

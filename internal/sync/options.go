@@ -36,7 +36,7 @@ func (o *SyncOptions) Validate() error {
 func DefaultSyncOptions() *SyncOptions {
 	return &SyncOptions{
 		DryRun:           false,
-		CaddyServerIP:    "192.168.1.15",
+		CaddyServerIP:    "10.0.0.15",
 		CaddyServerPort:  2019,
 		EntryDescription: app.CurrentUnboundDescription,
 		Verbose:          false,

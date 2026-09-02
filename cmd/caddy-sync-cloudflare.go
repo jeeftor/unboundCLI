@@ -122,7 +122,7 @@ func init() {
 	caddySyncCloudflareCmd.Flags().
 		BoolVar(&cfDryRun, "dry-run", false, "Show what would be done without making any changes")
 	caddySyncCloudflareCmd.Flags().
-		StringVar(&cfCaddyServerIP, "caddy-ip", "192.168.1.15", "IP address of the Caddy server")
+		StringVar(&cfCaddyServerIP, "caddy-ip", "10.0.0.15", "IP address of the Caddy server")
 	caddySyncCloudflareCmd.Flags().
 		IntVar(&cfCaddyServerPort, "caddy-port", 2019, "Admin port of the Caddy server")
 	caddySyncCloudflareCmd.Flags().

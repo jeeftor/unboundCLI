@@ -100,7 +100,7 @@ func NewCloudflareSetupWizard() *CloudflareSetupWizard {
 	accountInput.Width = 60
 
 	caddyURLInput := textinput.New()
-	caddyURLInput.Placeholder = "http://192.168.1.15:80"
+	caddyURLInput.Placeholder = "http://10.0.0.15:80"
 	caddyURLInput.Width = 60
 
 	delegate := list.NewDefaultDelegate()

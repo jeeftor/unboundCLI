@@ -704,7 +704,7 @@ func (d *DataLoader) buildEntry(
 		entry.DataSource = "Caddy"
 
 		// Extract IP and port from upstream
-		// Upstream format: "192.168.1.112:8096" or "192.168.1.112"
+		// Upstream format: "10.0.0.112:8096" or "10.0.0.112"
 		if parts := strings.Split(routeInfo.Upstream, ":"); len(parts) >= 1 {
 			entry.CaddyIP = parts[0]
 			if len(parts) == 2 {

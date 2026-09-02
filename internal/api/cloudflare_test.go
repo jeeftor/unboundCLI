@@ -206,7 +206,7 @@ func tunnelConfigResponse() string {
 			"version": 1,
 			"config": {
 				"ingress": [
-					{"hostname": "app.example.com", "service": "http://192.168.1.15:80"},
+					{"hostname": "app.example.com", "service": "http://10.0.0.15:80"},
 					{"service": "http_status:404"}
 				]
 			}
@@ -261,7 +261,7 @@ func TestSetTunnelIngress_SendsRulesWithCatchAll(t *testing.T) {
 	defer srv.Close()
 
 	err := client.SetTunnelIngress(map[string]string{
-		"app.example.com": "http://192.168.1.15:80",
+		"app.example.com": "http://10.0.0.15:80",
 	})
 	if err != nil {
 		t.Fatalf("SetTunnelIngress failed: %v", err)
@@ -285,8 +285,8 @@ func TestSetTunnelIngress_SendsRulesWithCatchAll(t *testing.T) {
 	if first["hostname"] != "app.example.com" {
 		t.Errorf("expected hostname 'app.example.com', got %v", first["hostname"])
 	}
-	if first["service"] != "http://192.168.1.15:80" {
-		t.Errorf("expected service 'http://192.168.1.15:80', got %v", first["service"])
+	if first["service"] != "http://10.0.0.15:80" {
+		t.Errorf("expected service 'http://10.0.0.15:80', got %v", first["service"])
 	}
 }
 
@@ -335,9 +335,9 @@ func TestSetTunnelIngress_MultipleRules(t *testing.T) {
 	defer srv.Close()
 
 	rules := map[string]string{
-		"app.example.com":  "http://192.168.1.15:80",
-		"api.example.com":  "http://192.168.1.16:8080",
-		"home.example.com": "http://192.168.1.17:443",
+		"app.example.com":  "http://10.0.0.15:80",
+		"api.example.com":  "http://10.0.0.16:8080",
+		"home.example.com": "http://10.0.0.17:443",
 	}
 	if err := client.SetTunnelIngress(rules); err != nil {
 		t.Fatalf("SetTunnelIngress failed: %v", err)
@@ -377,7 +377,7 @@ func TestSetTunnelIngress_PreservesExistingRuleMetadata(t *testing.T) {
 								{
 									"hostname": "app.example.com",
 									"path": "/api/*",
-									"service": "http://192.168.1.15:80",
+									"service": "http://10.0.0.15:80",
 									"originRequest": {
 										"httpHostHeader": "app.internal"
 									}
@@ -399,7 +399,7 @@ func TestSetTunnelIngress_PreservesExistingRuleMetadata(t *testing.T) {
 	defer srv.Close()
 
 	if err := client.SetTunnelIngress(map[string]string{
-		"app.example.com": "http://192.168.1.16:80",
+		"app.example.com": "http://10.0.0.16:80",
 	}); err != nil {
 		t.Fatalf("SetTunnelIngress failed: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestSetTunnelIngress_PreservesExistingRuleMetadata(t *testing.T) {
 	if first["hostname"] != "app.example.com" {
 		t.Fatalf("expected preserved hostname app.example.com, got %v", first["hostname"])
 	}
-	if first["service"] != "http://192.168.1.16:80" {
+	if first["service"] != "http://10.0.0.16:80" {
 		t.Fatalf("expected service to be updated, got %v", first["service"])
 	}
 	if first["path"] != "/api/*" {
@@ -481,7 +481,7 @@ func TestUpdateTunnelRulePreservesOptionalFields(t *testing.T) {
 
 	if err := client.UpdateTunnelRule(IngressRuleSpec{
 		Hostname:       "app.example.com",
-		Service:        "http://192.168.1.15:80",
+		Service:        "http://10.0.0.15:80",
 		HTTPHostHeader: "app.example.com",
 	}); err != nil {
 		t.Fatalf("UpdateTunnelRule failed: %v", err)
@@ -500,7 +500,7 @@ func TestUpdateTunnelRulePreservesOptionalFields(t *testing.T) {
 	if first["path"] != "/api/*" {
 		t.Fatalf("expected path to be preserved, got %v", first["path"])
 	}
-	if first["service"] != "http://192.168.1.15:80" {
+	if first["service"] != "http://10.0.0.15:80" {
 		t.Fatalf("expected service to be patched, got %v", first["service"])
 	}
 	originRequest, ok := first["originRequest"].(map[string]interface{})
@@ -813,8 +813,8 @@ func TestGetAllTunnelsHostnames(t *testing.T) {
 			"version": 1,
 			"config": {
 				"ingress": [
-					{"hostname": "app.example.com", "service": "http://192.168.1.10:80"},
-					{"hostname": "api.example.com", "service": "http://192.168.1.11:8080"},
+					{"hostname": "app.example.com", "service": "http://10.0.0.10:80"},
+					{"hostname": "api.example.com", "service": "http://10.0.0.11:8080"},
 					{"service": "http_status:404"}
 				]
 			}
@@ -831,7 +831,7 @@ func TestGetAllTunnelsHostnames(t *testing.T) {
 			"version": 1,
 			"config": {
 				"ingress": [
-					{"hostname": "blog.example.com", "service": "http://192.168.1.20:80"},
+					{"hostname": "blog.example.com", "service": "http://10.0.0.20:80"},
 					{"service": "http_status:404"}
 				]
 			}
@@ -933,8 +933,8 @@ func TestGetAllTunnelsHostnames(t *testing.T) {
 	if app.TunnelName != "alpha" {
 		t.Errorf("app.example.com: expected TunnelName 'alpha', got %q", app.TunnelName)
 	}
-	if app.Service != "192.168.1.10:80" {
-		t.Errorf("app.example.com: expected Service '192.168.1.10:80', got %q", app.Service)
+	if app.Service != "10.0.0.10:80" {
+		t.Errorf("app.example.com: expected Service '10.0.0.10:80', got %q", app.Service)
 	}
 
 	// Verify api.example.com (from alpha)
@@ -990,14 +990,14 @@ func TestGetAllTunnelsDetails(t *testing.T) {
 				"ingress": [
 					{
 						"hostname": "app.example.com",
-						"service": "http://192.168.1.10:80",
+						"service": "http://10.0.0.10:80",
 						"originRequest": {
 							"httpHostHeader": "app.example.com"
 						}
 					},
 					{
 						"hostname": "api.example.com",
-						"service": "http://192.168.1.11:8080"
+						"service": "http://10.0.0.11:8080"
 					},
 					{"service": "http_status:404"}
 				]
@@ -1015,7 +1015,7 @@ func TestGetAllTunnelsDetails(t *testing.T) {
 			"version": 1,
 			"config": {
 				"ingress": [
-					{"hostname": "blog.example.com", "service": "http://192.168.1.20:80"},
+					{"hostname": "blog.example.com", "service": "http://10.0.0.20:80"},
 					{"service": "http_status:404"}
 				]
 			}

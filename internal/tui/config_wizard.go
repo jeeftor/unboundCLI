@@ -110,7 +110,7 @@ func (w *ConfigWizard) Init() tea.Cmd {
 		{
 			Title: "UnboundDNS",
 			Fields: []widgets.ConfigField{
-				{Key: "base_url", Label: "Base URL", Value: existing.Config.BaseURL, Placeholder: "https://192.168.1.1", IsRequired: true},
+				{Key: "base_url", Label: "Base URL", Value: existing.Config.BaseURL, Placeholder: "https://10.0.0.1", IsRequired: true},
 				{Key: "api_key", Label: "API Key", Value: existing.Config.APIKey, Placeholder: "API key", IsPassword: true},
 				{Key: "api_secret", Label: "API Secret", Value: existing.Config.APISecret, Placeholder: "API secret", IsPassword: true},
 				{Key: "insecure", Label: "Skip SSL Verify", Value: insecureStr, IsToggle: true},
@@ -120,7 +120,7 @@ func (w *ConfigWizard) Init() tea.Cmd {
 			Title: "AdguardHome",
 			Fields: []widgets.ConfigField{
 				{Key: "adguard_enabled", Label: "Enabled", Value: adguardEnabledStr, IsToggle: true},
-				{Key: "adguard_base_url", Label: "Base URL", Value: existing.Adguard.BaseURL, Placeholder: "http://192.168.1.10:3000"},
+				{Key: "adguard_base_url", Label: "Base URL", Value: existing.Adguard.BaseURL, Placeholder: "http://10.0.0.10:3000"},
 				{Key: "adguard_username", Label: "Username", Value: existing.Adguard.Username, Placeholder: "admin"},
 				{Key: "adguard_password", Label: "Password", Value: existing.Adguard.Password, Placeholder: "password", IsPassword: true},
 				{Key: "adguard_insecure", Label: "Skip SSL Verify", Value: adguardInsecureStr, IsToggle: true},

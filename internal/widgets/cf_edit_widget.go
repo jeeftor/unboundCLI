@@ -56,7 +56,7 @@ type CFEditWidget struct {
 // NewCFEditWidget creates a new edit widget pre-filled from the entry's CF status.
 func NewCFEditWidget(entry *models.Entry, caddyServiceURL string, theme *Theme) *CFEditWidget {
 	si := textinput.New()
-	si.Placeholder = "http://192.168.1.15:80"
+	si.Placeholder = "http://10.0.0.15:80"
 	si.CharLimit = 120
 	si.Width = 52
 	si.SetValue(entry.CloudflareStatus.Service)

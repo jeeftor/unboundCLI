@@ -8,14 +8,14 @@ import (
 
 func TestCloudflareSyncEntriesAddsDirectSiblingHost(t *testing.T) {
 	entries := cloudflareSyncEntries(
-		map[string]string{"ssh.vookie.net": "192.168.1.23:22"},
+		map[string]string{"ssh.vookie.net": "10.0.0.23:22"},
 		nil,
 		"-direct",
 	)
 
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
 		Service:         "cloudflare",
-		CaddyServiceURL: "https://192.168.1.15",
+		CaddyServiceURL: "https://10.0.0.15",
 	})
 
 	if len(plan.Actions) != 2 {
@@ -26,7 +26,7 @@ func TestCloudflareSyncEntriesAddsDirectSiblingHost(t *testing.T) {
 		Type:                 "add",
 		Hostname:             "ssh.vookie.net",
 		Service:              "cloudflare",
-		NewService:           "https://192.168.1.15",
+		NewService:           "https://10.0.0.15",
 		NewHTTPHostHeader:    "ssh.vookie.net",
 		OriginServerName:     "ssh.vookie.net",
 		Details:              "missing in default Cloudflare tunnel",
@@ -38,7 +38,7 @@ func TestCloudflareSyncEntriesAddsDirectSiblingHost(t *testing.T) {
 		Type:                 "add",
 		Hostname:             "ssh-direct.vookie.net",
 		Service:              "cloudflare",
-		NewService:           "http://192.168.1.23:22",
+		NewService:           "http://10.0.0.23:22",
 		NewHTTPHostHeader:    "ssh.vookie.net",
 		Details:              "missing in default Cloudflare tunnel",
 		Enabled:              true,

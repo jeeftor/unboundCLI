@@ -14,7 +14,7 @@ import (
 // CaddyToCloudflareSyncOptions contains options for the Caddy-to-Cloudflare push sync.
 type CaddyToCloudflareSyncOptions struct {
 	DryRun           bool
-	CaddyServiceURL  string   // target service URL for new ingress rules, e.g. "https://192.168.1.15"
+	CaddyServiceURL  string   // target service URL for new ingress rules, e.g. "https://10.0.0.15"
 	HostFilter       []string // optional: only sync hostnames matching these domain suffixes
 	ExcludeHostnames []string // hostnames to skip entirely; their CF rules are left untouched
 	DirectHostSuffix string   // optional: add sibling direct hosts, e.g. "-direct" creates app-direct.example.com

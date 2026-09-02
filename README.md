@@ -136,7 +136,7 @@ Use "caddy-dns-sync [command] --help" for more information about a command.
 caddy-dns-sync list
 
 # Add a new DNS override
-caddy-dns-sync add --host myserver --domain local.lan --ip 192.168.1.100
+caddy-dns-sync add --host myserver --domain local.lan --ip 10.0.0.100
 
 # Find specific overrides
 caddy-dns-sync find --host myserver

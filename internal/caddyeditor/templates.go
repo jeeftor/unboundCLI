@@ -99,7 +99,7 @@ handle @[[ .MatcherName ]] {
 	// traffic flows: CF (bypass) → Caddy → forward_auth → Authentik.
 	//
 	// Required param:  authentik_url  — host:port of the Authentik embedded outpost
-	//                                   e.g. "192.168.1.112:9000"
+	//                                   e.g. "10.0.0.112:9000"
 	"forward-auth": `@[[ .MatcherName ]] host [[ .Hostname ]]
 handle @[[ .MatcherName ]] {
 	reverse_proxy /outpost.goauthentik.io/* [[ param "authentik_url" "AUTHENTIK_HOST:PORT" ]]

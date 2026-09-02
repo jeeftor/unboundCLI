@@ -277,7 +277,7 @@ func NewCaddyDataSource() *CaddyDataSource {
 
 func (s *CaddyDataSource) Initialize() error {
 	// Use default Caddy configuration (IP and port can be made configurable later)
-	s.client = api.NewCaddyClient("192.168.1.15", 2019)
+	s.client = api.NewCaddyClient("10.0.0.15", 2019)
 	return nil
 }
 
@@ -331,7 +331,7 @@ type AllDataSource struct {
 // NewAllDataSource creates a new all services data source
 func NewAllDataSource() *AllDataSource {
 	return &AllDataSource{
-		caddyServerIP: "192.168.1.15", // Default Caddy IP
+		caddyServerIP: "10.0.0.15", // Default Caddy IP
 	}
 }
 

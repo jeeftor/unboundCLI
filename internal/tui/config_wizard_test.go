@@ -223,7 +223,7 @@ func TestBuildExtendedConfig_UnboundFields(t *testing.T) {
 	vals := map[string]string{
 		"api_key":    "mykey",
 		"api_secret": "mysecret",
-		"base_url":   "https://192.168.1.1",
+		"base_url":   "https://10.0.0.1",
 		"insecure":   "true",
 	}
 
@@ -235,8 +235,8 @@ func TestBuildExtendedConfig_UnboundFields(t *testing.T) {
 	if cfg.Config.APISecret != "mysecret" {
 		t.Errorf("APISecret = %q, want %q", cfg.Config.APISecret, "mysecret")
 	}
-	if cfg.Config.BaseURL != "https://192.168.1.1" {
-		t.Errorf("BaseURL = %q, want %q", cfg.Config.BaseURL, "https://192.168.1.1")
+	if cfg.Config.BaseURL != "https://10.0.0.1" {
+		t.Errorf("BaseURL = %q, want %q", cfg.Config.BaseURL, "https://10.0.0.1")
 	}
 	if !cfg.Config.Insecure {
 		t.Error("Insecure should be true")
@@ -246,7 +246,7 @@ func TestBuildExtendedConfig_UnboundFields(t *testing.T) {
 func TestBuildExtendedConfig_AdguardEnabled(t *testing.T) {
 	vals := map[string]string{
 		"adguard_enabled":  "true",
-		"adguard_base_url": "http://192.168.1.10:3000",
+		"adguard_base_url": "http://10.0.0.10:3000",
 		"adguard_username": "admin",
 		"adguard_password": "pass",
 		"adguard_insecure": "false",
@@ -257,7 +257,7 @@ func TestBuildExtendedConfig_AdguardEnabled(t *testing.T) {
 	if !cfg.Adguard.Enabled {
 		t.Error("Adguard.Enabled should be true")
 	}
-	if cfg.Adguard.BaseURL != "http://192.168.1.10:3000" {
+	if cfg.Adguard.BaseURL != "http://10.0.0.10:3000" {
 		t.Errorf("Adguard.BaseURL = %q", cfg.Adguard.BaseURL)
 	}
 	if cfg.Adguard.Username != "admin" {

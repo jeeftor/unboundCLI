@@ -10,7 +10,7 @@ import (
 
 const (
 	// DefaultCaddyServerIP is the default Caddy host used by existing commands.
-	DefaultCaddyServerIP = "192.168.1.15"
+	DefaultCaddyServerIP = "10.0.0.15"
 	// DefaultCaddyServerPort is the default Caddy admin API port.
 	DefaultCaddyServerPort = 2019
 )

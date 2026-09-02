@@ -20,12 +20,12 @@ func TestPlanFromEntriesCreatesDNSAddAndUpdateActions(t *testing.T) {
 			Hostname:      "wrong.example.com",
 			CaddyUpstream: "10.0.0.6:8080",
 			UnboundStatus: models.NotInSync("10.0.0.99"),
-			AdguardStatus: models.Synced("192.168.1.15"),
+			AdguardStatus: models.Synced("10.0.0.15"),
 			DHCPStatus:    models.NoDHCP(),
 		},
 	}, Options{
 		Service:       "unbound",
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 
 	if len(actions) != 2 {
@@ -36,7 +36,7 @@ func TestPlanFromEntriesCreatesDNSAddAndUpdateActions(t *testing.T) {
 		Type:     "add",
 		Service:  "unbound",
 		Hostname: "missing.example.com",
-		NewIP:    "192.168.1.15",
+		NewIP:    "10.0.0.15",
 		Enabled:  true,
 	})
 	assertAction(t, actions[1], Action{
@@ -44,7 +44,7 @@ func TestPlanFromEntriesCreatesDNSAddAndUpdateActions(t *testing.T) {
 		Service:  "unbound",
 		Hostname: "wrong.example.com",
 		OldIP:    "10.0.0.99",
-		NewIP:    "192.168.1.15",
+		NewIP:    "10.0.0.15",
 		Enabled:  true,
 	})
 }
@@ -60,7 +60,7 @@ func TestBuildPlanProducesStableDryRunSnapshot(t *testing.T) {
 		},
 	}, Options{
 		Service:       "all",
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 
 	data, err := json.MarshalIndent(plan, "", "  ")
@@ -74,7 +74,7 @@ func TestBuildPlanProducesStableDryRunSnapshot(t *testing.T) {
       "hostname": "missing.example.com",
       "service": "unbound",
       "old_ip": "",
-      "new_ip": "192.168.1.15",
+      "new_ip": "10.0.0.15",
       "details": "",
       "enabled": true
     },
@@ -83,7 +83,7 @@ func TestBuildPlanProducesStableDryRunSnapshot(t *testing.T) {
       "hostname": "missing.example.com",
       "service": "adguard",
       "old_ip": "",
-      "new_ip": "192.168.1.15",
+      "new_ip": "10.0.0.15",
       "details": "",
       "enabled": true
     }
@@ -98,13 +98,13 @@ func TestPlanFromEntriesCreatesStaleDeleteActions(t *testing.T) {
 	actions := PlanFromEntries([]*models.Entry{
 		{
 			Hostname:      "stale.example.com",
-			UnboundStatus: models.Synced("192.168.1.15"),
+			UnboundStatus: models.Synced("10.0.0.15"),
 			AdguardStatus: models.NotConfigured(),
 			DHCPStatus:    models.NoDHCP(),
 		},
 	}, Options{
 		Service:       "all",
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 
 	if len(actions) != 1 {
@@ -114,7 +114,7 @@ func TestPlanFromEntriesCreatesStaleDeleteActions(t *testing.T) {
 		Type:     "delete",
 		Service:  "unbound",
 		Hostname: "stale.example.com",
-		OldIP:    "192.168.1.15",
+		OldIP:    "10.0.0.15",
 		Details:  "no longer in Caddy",
 		Enabled:  true,
 	})
@@ -151,7 +151,7 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 				IsDefaultTunnel: true,
 				TunnelID:        "tunnel-default",
 				TunnelName:      "default",
-				Service:         "http://192.168.1.15:80",
+				Service:         "http://10.0.0.15:80",
 				HTTPHostHeader:  "stale.example.com",
 			},
 		},
@@ -163,13 +163,13 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 				IsDefaultTunnel: false,
 				TunnelID:        "tunnel-other",
 				TunnelName:      "other",
-				Service:         "http://192.168.1.15:80",
+				Service:         "http://10.0.0.15:80",
 				HTTPHostHeader:  "other-tunnel.example.com",
 			},
 		},
 	}, Options{
 		Service:         "cloudflare",
-		CaddyServiceURL: "http://192.168.1.15:80",
+		CaddyServiceURL: "http://10.0.0.15:80",
 	})
 
 	if len(actions) != 3 {
@@ -179,7 +179,7 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 		Type:                 "add",
 		Service:              "cloudflare",
 		Hostname:             "missing.example.com",
-		NewService:           "https://192.168.1.15",
+		NewService:           "https://10.0.0.15",
 		NewHTTPHostHeader:    "missing.example.com",
 		OriginServerName:     "missing.example.com",
 		Details:              "missing in default Cloudflare tunnel",
@@ -192,7 +192,7 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 		Service:              "cloudflare",
 		Hostname:             "wrong.example.com",
 		OldService:           "http://old-caddy:80",
-		NewService:           "https://192.168.1.15",
+		NewService:           "https://10.0.0.15",
 		OldHTTPHostHeader:    "",
 		NewHTTPHostHeader:    "wrong.example.com",
 		TunnelID:             "tunnel-default",
@@ -210,7 +210,7 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 		Type:                 "delete",
 		Service:              "cloudflare",
 		Hostname:             "stale.example.com",
-		OldService:           "http://192.168.1.15:80",
+		OldService:           "http://10.0.0.15:80",
 		OldHTTPHostHeader:    "stale.example.com",
 		TunnelID:             "tunnel-default",
 		TunnelName:           "default",
@@ -232,7 +232,7 @@ func TestPlanFromEntriesDeduplicatesHostnames(t *testing.T) {
 
 	actions := PlanFromEntries([]*models.Entry{entry, entry}, Options{
 		Service:       "unbound",
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 
 	if len(actions) != 1 {
@@ -245,13 +245,13 @@ func TestPlanFromEntriesCreatesDHCPStaticLeaseActions(t *testing.T) {
 		{
 			Hostname:      "device.example.com",
 			CaddyUpstream: "10.0.0.5:8080",
-			UnboundStatus: models.Synced("192.168.1.15"),
-			AdguardStatus: models.Synced("192.168.1.15"),
+			UnboundStatus: models.Synced("10.0.0.15"),
+			AdguardStatus: models.Synced("10.0.0.15"),
 			DHCPStatus:    models.NewDHCPStatus(true, "dynamic", "10.0.0.5", "aa:bb:cc:dd:ee:ff", "device", true),
 		},
 	}, Options{
 		Service:       "dhcp",
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 
 	if len(actions) != 1 {
@@ -272,13 +272,13 @@ func TestPlanFromEntriesExcludesDHCPFromDefaultAll(t *testing.T) {
 		{
 			Hostname:      "device.example.com",
 			CaddyUpstream: "10.0.0.5:8080",
-			UnboundStatus: models.Synced("192.168.1.15"),
-			AdguardStatus: models.Synced("192.168.1.15"),
+			UnboundStatus: models.Synced("10.0.0.15"),
+			AdguardStatus: models.Synced("10.0.0.15"),
 			DHCPStatus:    models.NewDHCPStatus(true, "dynamic", "10.0.0.5", "aa:bb:cc:dd:ee:ff", "device", true),
 		},
 	}, Options{
 		Service:       "all",
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 
 	if len(actions) != 0 {
@@ -303,7 +303,7 @@ func TestBuildCloudflareActionDirectMode(t *testing.T) {
 	}
 	action := buildCloudflareAction(entry, Options{
 		OriginMode:    "direct",
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 	if action.Type != "add" {
 		t.Fatalf("expected add, got %q", action.Type)
@@ -324,12 +324,12 @@ func TestBuildCloudflareActionSkipNonDefaultTunnel(t *testing.T) {
 			Configured:      true,
 			IsDefaultTunnel: false,
 			TunnelID:        "tunnel-other",
-			Service:         "https://192.168.1.15",
+			Service:         "https://10.0.0.15",
 			HTTPHostHeader:  "other.example.com",
 		},
 	}
 	action := buildCloudflareAction(entry, Options{
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 	if action.Type != "" {
 		t.Fatalf("expected empty action for non-default tunnel, got %q", action.Type)
@@ -344,12 +344,12 @@ func TestBuildCloudflareActionOverrideTunnel(t *testing.T) {
 			Configured:      true,
 			IsDefaultTunnel: false,
 			TunnelID:        "tunnel-other",
-			Service:         "https://192.168.1.15",
+			Service:         "https://10.0.0.15",
 			HTTPHostHeader:  "override.example.com",
 		},
 	}
 	action := buildCloudflareAction(entry, Options{
-		CaddyServerIP:    "192.168.1.15",
+		CaddyServerIP:    "10.0.0.15",
 		OverrideTunnelID: "tunnel-target",
 	})
 	if action.Type != "" {
@@ -367,13 +367,13 @@ func TestBuildCloudflareActionTLSVerifyChange(t *testing.T) {
 			IsDefaultTunnel: true,
 			TunnelID:        "tunnel-default",
 			TunnelName:      "default",
-			Service:         "https://192.168.1.15",
+			Service:         "https://10.0.0.15",
 			HTTPHostHeader:  "tls.example.com",
 			NoTLSVerify:     false,
 		},
 	}
 	action := buildCloudflareAction(entry, Options{
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 		NoTLSVerify:   true,
 	})
 	if action.Type != "update" {
@@ -393,12 +393,12 @@ func TestBuildCloudflareActionNoChangeReturnsEmpty(t *testing.T) {
 			IsDefaultTunnel: true,
 			TunnelID:        "tunnel-default",
 			TunnelName:      "default",
-			Service:         "https://192.168.1.15",
+			Service:         "https://10.0.0.15",
 			HTTPHostHeader:  "ok.example.com",
 		},
 	}
 	action := buildCloudflareAction(entry, Options{
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 	if action.Type != "" {
 		t.Fatalf("expected empty action when everything matches, got %q", action.Type)
@@ -413,12 +413,12 @@ func TestBuildCloudflareActionStaleDeleteNonDefaultTunnel(t *testing.T) {
 			IsDefaultTunnel: false,
 			TunnelID:        "tunnel-other",
 			TunnelName:      "other",
-			Service:         "https://192.168.1.15",
+			Service:         "https://10.0.0.15",
 			HTTPHostHeader:  "stale-other.example.com",
 		},
 	}
 	action := buildCloudflareAction(entry, Options{
-		CaddyServerIP: "192.168.1.15",
+		CaddyServerIP: "10.0.0.15",
 	})
 	if action.Type != "" {
 		t.Fatalf("expected empty action for stale entry on non-default tunnel, got %q", action.Type)

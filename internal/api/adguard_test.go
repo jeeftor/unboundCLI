@@ -39,8 +39,8 @@ func TestAdguardClient_AddRewrite(t *testing.T) {
 		if rewrite.Domain != "test.example.com" {
 			t.Errorf("Expected domain 'test.example.com', got '%s'", rewrite.Domain)
 		}
-		if rewrite.Answer != "192.168.1.15" {
-			t.Errorf("Expected answer '192.168.1.15', got '%s'", rewrite.Answer)
+		if rewrite.Answer != "10.0.0.15" {
+			t.Errorf("Expected answer '10.0.0.15', got '%s'", rewrite.Answer)
 		}
 
 		// Return success response
@@ -58,7 +58,7 @@ func TestAdguardClient_AddRewrite(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test AddRewrite
-	err := client.AddRewrite("test.example.com", "192.168.1.15")
+	err := client.AddRewrite("test.example.com", "10.0.0.15")
 	if err != nil {
 		t.Errorf("AddRewrite failed: %v", err)
 	}
@@ -67,8 +67,8 @@ func TestAdguardClient_AddRewrite(t *testing.T) {
 func TestAdguardClient_ListRewrites(t *testing.T) {
 	// Create test response data
 	testRewrites := []Rewrite{
-		{Domain: "test1.example.com", Answer: "192.168.1.15"},
-		{Domain: "test2.example.com", Answer: "192.168.1.15"},
+		{Domain: "test1.example.com", Answer: "10.0.0.15"},
+		{Domain: "test2.example.com", Answer: "10.0.0.15"},
 	}
 
 	// Create a test server
@@ -151,8 +151,8 @@ func TestAdguardClient_UpdateRewrite(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test UpdateRewrite
-	target := Rewrite{Domain: "old.example.com", Answer: "192.168.1.15"}
-	update := Rewrite{Domain: "new.example.com", Answer: "192.168.1.16"}
+	target := Rewrite{Domain: "old.example.com", Answer: "10.0.0.15"}
+	update := Rewrite{Domain: "new.example.com", Answer: "10.0.0.16"}
 
 	err := client.UpdateRewrite(target, update)
 	if err != nil {
@@ -181,8 +181,8 @@ func TestAdguardClient_DeleteRewrite(t *testing.T) {
 		if rewrite.Domain != "test.example.com" {
 			t.Errorf("Expected domain 'test.example.com', got '%s'", rewrite.Domain)
 		}
-		if rewrite.Answer != "192.168.1.15" {
-			t.Errorf("Expected answer '192.168.1.15', got '%s'", rewrite.Answer)
+		if rewrite.Answer != "10.0.0.15" {
+			t.Errorf("Expected answer '10.0.0.15', got '%s'", rewrite.Answer)
 		}
 
 		// Return success response
@@ -200,7 +200,7 @@ func TestAdguardClient_DeleteRewrite(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test DeleteRewrite
-	err := client.DeleteRewrite("test.example.com", "192.168.1.15")
+	err := client.DeleteRewrite("test.example.com", "10.0.0.15")
 	if err != nil {
 		t.Errorf("DeleteRewrite failed: %v", err)
 	}
@@ -209,8 +209,8 @@ func TestAdguardClient_DeleteRewrite(t *testing.T) {
 func TestAdguardClient_RewriteExists(t *testing.T) {
 	// Create test response data
 	testRewrites := []Rewrite{
-		{Domain: "existing.example.com", Answer: "192.168.1.15"},
-		{Domain: "another.example.com", Answer: "192.168.1.16"},
+		{Domain: "existing.example.com", Answer: "10.0.0.15"},
+		{Domain: "another.example.com", Answer: "10.0.0.16"},
 	}
 
 	// Create a test server
@@ -230,7 +230,7 @@ func TestAdguardClient_RewriteExists(t *testing.T) {
 	client := NewAdguardClient(config)
 
 	// Test existing rewrite
-	exists, err := client.RewriteExists("existing.example.com", "192.168.1.15")
+	exists, err := client.RewriteExists("existing.example.com", "10.0.0.15")
 	if err != nil {
 		t.Errorf("RewriteExists failed: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestAdguardClient_RewriteExists(t *testing.T) {
 	}
 
 	// Test non-existing rewrite
-	exists, err = client.RewriteExists("nonexistent.example.com", "192.168.1.15")
+	exists, err = client.RewriteExists("nonexistent.example.com", "10.0.0.15")
 	if err != nil {
 		t.Errorf("RewriteExists failed: %v", err)
 	}
@@ -251,9 +251,9 @@ func TestAdguardClient_RewriteExists(t *testing.T) {
 func TestAdguardClient_GetRewritesForDomain(t *testing.T) {
 	// Create test response data
 	testRewrites := []Rewrite{
-		{Domain: "test.example.com", Answer: "192.168.1.15"},
-		{Domain: "test.example.com", Answer: "192.168.1.16"},
-		{Domain: "other.example.com", Answer: "192.168.1.17"},
+		{Domain: "test.example.com", Answer: "10.0.0.15"},
+		{Domain: "test.example.com", Answer: "10.0.0.16"},
+		{Domain: "other.example.com", Answer: "10.0.0.17"},
 	}
 
 	// Create a test server

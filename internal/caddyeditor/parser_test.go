@@ -12,12 +12,12 @@ import (
 const sampleCaddyfile = `*.vookie.net {
 	@sonarr host sonarr.vookie.net
 	handle @sonarr {
-		reverse_proxy http://192.168.1.112:8989
+		reverse_proxy http://10.0.0.112:8989
 	}
 
 	@radarr host radarr.vookie.net
 	handle @radarr {
-		reverse_proxy http://192.168.1.112:7878
+		reverse_proxy http://10.0.0.112:7878
 	}
 
 	handle {
@@ -109,16 +109,16 @@ func TestParseCaddyfile(t *testing.T) {
 			name:         "sonarr entry",
 			hostname:     "sonarr.vookie.net",
 			matcher:      "sonarr",
-			upstream:     "http://192.168.1.112:8989",
-			wantInRaw:    "reverse_proxy http://192.168.1.112:8989",
+			upstream:     "http://10.0.0.112:8989",
+			wantInRaw:    "reverse_proxy http://10.0.0.112:8989",
 			wantInDirect: nil,
 		},
 		{
 			name:         "radarr entry",
 			hostname:     "radarr.vookie.net",
 			matcher:      "radarr",
-			upstream:     "http://192.168.1.112:7878",
-			wantInRaw:    "reverse_proxy http://192.168.1.112:7878",
+			upstream:     "http://10.0.0.112:7878",
+			wantInRaw:    "reverse_proxy http://10.0.0.112:7878",
 			wantInDirect: nil,
 		},
 	}
@@ -197,22 +197,22 @@ func TestAddEntry(t *testing.T) {
 			existing: sampleCaddyfile,
 			block: SiteBlock{
 				Hostname: "prowarr.vookie.net",
-				Upstream: "http://192.168.1.112:9696",
+				Upstream: "http://10.0.0.112:9696",
 			},
 			templateName: "simple",
 			wantHostname: "prowarr.vookie.net",
-			wantUpstream: "http://192.168.1.112:9696",
+			wantUpstream: "http://10.0.0.112:9696",
 		},
 		{
 			name:     "add entry to empty wildcard block",
 			existing: emptyCaddyfile,
 			block: SiteBlock{
 				Hostname: "sonarr.vookie.net",
-				Upstream: "http://192.168.1.112:8989",
+				Upstream: "http://10.0.0.112:8989",
 			},
 			templateName: "simple",
 			wantHostname: "sonarr.vookie.net",
-			wantUpstream: "http://192.168.1.112:8989",
+			wantUpstream: "http://10.0.0.112:8989",
 		},
 	}
 
@@ -254,7 +254,7 @@ func TestAddEntryDuplicate(t *testing.T) {
 	cfg := writeCaddyfile(t, emptyCaddyfile)
 	block := SiteBlock{
 		Hostname: "sonarr.vookie.net",
-		Upstream: "http://192.168.1.112:8989",
+		Upstream: "http://10.0.0.112:8989",
 	}
 	if err := AddEntry(cfg, block, "simple"); err != nil {
 		t.Fatalf("first AddEntry: %v", err)
@@ -337,7 +337,7 @@ func TestUpdateEntry(t *testing.T) {
 			name:         "update sonarr upstream",
 			existing:     sampleCaddyfile,
 			hostname:     "sonarr.vookie.net",
-			newUpstream:  "http://192.168.1.112:9999",
+			newUpstream:  "http://10.0.0.112:9999",
 			templateName: "simple",
 		},
 		{

@@ -200,7 +200,7 @@ func (c *AuthentikClient) FindProxyProviderByExternalHost(hostname string) (*Pro
 type CreateProxyProviderRequest struct {
 	Name              string
 	ExternalHost      string // e.g. "https://users.vookie.net"
-	InternalHost      string // optional, e.g. "http://192.168.1.112:9004"
+	InternalHost      string // optional, e.g. "http://10.0.0.112:9004"
 	Mode              ProxyMode
 	AuthorizationFlow string // flow UUID (resolve via GetFlowUUID)
 	// InterceptHeaderAuth enables Bearer token auth for API access.
@@ -470,7 +470,7 @@ func (c *AuthentikClient) AddProviderToOutpost(outpostUUID string, providerPK in
 //
 // Parameters:
 //   - hostname: e.g. "users.vookie.net"
-//   - internalHost: e.g. "http://192.168.1.112:9004" (optional for forward_single mode)
+//   - internalHost: e.g. "http://10.0.0.112:9004" (optional for forward_single mode)
 //   - mode: ProxyModeForwardSingle (most common) or ProxyModeProxy
 //   - appSlug: desired application slug (e.g. "user-manager-proxy")
 //   - outpostUUID: the outpost to assign the provider to

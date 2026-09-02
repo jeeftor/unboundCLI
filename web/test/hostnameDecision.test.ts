@@ -4,20 +4,20 @@ import type { Entry } from '../src/types';
 
 const baseEntry: Entry = {
   hostname: 'adsb.vookie.net',
-  caddy_upstream: '192.168.1.81:1099',
-  caddy_ip: '192.168.1.81',
+  caddy_upstream: '10.0.0.81:1099',
+  caddy_ip: '10.0.0.81',
   caddy_port: '1099',
-  unbound_status: { configured: true, ip: '192.168.1.15', in_sync: true },
-  adguard_status: { configured: true, ip: '192.168.1.15', in_sync: true },
+  unbound_status: { configured: true, ip: '10.0.0.15', in_sync: true },
+  adguard_status: { configured: true, ip: '10.0.0.15', in_sync: true },
   dhcp_status: {
     configured: true,
     type: 'static',
-    ip: '192.168.1.82',
+    ip: '10.0.0.82',
     mac: '00:11:22:33:44:55',
     hostname: 'adsb',
     in_sync: false
   },
-  dns_resolved: '192.168.1.15',
+  dns_resolved: '10.0.0.15',
   cloudflare_status: {
     configured: false,
     tunnel_name: '',
@@ -41,16 +41,16 @@ const baseEntry: Entry = {
 
 describe('getHostnameDecision', () => {
   it('flags a Caddy-backed hostname that collides with a DHCP machine name', () => {
-    const decision = getHostnameDecision(baseEntry, '192.168.1.15');
+    const decision = getHostnameDecision(baseEntry, '10.0.0.15');
 
     expect(decision.kind).toBe('collision');
     expect(decision.severity).toBe('warning');
     expect(decision.title).toBe('Direct access risk');
     expect(decision.summary).toMatch(/ssh adsb\.vookie\.net/i);
     expect(decision.facts).toEqual([
-      'DNS resolves to Caddy at 192.168.1.15',
-      'DHCP has adsb at 192.168.1.82',
-      'Caddy proxies this name to 192.168.1.81:1099'
+      'DNS resolves to Caddy at 10.0.0.15',
+      'DHCP has adsb at 10.0.0.82',
+      'Caddy proxies this name to 10.0.0.81:1099'
     ]);
     expect(decision.actions.map(action => action.label)).toEqual([
       'Keep web, add SSH alias',
@@ -65,7 +65,7 @@ describe('getHostnameDecision', () => {
         hostname: 'ai-pages.vookie.net',
         dhcp_status: { ...baseEntry.dhcp_status, configured: false, ip: '', hostname: '' }
       },
-      '192.168.1.15'
+      '10.0.0.15'
     );
 
     expect(decision.kind).toBe('service');

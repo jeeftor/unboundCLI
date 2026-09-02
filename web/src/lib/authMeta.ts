@@ -153,7 +153,7 @@ export function detectAuthPattern(auth: {
       name: 'Missing Forward Auth',
       verdict: 'error',
       summary: 'forward_auth is required but missing from Caddy',
-      detail: 'This app depends on Authentik headers (X-Authentik-Username, etc.) for user identity. Without forward_auth in the Caddyfile, the app cannot identify logged-in users and will return 403 even when CF Access is active. Add `import forward_auth` and `reverse_proxy /outpost.goauthentik.io/* 192.168.1.112:9000` to the handle block.',
+      detail: 'This app depends on Authentik headers (X-Authentik-Username, etc.) for user identity. Without forward_auth in the Caddyfile, the app cannot identify logged-in users and will return 403 even when CF Access is active. Add `import forward_auth` and `reverse_proxy /outpost.goauthentik.io/* 10.0.0.112:9000` to the handle block.',
     };
   }
   if (!auth.wan_exposed) {

@@ -20,12 +20,12 @@ func TestRenderTemplate(t *testing.T) {
 			templateName: "default",
 			data: TemplateData{
 				Hostname: "sonarr.vookie.net",
-				Upstream: "http://192.168.1.112:8989",
+				Upstream: "http://10.0.0.112:8989",
 			},
 			wantContains: []string{
 				"@sonarr_vookie_net host sonarr.vookie.net",
 				"handle @sonarr_vookie_net {",
-				"reverse_proxy http://192.168.1.112:8989",
+				"reverse_proxy http://10.0.0.112:8989",
 				"import proxy_headers",
 			},
 		},
@@ -34,12 +34,12 @@ func TestRenderTemplate(t *testing.T) {
 			templateName: "simple",
 			data: TemplateData{
 				Hostname: "radarr.vookie.net",
-				Upstream: "http://192.168.1.112:7878",
+				Upstream: "http://10.0.0.112:7878",
 			},
 			wantContains: []string{
 				"@radarr_vookie_net host radarr.vookie.net",
 				"handle @radarr_vookie_net {",
-				"reverse_proxy http://192.168.1.112:7878",
+				"reverse_proxy http://10.0.0.112:7878",
 			},
 		},
 		{
@@ -47,11 +47,11 @@ func TestRenderTemplate(t *testing.T) {
 			templateName: "no-tls-verify",
 			data: TemplateData{
 				Hostname: "plex.vookie.net",
-				Upstream: "https://192.168.1.112:32400",
+				Upstream: "https://10.0.0.112:32400",
 			},
 			wantContains: []string{
 				"tls_insecure_skip_verify",
-				"reverse_proxy https://192.168.1.112:32400",
+				"reverse_proxy https://10.0.0.112:32400",
 			},
 		},
 		{
@@ -59,11 +59,11 @@ func TestRenderTemplate(t *testing.T) {
 			templateName: "compression",
 			data: TemplateData{
 				Hostname: "grafana.vookie.net",
-				Upstream: "http://192.168.1.112:3000",
+				Upstream: "http://10.0.0.112:3000",
 			},
 			wantContains: []string{
 				"encode gzip zstd",
-				"reverse_proxy http://192.168.1.112:3000",
+				"reverse_proxy http://10.0.0.112:3000",
 			},
 		},
 		{
@@ -71,7 +71,7 @@ func TestRenderTemplate(t *testing.T) {
 			templateName: "long-timeout",
 			data: TemplateData{
 				Hostname: "ai.vookie.net",
-				Upstream: "http://192.168.1.112:8080",
+				Upstream: "http://10.0.0.112:8080",
 			},
 			wantContains: []string{
 				"read_timeout 600s",
@@ -84,7 +84,7 @@ func TestRenderTemplate(t *testing.T) {
 			templateName: "headers-inline",
 			data: TemplateData{
 				Hostname: "svc.vookie.net",
-				Upstream: "http://192.168.1.112:1234",
+				Upstream: "http://10.0.0.112:1234",
 			},
 			wantContains: []string{
 				"header_up Host {upstream_hostport}",
@@ -146,11 +146,11 @@ func TestRenderTemplateForwardAuthParams(t *testing.T) {
 		{
 			name: "uses provided authentik_url",
 			params: map[string]string{
-				"authentik_url": "192.168.1.112:9000",
+				"authentik_url": "10.0.0.112:9000",
 			},
 			wantContains: []string{
-				"reverse_proxy /outpost.goauthentik.io/* 192.168.1.112:9000",
-				"forward_auth 192.168.1.112:9000 {",
+				"reverse_proxy /outpost.goauthentik.io/* 10.0.0.112:9000",
+				"forward_auth 10.0.0.112:9000 {",
 			},
 		},
 		{
@@ -163,10 +163,10 @@ func TestRenderTemplateForwardAuthParams(t *testing.T) {
 		{
 			name: "no split-horizon matchers",
 			params: map[string]string{
-				"authentik_url": "192.168.1.112:9000",
+				"authentik_url": "10.0.0.112:9000",
 			},
 			wantContains: []string{
-				"forward_auth 192.168.1.112:9000 {",
+				"forward_auth 10.0.0.112:9000 {",
 			},
 			wantAbsent: []string{
 				"not client_ip",
@@ -180,7 +180,7 @@ func TestRenderTemplateForwardAuthParams(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := RenderTemplate("", "forward-auth", TemplateData{
 				Hostname: "app.vookie.net",
-				Upstream: "http://192.168.1.112:8080",
+				Upstream: "http://10.0.0.112:8080",
 				Params:   tc.params,
 			})
 			if err != nil {

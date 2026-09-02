@@ -17,7 +17,7 @@ type TemplateParamDef = { key: string; label: string; placeholder?: string; requ
 
 const TEMPLATE_PARAMS: Record<string, TemplateParamDef[]> = {
   'forward-auth': [
-    { key: 'authentik_url', label: 'Authentik URL', placeholder: '192.168.1.112:9000', required: true },
+    { key: 'authentik_url', label: 'Authentik URL', placeholder: '10.0.0.112:9000', required: true },
     { key: 'external_cidrs', label: 'External CIDRs (space-separated)', placeholder: 'private_ranges' },
   ],
 };
@@ -163,7 +163,7 @@ export function EntryModal({
                 type="text"
                 value={upstream}
                 onChange={(e) => setUpstream(e.target.value)}
-                placeholder="192.168.1.100:3000"
+                placeholder="10.0.0.100:3000"
               />
             </div>
           </label>

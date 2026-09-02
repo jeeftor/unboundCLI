@@ -639,7 +639,7 @@ Add to `internal/web/server_test.go`:
 func TestApplyRouteAllowsDryRunOnly(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 	action := syncplan.Action{
-		Type: "add", Service: "unbound", Hostname: "dryrun.example.test", NewIP: "192.168.1.15", Enabled: true,
+		Type: "add", Service: "unbound", Hostname: "dryrun.example.test", NewIP: "10.0.0.15", Enabled: true,
 	}
 	body, err := json.Marshal(ApplyRequest{DryRun: true, Actions: []syncplan.Action{action}})
 	if err != nil {
@@ -669,7 +669,7 @@ func TestApplyRouteAllowsDryRunOnly(t *testing.T) {
 func TestApplyRouteRejectsUnsupportedDHCPDryRun(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 	action := syncplan.Action{
-		Type: "add", Service: "dhcp", Hostname: "dhcp.example.test", NewIP: "192.168.1.55", Enabled: true,
+		Type: "add", Service: "dhcp", Hostname: "dhcp.example.test", NewIP: "10.0.0.55", Enabled: true,
 	}
 	body, err := json.Marshal(ApplyRequest{DryRun: true, Actions: []syncplan.Action{action}})
 	if err != nil {
@@ -860,7 +860,7 @@ func TestMutatingApplyRejectsPostedActionsEvenWithToken(t *testing.T) {
 	body, err := json.Marshal(map[string]any{
 		"dry_run": false,
 		"actions": []syncplan.Action{
-			{Type: "add", Service: "unbound", Hostname: "forged.example.test", NewIP: "192.168.1.15", Enabled: true},
+			{Type: "add", Service: "unbound", Hostname: "forged.example.test", NewIP: "10.0.0.15", Enabled: true},
 		},
 	})
 	if err != nil {
