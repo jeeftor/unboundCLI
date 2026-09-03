@@ -20,8 +20,9 @@ var caddyHTTPClient = &http.Client{
 
 // CaddyClient handles communication with the Caddy server
 type CaddyClient struct {
-	ServerIP   string
+	ServerIP   string // LAN IP used for DNS comparison (e.g. "192.168.1.15")
 	ServerPort int
+	AdminHost  string // host for admin API connection; defaults to ServerIP when empty
 }
 
 // NewCaddyClient creates a new Caddy client
@@ -32,9 +33,17 @@ func NewCaddyClient(serverIP string, serverPort int) *CaddyClient {
 	}
 }
 
+// adminHost returns the host to use for admin API connections.
+func (c *CaddyClient) adminHost() string {
+	if c.AdminHost != "" {
+		return c.AdminHost
+	}
+	return c.ServerIP
+}
+
 // GetConfig fetches the Caddy server configuration
 func (c *CaddyClient) GetConfig() (map[string]interface{}, error) {
-	url := fmt.Sprintf("http://%s:%d/config/", c.ServerIP, c.ServerPort)
+	url := fmt.Sprintf("http://%s:%d/config/", c.adminHost(), c.ServerPort)
 
 	logging.Debug("Fetching Caddy config", "url", url)
 	resp, err := caddyHTTPClient.Get(url)

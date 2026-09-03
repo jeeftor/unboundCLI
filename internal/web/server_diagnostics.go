@@ -327,8 +327,8 @@ func (s *Server) handleDiagnosticsPrune(w http.ResponseWriter, r *http.Request) 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		DryRun    bool     `json:"dry_run"`
-		Hostname  string   `json:"hostname"`   // optional: prune only this hostname
-		Hostnames []string `json:"hostnames"`  // optional: prune specific hostnames
+		Hostname  string   `json:"hostname"`  // optional: prune only this hostname
+		Hostnames []string `json:"hostnames"` // optional: prune specific hostnames
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
 		// dry_run defaults to true if not specified

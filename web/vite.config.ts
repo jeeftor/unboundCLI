@@ -16,17 +16,9 @@ export default defineConfig({
           return 'assets/[name].[hash][extname]';
         },
         manualChunks: (id: string) => {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'react-vendor';
-            }
-            if (id.includes('@xyflow/react') || id.includes('elkjs')) {
-              return 'diagrams';
-            }
-            if (id.includes('lucide-react')) {
-              return 'icons';
-            }
-            return 'vendor';
+          // elkjs is huge (~1.4MB) — split it out on its own
+          if (id.includes('node_modules/elkjs')) {
+            return 'elkjs';
           }
         }
       }

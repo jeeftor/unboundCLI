@@ -17,8 +17,9 @@ const (
 
 // CaddyEndpoint identifies the Caddy admin API endpoint.
 type CaddyEndpoint struct {
-	ServerIP   string
+	ServerIP   string // LAN IP for DNS comparison
 	ServerPort int
+	AdminHost  string // admin API host override (empty → use ServerIP)
 }
 
 // ClientSet contains the service clients shared by CLI, TUI, and future web adapters.
@@ -46,6 +47,7 @@ type Runtime struct {
 type RuntimeOptions struct {
 	CaddyServerIP   string
 	CaddyServerPort int
+	CaddyAdminHost  string // optional override for admin API host (see CaddyEndpoint.AdminHost)
 
 	IncludeUnbound    bool
 	IncludeDNSMasq    bool
@@ -102,7 +104,7 @@ func NewRuntimeFromConfigs(
 	authentikConfig config.AuthentikConfig,
 	options RuntimeOptions,
 ) (*Runtime, error) {
-	endpoint := ResolveCaddyEndpoint(options.CaddyServerIP, options.CaddyServerPort)
+	endpoint := ResolveCaddyEndpoint(options.CaddyServerIP, options.CaddyServerPort, options.CaddyAdminHost)
 
 	runtime := &Runtime{
 		UnboundConfig:    unboundConfig,
@@ -112,7 +114,7 @@ func NewRuntimeFromConfigs(
 		CaddyEndpoint:    endpoint,
 		CaddyServiceURL:  ResolveCaddyServiceURL(cloudflareConfig, endpoint),
 		Clients: ClientSet{
-			Caddy: api.NewCaddyClient(endpoint.ServerIP, endpoint.ServerPort),
+			Caddy: &api.CaddyClient{ServerIP: endpoint.ServerIP, ServerPort: endpoint.ServerPort, AdminHost: endpoint.AdminHost},
 		},
 	}
 
@@ -163,14 +165,14 @@ func NewRuntimeFromConfigs(
 }
 
 // ResolveCaddyEndpoint applies existing command defaults to an optional endpoint override.
-func ResolveCaddyEndpoint(serverIP string, serverPort int) CaddyEndpoint {
+func ResolveCaddyEndpoint(serverIP string, serverPort int, adminHost string) CaddyEndpoint {
 	if serverIP == "" {
 		serverIP = DefaultCaddyServerIP
 	}
 	if serverPort == 0 {
 		serverPort = DefaultCaddyServerPort
 	}
-	return CaddyEndpoint{ServerIP: serverIP, ServerPort: serverPort}
+	return CaddyEndpoint{ServerIP: serverIP, ServerPort: serverPort, AdminHost: adminHost}
 }
 
 // ResolveCaddyServiceURL returns the service URL used for Cloudflare quick-fill actions.

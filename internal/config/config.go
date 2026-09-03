@@ -74,6 +74,11 @@ func envBoolOr(primary, fallback string) bool {
 type CaddyConfig struct {
 	ServerIP   string `json:"server_ip,omitempty" mapstructure:"server_ip"`
 	ServerPort int    `json:"server_port,omitempty" mapstructure:"server_port"`
+	// AdminHost overrides the host used to reach the Caddy admin API.
+	// Useful when caddy-sync runs on the same machine as Caddy (use "127.0.0.1")
+	// while ServerIP holds the LAN IP that DNS entries should resolve to.
+	// Defaults to ServerIP when empty.
+	AdminHost string `json:"admin_host,omitempty" mapstructure:"admin_host"`
 }
 
 // AdguardConfig represents configuration specific to AdguardHome integration
