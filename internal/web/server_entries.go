@@ -396,27 +396,57 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 
 // ─── Entry/Plan Helpers ─────────────────────────────────────────────────────
 
-const entriesCacheTTL = 30 * time.Second
+const entriesCacheTTL = 5 * time.Minute
+
+// entriesStaleGrace is how long a stale cache is still served while a
+// background refresh runs. This prevents the plan/apply endpoints from
+// blocking on a full API refetch (which can exceed reverse-proxy timeouts).
+const entriesStaleGrace = 30 * time.Minute
 
 func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
-	// Check short-lived cache first — avoids re-fetching from all APIs when
-	// multiple endpoints (entries, diagnostics, plan, auth) need the same data.
-	// Hold lock for the entire check-and-return to avoid race with concurrent
-	// invalidation.
+	// Check cache first. If fresh, return immediately.
+	// If stale but within grace period, return stale data and trigger a
+	// background refresh so the next call gets fresh data without blocking.
 	s.entriesMu.Lock()
-	if time.Since(s.entriesCacheAt) < entriesCacheTTL && s.entriesCache != nil {
-		entries := s.entriesCache
-		report := s.entriesReport
-		s.entriesMu.Unlock()
-		return entries, report, nil
+	if s.entriesCache != nil {
+		age := time.Since(s.entriesCacheAt)
+		if age < entriesCacheTTL {
+			entries := s.entriesCache
+			report := s.entriesReport
+			s.entriesMu.Unlock()
+			return entries, report, nil
+		}
+		if age < entriesStaleGrace {
+			entries := s.entriesCache
+			report := s.entriesReport
+			s.entriesMu.Unlock()
+			// Refresh in the background so the next request gets fresh data.
+			s.refreshEntriesCacheInBackground(ctx)
+			return entries, report, nil
+		}
 	}
 	s.entriesMu.Unlock()
 
+	// No usable cache — do a blocking fetch with a timeout to avoid
+	// hitting reverse-proxy (e.g. Cloudflare) 502 timeouts.
+	fetchCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
 	runtime := s.runtimeSnapshot()
-	entries, report, err := status.LoadEntries(ctx, runtime.Clients, status.Options{
+	entries, report, err := status.LoadEntries(fetchCtx, runtime.Clients, status.Options{
 		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
 	})
 	if err != nil {
+		// If the fetch failed but we have stale cache, return it rather
+		// than erroring — a stale plan is better than a 502.
+		s.entriesMu.Lock()
+		if s.entriesCache != nil {
+			entries := s.entriesCache
+			cachedReport := s.entriesReport
+			s.entriesMu.Unlock()
+			logging.Warn("Entries fetch failed, serving stale cache", "error", err)
+			return entries, cachedReport, nil
+		}
+		s.entriesMu.Unlock()
 		return nil, report, err
 	}
 
@@ -428,6 +458,40 @@ func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadR
 	s.entriesMu.Unlock()
 
 	return entries, report, nil
+}
+
+// refreshEntriesCacheInBackground fetches fresh entries in a goroutine and
+// updates the cache. Uses a background context so it isn't cancelled when the
+// triggering request finishes.
+func (s *Server) refreshEntriesCacheInBackground(_ context.Context) {
+	s.refreshMu.Lock()
+	if s.refreshRunning {
+		s.refreshMu.Unlock()
+		return
+	}
+	s.refreshRunning = true
+	s.refreshMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.refreshMu.Lock()
+			s.refreshRunning = false
+			s.refreshMu.Unlock()
+		}()
+		runtime := s.runtimeSnapshot()
+		entries, report, err := status.LoadEntries(context.Background(), runtime.Clients, status.Options{
+			CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
+		})
+		if err != nil {
+			logging.Warn("Background entries refresh failed", "error", err)
+			return
+		}
+		s.entriesMu.Lock()
+		s.entriesCache = entries
+		s.entriesReport = report
+		s.entriesCacheAt = time.Now()
+		s.entriesMu.Unlock()
+	}()
 }
 
 // invalidateEntriesCache clears the entries cache so the next loadEntries

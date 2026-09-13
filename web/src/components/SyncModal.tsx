@@ -88,6 +88,7 @@ export function SyncModal({
   const [removingService, setRemovingService] = useState<string | null>(null);
   const [localRemoved, setLocalRemoved] = useState<Set<string>>(() => new Set());
   const [confirmSync, setConfirmSync] = useState<{ service: string; apply: () => Promise<void> } | null>(null);
+  const [noActionsMsg, setNoActionsMsg] = useState<string>('');
 
   // Live server log streaming -- poll /api/logs while an operation is in progress.
   const [liveLog, setLiveLog] = useState<string>('');
@@ -103,12 +104,23 @@ export function SyncModal({
       // eslint-disable-next-line @eslint-react/set-state-in-effect
       setConfirmSync(null);
       // eslint-disable-next-line @eslint-react/set-state-in-effect
+      setNoActionsMsg('');
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setLiveLog('');
       logCursorRef.current = 0;
     }
   }, [open, hostname]);
 
   const busy = syncLoading || removingService !== null;
+
+  // Clear liveLog when an operation finishes so syncLog (with the result/error)
+  // is visible instead of being masked by stale polled logs.
+  useEffect(() => {
+    if (!busy) {
+      // eslint-disable-next-line @eslint-react/set-state-in-effect
+      setLiveLog('');
+    }
+  }, [busy]);
 
   // Poll server logs while busy.
   useEffect(() => {
@@ -205,23 +217,29 @@ export function SyncModal({
 
   const runServiceSync = async (serviceKey: string) => {
     setSyncService(serviceKey);
+    setNoActionsMsg('');
     const ok = await onPreviewFor(serviceKey, hostname);
     if (ok) {
       setConfirmSync({
         service: serviceKey,
         apply: async () => { await onSync(); onRefresh(); }
       });
+    } else {
+      setNoActionsMsg(`No actions needed for ${serviceKey} — already in sync (or unavailable).`);
     }
   };
 
   const runSyncAll = async () => {
     setSyncService('all');
+    setNoActionsMsg('');
     const ok = await onPreviewFor('all', hostname);
     if (ok) {
       setConfirmSync({
         service: 'all',
         apply: async () => { await onSync(); onRefresh(); }
       });
+    } else {
+      setNoActionsMsg('No actions needed — all services already in sync (or unavailable).');
     }
   };
 
@@ -273,6 +291,22 @@ export function SyncModal({
               <button type="button" className="btn-secondary" onClick={() => setConfirmSync(null)} disabled={busy}>
                 Cancel
               </button>
+            </div>
+          )}
+          {noActionsMsg && !confirmSync && (
+            <div className="sync-no-actions" style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 14px',
+              margin: '0 0 12px 0',
+              border: '1px solid var(--border-info, #3b82f6)',
+              borderRadius: '8px',
+              background: 'var(--bg-info, rgba(59,130,246,0.08))',
+              fontSize: '13px',
+            }}>
+              <ShieldCheck size={14} style={{ color: 'var(--text-info, #3b82f6)', flexShrink: 0 }} />
+              {noActionsMsg}
             </div>
           )}
           {hostnameDecision && (

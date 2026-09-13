@@ -440,19 +440,40 @@ export function refreshEntries(onDataChanged?: () => void) {
       }
       return;
     }
-    // Native error — connection lost. Auto-reconnect with backoff.
+    // Native error — connection lost or SSE unsupported (e.g. reverse proxy
+    // buffering). Fall back to a regular GET so the UI still updates.
     if (requestID === runtimeSequence) {
-      useStore.getState().setMessage(`Connection lost — retrying in ${Math.round(reconnectDelay / 1000)}s...`);
-      useStore.getState().setMessageKind('error');
-      const shouldHold = window.UNBOUNDCLI_TEST_HOOKS === true &&
-        new URLSearchParams(window.location.search).get('e2e')?.split(',').includes('holdloading');
-      if (!shouldHold) useStore.getState().setLoading(false);
+      useStore.getState().setMessage('Stream unavailable — fetching directly...');
+      useStore.getState().setMessageKind('info');
     }
     es.close();
     eventSource = null;
-    // Schedule auto-reconnect unless this request was superseded.
+    // Try a regular GET as a fallback. If it succeeds, entries update
+    // immediately. If it also fails, schedule an SSE reconnect with backoff.
     if (requestID === runtimeSequence) {
-      scheduleReconnect();
+      api.entries()
+        .then((data) => {
+          if (requestID !== runtimeSequence) return;
+          reconnectDelay = 1000;
+          useStore.getState().setEntries(data.entries || []);
+          useStore.getState().setReport(data.report || {});
+          onDataChanged?.();
+          const entries = data.entries || [];
+          useStore.getState().setMessage(entries.length ? 'Loaded service status.' : 'No entries found.');
+          useStore.getState().setMessageKind('info');
+          const shouldHold = window.UNBOUNDCLI_TEST_HOOKS === true &&
+            new URLSearchParams(window.location.search).get('e2e')?.split(',').includes('holdloading');
+          if (!shouldHold) useStore.getState().setLoading(false);
+        })
+        .catch(() => {
+          if (requestID !== runtimeSequence) return;
+          useStore.getState().setMessage(`Connection lost — retrying in ${Math.round(reconnectDelay / 1000)}s...`);
+          useStore.getState().setMessageKind('error');
+          const shouldHold = window.UNBOUNDCLI_TEST_HOOKS === true &&
+            new URLSearchParams(window.location.search).get('e2e')?.split(',').includes('holdloading');
+          if (!shouldHold) useStore.getState().setLoading(false);
+          scheduleReconnect();
+        });
     }
   });
 

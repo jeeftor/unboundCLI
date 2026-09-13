@@ -37,7 +37,10 @@ type Entry struct {
 
 // IsConfiguredInCaddy returns true if this entry exists in Caddy
 func (e *Entry) IsConfiguredInCaddy() bool {
-	return e.CaddyUpstream != ""
+	// An entry is "in Caddy" if it has a reverse_proxy upstream OR a handler
+	// chain (e.g. file_server, encode, vars). Hostnames with file_server
+	// don't have an upstream but still need DNS pointing to the Caddy server.
+	return e.CaddyUpstream != "" || len(e.CaddyRoute.HandlerChain) > 0
 }
 
 // IsConfiguredInCloudflare returns true if this hostname has an ingress rule in any CF tunnel.
