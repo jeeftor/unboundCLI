@@ -9,12 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- sync button 502s and file_server hostnames skipped ([18f4b6b](18f4b6bc812c30d953011b94cf2e20a28946acee))
+
 - separate Caddy admin API host from LAN IP for DNS comparison ([4e006d6](4e006d6f4891b8c0993ab7781e2cd1e416ceee89))
 
 - correct service name and two-step copy in Makefile deploy targets ([344a805](344a805c85e92fe0a6c314fdaa3d724501cf7201))
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([638337c](638337ccce4ac4d9bc0f2d5df12d0a3cf9739c6b))
 
 - update changelog ([e6705d4](e6705d4030fd633aca1c346e5c1a601bfe2d93c7))
 
