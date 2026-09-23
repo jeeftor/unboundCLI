@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([e8bc99c](e8bc99c555b070e4aecf690b3fc3476af78f8a58))
+
 - update changelog ([638337c](638337ccce4ac4d9bc0f2d5df12d0a3cf9739c6b))
 
 - update changelog ([e6705d4](e6705d4030fd633aca1c346e5c1a601bfe2d93c7))
@@ -25,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - update changelog ([d3fdab5](d3fdab55dbcf087ab4d603403388a3e1cca6a238))
 
 - update changelog ([e3096ae](e3096ae3722951f1aab3ee97b6242e7d1416d3ec))
+
+
+### <!-- 6 -->🧪 Testing
+
+- strengthen web verification foundation ([1b985ff](1b985ff334466e2b5c724a140894037cf4630334))
 
 
 ### <!-- 7 -->⚙️ Miscellaneous Tasks
