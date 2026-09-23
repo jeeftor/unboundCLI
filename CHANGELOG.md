@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- issue unique IDs for duplicate plan actions ([7500e12](7500e12c5f16a5f13259fe7e9d8bba2674c22937))
+
 - reject expired sync plans during apply ([9e0598b](9e0598be84ba5dfcaa52cfc5833e134c676909e5))
 
 - require apply for legacy sync writes ([de84b0c](de84b0c01cdeead55177be21290af170e17b3cff))
@@ -132,6 +134,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([e3d6a18](e3d6a1864bb2e805661be859b3f017f1df8be553))
 
 - update changelog ([e9f13cf](e9f13cf8ff6036937554c9f7f783867e1062277f))
 
