@@ -31,14 +31,14 @@ jobs:
         run: trivy fs --format cyclonedx --output sbom.cyclonedx.json .
 
       - name: Upload SPDX as workflow artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-spdx-json
           path: sbom.spdx.json
           retention-days: 30
 
       - name: Upload CycloneDX as workflow artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx-json
           path: sbom.cyclonedx.json
