@@ -137,6 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([c03dc9d](c03dc9d63fb9068640c96bf95fc072cad045b60f))
+
 - update changelog ([6cd5f71](6cd5f71ee8773c0486d0ebbc9e42629ac2a4fbf3))
 
 - update changelog ([482aef0](482aef042adf8a57eed295e18130985c9f251bd5))
@@ -291,6 +293,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 6 -->🧪 Testing
+
+- verify mobile touch targets ([895e5ee](895e5ee702712b33910f7fb85cfdfd444c9c601e))
 
 - verify responsive hostname density ([5b2dc3e](5b2dc3e766b69f6c9bc44868293ddc849175dc11))
 
