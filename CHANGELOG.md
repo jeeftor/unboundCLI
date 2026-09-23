@@ -135,6 +135,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([eff24b1](eff24b12dd8f0a93ea6dd81df40fe4bf99c4240a))
+
 - update changelog ([e3d6a18](e3d6a1864bb2e805661be859b3f017f1df8be553))
 
 - update changelog ([e9f13cf](e9f13cf8ff6036937554c9f7f783867e1062277f))
@@ -283,6 +285,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 6 -->🧪 Testing
+
+- cover desktop hostname row density ([4f306b0](4f306b03f189b8a7e5ace63467ea3726811853fb))
 
 - cover plan-based web removal requests ([2e5dafa](2e5dafab16eef6902fad7183fdb92b81cc20ce4b))
 
