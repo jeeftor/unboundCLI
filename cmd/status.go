@@ -86,11 +86,11 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 				issues++
 			}
 		}
-		if issues > 0 {
+		if issues > 0 || statusReportHasFailures(report) {
 			fmt.Fprintf(out, "%s  %d entries  %s issues\n", SymWarn, total, StyleFail.Render(fmt.Sprintf("%d", issues)))
-		} else {
-			fmt.Fprintf(out, "%s  %d entries  all good\n", SymOK, total)
+			return exitCode(1)
 		}
+		fmt.Fprintf(out, "%s  %d entries  all good\n", SymOK, total)
 		return nil
 	}
 
@@ -175,11 +175,14 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	fmt.Fprintf(out, "  %s  All %d entries look good.\n\n", SymOK, len(entries))
+	if statusReportHasFailures(report) {
+		return exitCode(1)
+	}
 	return nil
 }
 
 func statusEntryHasIssue(e *models.Entry) bool {
-	if e.OverallStatus == models.OutOfSync || e.OverallStatus == models.Stale {
+	if e.OverallStatus == models.PartiallyInSync || e.OverallStatus == models.OutOfSync || e.OverallStatus == models.CaddyOnly || e.OverallStatus == models.Stale {
 		return true
 	}
 	if e.CloudflareStatus.Configured && !e.CloudflareStatus.HasDNSRecord {
@@ -187,6 +190,15 @@ func statusEntryHasIssue(e *models.Entry) bool {
 	}
 	if e.NeedsHTTPHostHeader() {
 		return true
+	}
+	return false
+}
+
+func statusReportHasFailures(report status.LoadReport) bool {
+	for _, service := range report.Services {
+		if service.Error != "" {
+			return true
+		}
 	}
 	return false
 }
