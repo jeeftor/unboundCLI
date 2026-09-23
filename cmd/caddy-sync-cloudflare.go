@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
-	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	sync2 "github.com/jeeftor/caddy-dns-sync/internal/exec/sync"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/spf13/cobra"
@@ -48,14 +48,22 @@ func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot specify both --direct-only and --caddy-only")
 	}
 
-	cfg, err := config.LoadConfig()
+	runtime, err := app.LoadRuntime(app.RuntimeOptions{
+		ConfigPath:      cfgFile,
+		CaddyServerIP:   cfCaddyServerIP,
+		CaddyServerPort: cfCaddyServerPort,
+		IncludeUnbound:  true,
+	})
 	if err != nil {
-		logging.Error("Error loading configuration", "error", err)
+		logging.Error("Error loading effective configuration", "error", err)
 		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
 	}
-
-	unboundClient := api.NewClient(cfg)
+	if runtime.Clients.Unbound == nil {
+		return fmt.Errorf("Unbound configuration missing required API key, API secret, or base URL")
+	}
+	unboundClient := runtime.Clients.Unbound
 	if cfPrompt {
+		unboundClient = api.NewClient(runtime.UnboundConfig)
 		unboundClient.Prompt = true
 	}
 
@@ -66,8 +74,8 @@ func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 	options := sync2.CaddyCloudflareSyncOptions{
 		BaseSyncOptions: sync2.BaseSyncOptions{
 			DryRun:             cfDryRun,
-			CaddyServerIP:      cfCaddyServerIP,
-			CaddyServerPort:    cfCaddyServerPort,
+			CaddyServerIP:      runtime.CaddyEndpoint.ServerIP,
+			CaddyServerPort:    runtime.CaddyEndpoint.ServerPort,
 			EntryDescription:   cfEntryDescription,
 			LegacyDescriptions: cfLegacyDescriptions,
 			Verbose:            verbose,
@@ -80,7 +88,7 @@ func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareHeader(syncDirect, syncCaddy))
 	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareSyncTargets(syncDirect, syncCaddy, cfDirectSubdomain, cfCaddySubdomain))
-	fmt.Fprintln(cmd.OutOrStdout(), syncUI.RenderFetchingMessage(cfCaddyServerIP, cfCaddyServerPort))
+	fmt.Fprintln(cmd.OutOrStdout(), syncUI.RenderFetchingMessage(runtime.CaddyEndpoint.ServerIP, runtime.CaddyEndpoint.ServerPort))
 
 	result, err := sync2.SyncCaddyWithCloudflare(unboundClient, options)
 	if err != nil {
@@ -122,9 +130,9 @@ func init() {
 	caddySyncCloudflareCmd.Flags().
 		BoolVar(&cfDryRun, "dry-run", false, "Show what would be done without making any changes")
 	caddySyncCloudflareCmd.Flags().
-		StringVar(&cfCaddyServerIP, "caddy-ip", "10.0.0.15", "IP address of the Caddy server")
+		StringVar(&cfCaddyServerIP, "caddy-ip", "", "Caddy server IP (defaults to selected config)")
 	caddySyncCloudflareCmd.Flags().
-		IntVar(&cfCaddyServerPort, "caddy-port", 2019, "Admin port of the Caddy server")
+		IntVar(&cfCaddyServerPort, "caddy-port", 0, "Caddy admin API port (defaults to selected config)")
 	caddySyncCloudflareCmd.Flags().
 		StringVar(&cfEntryDescription, "description", "Entry created by caddy-dns-sync caddy-sync-cloudflare",
 			"Description to use for created entries")
