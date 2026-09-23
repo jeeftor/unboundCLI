@@ -2,6 +2,8 @@
 # See documentation at https://goreleaser.com
 version: 2
 
+project_name: caddy-dns-sync
+
 env:
   - GO111MODULE=on
   - CGO_ENABLED=0
@@ -134,7 +136,7 @@ nfpms:
   - id: caddy-dns-sync
     package_name: caddy-dns-sync
     vendor: jeeftor
-    homepage: https://github.com/jeeftor/caddy-dns-sync
+    homepage: https://github.com/jeeftor/unboundCLI
     maintainer: Jeef <jeeftor@github.com>
     description: CLI for syncing with UNBOUND DNS on OPNSENSE router
     license: MIT
@@ -214,7 +216,7 @@ changelog:
 release:
   github:
     owner: jeeftor
-    name: caddy-dns-sync
+    name: unboundCLI
   draft: false
   prerelease: auto
   mode: replace

@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/jeeftor/caddy-dns-sync?style=for-the-badge&logo=github)](https://github.com/jeeftor/caddy-dns-sync/releases)
+[![Release](https://img.shields.io/github/v/release/jeeftor/unboundCLI?style=for-the-badge&logo=github)](https://github.com/jeeftor/unboundCLI/releases)
 [![SLSA 3](https://img.shields.io/badge/SLSA-Level%203-green?style=for-the-badge)](https://slsa.dev)
 [![Build](https://github.com/jeeftor/unboundCLI/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/jeeftor/unboundCLI/actions/workflows/build.yml)
 [![Security](https://github.com/jeeftor/unboundCLI/actions/workflows/security.yml/badge.svg?branch=master)](https://github.com/jeeftor/unboundCLI/actions/workflows/security.yml)
@@ -39,14 +39,14 @@ brew install caddy-dns-sync
 
 ### Manual Installation
 
-1. Download the latest binary from the [Releases page](https://github.com/jeeftor/caddy-dns-sync/releases)
+1. Download the latest binary from the [Releases page](https://github.com/jeeftor/unboundCLI/releases)
 2. Extract and move to your `$PATH`
 
 ### Building from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/jeeftor/caddy-dns-sync.git
+git clone https://github.com/jeeftor/unboundCLI.git
 cd caddy-dns-sync
 
 # Build the application
