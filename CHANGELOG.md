@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- make cloudflare sync ownership transactional ([cd1a7f7](cd1a7f728fb441e3c265d37395442255f4ee6e05))
+
 - require explicit tunnel IDs for cloudflare adds ([6db8d5f](6db8d5f575c83710c8d6476e2d1a226e88222016))
 
 - route cloudflare changes through sync plans ([4905d8e](4905d8e58a2b2a1134f0dbbb16deef49f0f8f322))
@@ -90,6 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([04078ff](04078ff93878273c95798fec035951a3f36d0cba))
 
 - update changelog ([cafd1b1](cafd1b1c27fbbaa8b21d0ac70b2c0d02cf806e74))
 
