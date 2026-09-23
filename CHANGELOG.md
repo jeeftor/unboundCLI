@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- reject expired sync plans during apply ([9e0598b](9e0598be84ba5dfcaa52cfc5833e134c676909e5))
+
 - require apply for legacy sync writes ([de84b0c](de84b0c01cdeead55177be21290af170e17b3cff))
 
 - fail legacy sync on partial outcomes ([e2ab677](e2ab677e506b465769afece149374b4a8ac3987e))
@@ -130,6 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([e9f13cf](e9f13cf8ff6036937554c9f7f783867e1062277f))
 
 - update changelog ([b2de8f4](b2de8f4d41954ebc5fee65f4d96753661322969f))
 
