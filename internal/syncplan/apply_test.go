@@ -199,6 +199,19 @@ func TestApplyProtectsUnownedAdguardRewrite(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsDuplicateAdguardRewrite(t *testing.T) {
+	adguard := &fakeAdguardClient{rewrites: []api.Rewrite{
+		{Domain: "duplicate.example.com", Answer: "10.0.0.10"},
+		{Domain: "duplicate.example.com", Answer: "10.0.0.99"},
+	}}
+	result := Apply(context.Background(), Clients{Adguard: adguard}, Plan{Actions: []Action{{
+		Type: "update", Service: "adguard", Hostname: "duplicate.example.com", OldIP: "10.0.0.10", NewIP: "10.0.0.15", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: adguardOwnershipPath(t, map[string]string{"duplicate.example.com": "10.0.0.10"})})
+	if result.Success || len(adguard.updated) != 0 {
+		t.Fatalf("duplicate AdGuard rewrites must be protected, result=%#v updates=%#v", result, adguard.updated)
+	}
+}
+
 func TestApplyAdguardPersistsIntentBeforeWriteFailure(t *testing.T) {
 	adguard := &fakeAdguardClient{addErr: errors.New("provider unavailable")}
 	path := adguardOwnershipPath(t, nil)

@@ -327,7 +327,7 @@ func exactAdguardRewrite(rewrites []api.Rewrite, domain, expected string) (api.R
 	var match *api.Rewrite
 	for index := range rewrites {
 		rewrite := &rewrites[index]
-		if rewrite.Domain != domain || (expected != "" && rewrite.Answer != expected) {
+		if rewrite.Domain != domain {
 			continue
 		}
 		if match != nil {
@@ -337,6 +337,9 @@ func exactAdguardRewrite(rewrites []api.Rewrite, domain, expected string) (api.R
 	}
 	if match == nil {
 		return api.Rewrite{}, fmt.Errorf("no matching AdGuard rewrite for %s", domain)
+	}
+	if expected != "" && match.Answer != expected {
+		return api.Rewrite{}, fmt.Errorf("AdGuard rewrite %s no longer has the expected value", domain)
 	}
 	return *match, nil
 }
