@@ -47,6 +47,11 @@ func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 	if cfDirectOnly && cfCaddyOnly {
 		return fmt.Errorf("cannot specify both --direct-only and --caddy-only")
 	}
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
 
 	runtime, err := app.LoadRuntime(app.RuntimeOptions{
 		ConfigPath:      cfgFile,

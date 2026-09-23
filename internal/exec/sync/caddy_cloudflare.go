@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -152,8 +153,10 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 		return result, nil
 	}
 
-	// Apply changes
-	changesApplied := true
+	// Stage every provider write before activation. A failed write leaves the
+	// provider in an unresolved state, so report it as an error rather than
+	// presenting the partial result as a successful sync.
+	var writeErrors []error
 
 	// Add new entries
 	for _, entry := range toAdd {
@@ -171,7 +174,7 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 				"domain", entry.Domain,
 				"ip", entry.IP,
 				"error", err)
-			changesApplied = false
+			writeErrors = append(writeErrors, fmt.Errorf("add %s.%s: %w", entry.Hostname, entry.Domain, err))
 		} else {
 			logging.Debug("Added DNS override",
 				"hostname", entry.Hostname,
@@ -201,7 +204,7 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 					"domain", entry.Domain,
 					"ip", entry.IP,
 					"error", err)
-				changesApplied = false
+				writeErrors = append(writeErrors, fmt.Errorf("update %s.%s: %w", entry.Hostname, entry.Domain, err))
 			} else {
 				logging.Debug("Updated DNS override",
 					"uuid", existing.UUID,
@@ -222,7 +225,7 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 				"hostname", override.Host,
 				"domain", override.Domain,
 				"error", err)
-			changesApplied = false
+			writeErrors = append(writeErrors, fmt.Errorf("delete %s.%s: %w", override.Host, override.Domain, err))
 		} else {
 			logging.Debug("Removed DNS override",
 				"uuid", override.UUID,
@@ -231,8 +234,48 @@ func SyncCaddyWithCloudflare(unboundClient *api.Client, options CaddyCloudflareS
 		}
 	}
 
-	result.ChangesApplied = changesApplied
+	if len(writeErrors) > 0 {
+		return result, fmt.Errorf("sync has unresolved provider writes; review provider state before retrying: %w", errors.Join(writeErrors...))
+	}
+
+	if len(toAdd)+len(toUpdate)+len(toRemove) == 0 {
+		result.ChangesApplied = true
+		return result, nil
+	}
+
+	if err := unboundClient.ApplyChanges(); err != nil {
+		return result, fmt.Errorf("activate Unbound changes: %w; provider state may be partially updated", err)
+	}
+	if err := verifyCaddyCloudflareChanges(unboundClient, toAdd, toUpdate, toRemove); err != nil {
+		return result, err
+	}
+
+	result.ChangesApplied = true
 	return result, nil
+}
+
+func verifyCaddyCloudflareChanges(client *api.Client, added, updated []CloudflareEntry, removed []api.DNSOverride) error {
+	overrides, err := client.GetOverrides()
+	if err != nil {
+		return fmt.Errorf("read back Unbound changes: %w", err)
+	}
+	byHostname := make(map[string]api.DNSOverride, len(overrides))
+	for _, override := range overrides {
+		byHostname[fmt.Sprintf("%s.%s", override.Host, override.Domain)] = override
+	}
+	for _, entry := range append(added, updated...) {
+		key := fmt.Sprintf("%s.%s", entry.Hostname, entry.Domain)
+		override, ok := byHostname[key]
+		if !ok || override.Server != entry.IP || override.Description != entry.Description {
+			return fmt.Errorf("verify Unbound change for %s: expected managed record pointing to %s", key, entry.IP)
+		}
+	}
+	for _, override := range removed {
+		if _, ok := byHostname[fmt.Sprintf("%s.%s", override.Host, override.Domain)]; ok {
+			return fmt.Errorf("verify Unbound deletion for %s.%s: record remains", override.Host, override.Domain)
+		}
+	}
+	return nil
 }
 
 // parseHostnameToDNSEntry converts a hostname to a CloudflareEntry
