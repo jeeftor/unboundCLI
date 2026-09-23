@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- upload nested release signatures ([065eea6](065eea6875f83cadb214e6d344ecf39388b9ff31))
+
+
+### <!-- 3 -->📚 Documentation
+
+- update changelog ([9f56261](9f562618e31a5ab5fd595e30bb35d5417283735e))
+
+
+## [0.6.1] - 2026-09-23
+
+### <!-- 1 -->🐛 Bug Fixes
+
 - pin cosign installer release action ([b4fb2db](b4fb2db55a239177045b6feae33358d224e01025))
 
 
