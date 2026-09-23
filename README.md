@@ -13,13 +13,13 @@
 caddy-dns-sync reads hostname data from the Caddy Admin API and reconciles it
 against your DNS providers and Cloudflare tunnel ingress. It ships as a Cobra
 CLI, a Bubble Tea TUI, and an embedded React web UI for status review and
-dry-run sync previews.
+server-issued sync previews.
 
 ## ✨ Features
 
 - 🎨 **Modern CLI interface** with color output using Cobra and Viper
 - 🖥️ **Interactive TUI** powered by Bubble Tea and Lipgloss
-- 🌐 **Local browser UI** (React 19 + Vite, embedded in the binary) for status review and dry-run sync previews
+- 🌐 **Local browser UI** (React 19 + Vite, embedded in the binary) for status review, ownership-checked previews, and confirmed plan apply
 - 📝 **Complete CRUD operations** for DNS overrides
 - 🔄 **Multi-target sync**: Unbound DNS (OPNSense), AdGuard Home, dnsmasq/DHCP, Cloudflare Tunnels + DNS
 - 📄 **Git-backed Caddyfile editor** with validate → commit → push → deploy pipeline
@@ -87,7 +87,12 @@ Start the local browser interface:
 caddy-dns-sync web
 ```
 
-The web UI is bound to `127.0.0.1:8080` by default. It shows Caddy/DNS status and supports sync previews plus dry-run apply. Real browser-triggered mutations remain disabled until local token and server-side plan validation are enabled.
+The web UI is bound to `127.0.0.1:8080` by default. It supports an explicit
+preview → confirmation → apply workflow: the server issues immutable plan and
+action IDs, verifies their expiry/configuration/ownership at apply time, and
+rejects direct record mutations. For remote access, keep the backend loopback
+bound and use an authenticated reverse proxy with `--origin` and
+`--proxy-auth-header`.
 
 ## 📖 Usage
 
@@ -158,7 +163,8 @@ caddy-dns-sync web
 
 ### Prerequisites
 
-- Go 1.18 or higher
+- Go 1.26 (as declared in `go.mod`)
+- Node 24 for frontend build and checks
 - Make
 - GoReleaser (optional, for releases)
 
@@ -167,7 +173,7 @@ caddy-dns-sync web
 ```bash
 make build          # 🔨 Build the application
 make test           # 🧪 Run tests
-make check          # 🔍 Format code and run linters
+make check          # 🔍 Format, vet, Go tests, frontend lint/test/type checks
 make cross-build    # 🌍 Cross-compile for multiple platforms
 make release-dry-run # 🚀 Test GoReleaser configuration
 make help           # 📚 Show all available commands
@@ -190,13 +196,21 @@ This project uses **GoReleaser** with **SLSA Level 3** provenance for secure, au
 
 ### Creating a New Release
 
-1. **Tag the commit:**
+1. **Verify the exact commit:**
+   ```bash
+   make check
+   CADDY_DNS_SYNC_BROWSER_TESTS=1 go test ./internal/web -count=1
+   make cross-build
+   ```
+
+2. **Wait for GitHub Actions to pass for that commit, then tag it:**
    ```bash
    git tag -a v0.1.0 -m "Release v0.1.0"
    git push origin v0.1.0
    ```
 
-2. **Automated build:** GitHub Actions automatically builds and publishes the release with SLSA provenance
+3. **Verify publication:** confirm the release workflow, assets, checksums, and
+   provenance are attached to the tagged commit before deploying.
 
 ## 🛡️ Security & SLSA Provenance
 
