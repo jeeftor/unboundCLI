@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- add verified adguard adoption previews ([4d13f35](4d13f35f26e5504efb1fc0d4c7d668aa32707870))
+
 - add durable resource ownership state ([0ca805d](0ca805d4db7016a67e5dd75285ce618d04ed08cb))
 
 
@@ -54,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([36e517a](36e517a0b1ccc275c5ad869afbcee2b834c85407))
 
 - update changelog ([b9d216a](b9d216ae412bad61b2ebd0a235403be1173261d9))
 
