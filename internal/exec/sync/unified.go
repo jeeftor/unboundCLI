@@ -186,7 +186,7 @@ func syncCaddyWithUnboundInternal(
 		)
 	}
 
-	return &SyncResult{
+	result := &SyncResult{
 		HostnameMap:     hostnameMap,
 		ToAdd:           toAdd,
 		ToUpdate:        toUpdate,
@@ -198,7 +198,11 @@ func syncCaddyWithUnboundInternal(
 		ExistingCount:   len(existingOverrides),
 		FailedHostnames: failedHostnames,
 		ApplyFailed:     applyFailed,
-	}, nil
+	}
+	if err := unboundSyncOutcomeError(result); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 // syncCaddyWithAdguardInternal is an internal version that accepts pre-fetched hostname map
@@ -277,7 +281,7 @@ func syncCaddyWithAdguardInternal(
 		)
 	}
 
-	return &AdguardSyncResult{
+	result := &AdguardSyncResult{
 		HostnameMap:     hostnameMap,
 		ToAdd:           toAdd,
 		ToUpdate:        toUpdate,
@@ -287,5 +291,16 @@ func syncCaddyWithAdguardInternal(
 		OtherRewrites:   otherRewrites,
 		ExistingCount:   len(existingRewrites),
 		FailedHostnames: failedHostnames,
-	}, nil
+	}
+	if err := adguardSyncOutcomeError(result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func adguardSyncOutcomeError(result *AdguardSyncResult) error {
+	if len(result.FailedHostnames) > 0 {
+		return fmt.Errorf("AdGuard sync has unresolved writes for: %v", result.FailedHostnames)
+	}
+	return nil
 }

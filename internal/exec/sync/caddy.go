@@ -160,7 +160,7 @@ func syncHostnamesWithUnbound(
 		)
 	}
 
-	return &SyncResult{
+	result := &SyncResult{
 		HostnameMap:     hostnameMap,
 		ToAdd:           toAdd,
 		ToUpdate:        toUpdate,
@@ -172,7 +172,21 @@ func syncHostnamesWithUnbound(
 		ExistingCount:   len(existingOverrides),
 		FailedHostnames: failedHostnames,
 		ApplyFailed:     applyFailed,
-	}, nil
+	}
+	if err := unboundSyncOutcomeError(result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func unboundSyncOutcomeError(result *SyncResult) error {
+	if result.ApplyFailed {
+		return fmt.Errorf("Unbound activation failed; provider state may be partially updated")
+	}
+	if len(result.FailedHostnames) > 0 {
+		return fmt.Errorf("Unbound sync has unresolved writes for: %v", result.FailedHostnames)
+	}
+	return nil
 }
 
 // applyUnboundChanges applies planned changes to the Unbound DNS server.

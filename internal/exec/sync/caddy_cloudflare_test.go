@@ -178,3 +178,15 @@ func TestSyncCaddyWithCloudflareReportsActivationFailure(t *testing.T) {
 		t.Fatal("activation failure must not be reported as applied")
 	}
 }
+
+func TestSyncOutcomeErrorsReportPartialOrUnactivatedWrites(t *testing.T) {
+	if err := unboundSyncOutcomeError(&SyncResult{ApplyFailed: true}); err == nil {
+		t.Fatal("expected Unbound activation failure to be an error")
+	}
+	if err := unboundSyncOutcomeError(&SyncResult{FailedHostnames: []string{"app.example.com"}}); err == nil {
+		t.Fatal("expected Unbound partial write to be an error")
+	}
+	if err := adguardSyncOutcomeError(&AdguardSyncResult{FailedHostnames: []string{"app.example.com"}}); err == nil {
+		t.Fatal("expected AdGuard partial write to be an error")
+	}
+}
