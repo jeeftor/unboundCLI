@@ -68,6 +68,10 @@ func (s *Server) previewAdguardAdoption(w http.ResponseWriter, r *http.Request) 
 		if state.Owns("adguard", "rewrite", rewrite.Domain) || state.HasIntent("adguard", "rewrite", rewrite.Domain) {
 			continue
 		}
+		if _, duplicate := candidates[rewrite.Domain]; duplicate {
+			writeError(w, http.StatusConflict, fmt.Errorf("multiple AdGuard rewrites exist for %s; resolve the ambiguity before adoption", rewrite.Domain))
+			return
+		}
 		candidates[rewrite.Domain] = rewrite.Answer
 		response.Candidates = append(response.Candidates, adoptionCandidate{ID: rewrite.Domain, Current: rewrite.Answer})
 	}
@@ -127,6 +131,10 @@ func (s *Server) confirmAdguardAdoption(w http.ResponseWriter, r *http.Request) 
 	}
 	current := map[string]string{}
 	for _, rewrite := range rewrites {
+		if _, duplicate := current[rewrite.Domain]; duplicate {
+			writeError(w, http.StatusConflict, fmt.Errorf("multiple AdGuard rewrites exist for %s; preview adoption again after resolving the ambiguity", rewrite.Domain))
+			return
+		}
 		current[rewrite.Domain] = rewrite.Answer
 	}
 	state, path, err := s.loadOwnershipState()
