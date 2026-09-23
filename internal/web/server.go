@@ -48,12 +48,14 @@ type Options struct {
 }
 
 type Server struct {
-	runtime   *app.Runtime
-	options   Options
-	mux       *http.ServeMux
-	runtimeMu sync.RWMutex
-	planMu    sync.Mutex
-	plans     map[string]storedPlan
+	runtime    *app.Runtime
+	options    Options
+	mux        *http.ServeMux
+	runtimeMu  sync.RWMutex
+	planMu     sync.Mutex
+	plans      map[string]storedPlan
+	adoptionMu sync.Mutex
+	adoptions  map[string]adoptionPreview
 
 	// Auth inventory cache — populated at startup and after mutations.
 	authMu    sync.RWMutex
@@ -102,12 +104,13 @@ func NewServerWithOptions(runtime *app.Runtime, options Options) *Server {
 	logging.EnableBuffer()
 	ctx, cancel := context.WithCancel(context.Background())
 	server := &Server{
-		runtime: runtime,
-		options: options,
-		mux:     http.NewServeMux(),
-		plans:   make(map[string]storedPlan),
-		ctx:     ctx,
-		cancel:  cancel,
+		runtime:   runtime,
+		options:   options,
+		mux:       http.NewServeMux(),
+		plans:     make(map[string]storedPlan),
+		adoptions: make(map[string]adoptionPreview),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 	server.routes()
 	// Pre-populate auth cache at startup so all clients get instant data.
@@ -261,6 +264,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/sync/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
 	s.mux.HandleFunc("/api/sync/remove", s.handleSyncRemove)
+	s.mux.HandleFunc("/api/ownership/adoption", s.handleAdoption)
 	// Caddy Editor routes
 	s.mux.HandleFunc("/api/caddy/entries", s.handleCaddyEntries)
 	s.mux.HandleFunc("/api/caddy/entries/", s.handleCaddyEntry)
