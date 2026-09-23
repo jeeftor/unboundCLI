@@ -326,6 +326,12 @@ func TestConfigRouteReportsSourcesAndSaveTarget(t *testing.T) {
 }
 
 func TestConfigUpdateWritesConfigFileAndRefreshesRuntime(t *testing.T) {
+	for _, name := range []string{
+		config.EnvAPIKey, config.EnvAPISecret, config.EnvBaseURL, config.EnvInsecure,
+		config.EnvAPIKeyDeprecated, config.EnvAPISecretDeprecated, config.EnvBaseURLDeprecated, config.EnvInsecureDeprecated,
+	} {
+		t.Setenv(name, "")
+	}
 	configPath := filepath.Join(t.TempDir(), "caddy-dns-sync.json")
 	if err := config.SaveExtendedConfig(config.ExtendedConfig{
 		Config: api.Config{
@@ -365,7 +371,12 @@ func TestConfigUpdateWritesConfigFileAndRefreshesRuntime(t *testing.T) {
 		ConfigPath:     configPath,
 	})
 
+	revision, err := config.Revision(configPath)
+	if err != nil {
+		t.Fatalf("read config revision: %v", err)
+	}
 	body, err := json.Marshal(map[string]any{
+		"revision": revision,
 		"unbound": map[string]any{
 			"base_url":   "https://new.example.test",
 			"insecure":   true,
@@ -410,6 +421,75 @@ func TestConfigUpdateWritesConfigFileAndRefreshesRuntime(t *testing.T) {
 	resp := getJSON[ConfigResponse](t, server, "/api/config")
 	if resp.Summary.Unbound.Endpoint != "https://new.example.test" {
 		t.Fatalf("expected runtime summary to refresh, got %#v", resp.Summary.Unbound)
+	}
+}
+
+func TestConfigUpdateDoesNotCopyEnvironmentCredentialsIntoNewFile(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "caddy-dns-sync.json")
+	server := NewServerWithOptions(&app.Runtime{
+		UnboundConfig: api.Config{
+			APIKey:    "environment-key",
+			APISecret: "environment-secret",
+			BaseURL:   "https://environment.example.test",
+		},
+	}, Options{ApplyToken: "test-token", AllowMutations: true, BoundHost: "127.0.0.1", ConfigPath: configPath})
+
+	baseURL := "https://saved.example.test"
+	body, err := json.Marshal(ConfigUpdateRequest{Revision: "missing", Unbound: &UnboundConfigUpdate{BaseURL: &baseURL}})
+	if err != nil {
+		t.Fatalf("marshal update: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected config update success, got %d: %s", rec.Code, rec.Body.String())
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	for _, secret := range []string{"environment-key", "environment-secret", "environment.example.test"} {
+		if bytes.Contains(data, []byte(secret)) {
+			t.Fatalf("new config copied environment-only value %q: %s", secret, data)
+		}
+	}
+}
+
+func TestConfigUpdateRejectsStaleRevision(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "caddy-dns-sync.json")
+	if err := os.WriteFile(configPath, []byte(`{"api_key":"key"}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	server := NewServerWithOptions(&app.Runtime{}, Options{ApplyToken: "test-token", AllowMutations: true, BoundHost: "127.0.0.1", ConfigPath: configPath})
+	body := []byte(`{"revision":"stale","unbound":{"base_url":"https://new.example.test"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected stale revision conflict, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestConfigSecretUpdateRequiresExplicitClear(t *testing.T) {
+	cfg := api.Config{APIKey: "key", APISecret: "secret"}
+	applyUnboundConfigUpdate(&cfg, &UnboundConfigUpdate{})
+	if cfg.APIKey != "key" || cfg.APISecret != "secret" {
+		t.Fatalf("blank secret inputs must preserve stored values: %#v", cfg)
+	}
+	applyUnboundConfigUpdate(&cfg, &UnboundConfigUpdate{ClearAPIKey: true, ClearAPISecret: true})
+	if cfg.APIKey != "" || cfg.APISecret != "" {
+		t.Fatalf("explicit secret clear did not remove values: %#v", cfg)
+	}
+
+	cloudflare := config.CloudflareConfig{APIToken: "token"}
+	applyCloudflareConfigUpdate(&cloudflare, &CloudflareConfigUpdate{ClearAPIToken: true})
+	if cloudflare.APIToken != "" {
+		t.Fatalf("explicit Cloudflare token clear did not remove value: %#v", cloudflare)
 	}
 }
 

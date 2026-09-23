@@ -26,6 +26,7 @@ export type ConfigResponse = {
   enabled: Record<ServiceKey, boolean>;
   mutation_enabled: boolean;
   save_target: string;
+  revision: string;
   summary: Record<ServiceKey, ConfigServiceSummary>;
   caddy_editor?: CaddyEditorConfig;
   version?: string;

@@ -668,7 +668,7 @@ export async function saveConfig(service: 'unbound' | 'adguard' | 'cloudflare'):
   store.setConfigStatus(`Saving ${service} config...`);
   store.setConfigStatusKind('info');
   try {
-    const payload = buildConfigUpdate(service, store.forms);
+    const payload = { ...buildConfigUpdate(service, store.forms), revision: store.config?.revision || '' };
     const nextConfig = await api.saveConfig(payload);
     store.setConfig(nextConfig);
     saveCachedConfig(nextConfig);
@@ -694,6 +694,7 @@ export async function saveCaddyEditor(): Promise<void> {
   try {
     const ce = store.forms.caddyEditor;
     const payload = {
+	  revision: store.config?.revision || '',
       caddy_editor: {
         enabled: ce.enabled,
         repo_path: ce.repo_path,

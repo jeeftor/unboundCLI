@@ -1,6 +1,8 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -37,6 +39,42 @@ func TestNewRuntimeFromConfigsBuildsCoreClientsWithDefaults(t *testing.T) {
 	}
 	if runtime.CaddyServiceURL != "http://10.0.0.15:80" {
 		t.Fatalf("unexpected Caddy service URL %q", runtime.CaddyServiceURL)
+	}
+}
+
+func TestLoadRuntimeUsesExplicitSelectedConfigFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "selected.json")
+	data := []byte(`{"api_key":"selected-key","api_secret":"selected-secret","base_url":"https://selected.example.test","caddy":{"server_ip":"10.10.0.8","server_port":2022}}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("write selected config: %v", err)
+	}
+	t.Setenv(config.EnvAPIKey, "")
+	t.Setenv(config.EnvAPISecret, "")
+	t.Setenv(config.EnvBaseURL, "")
+	t.Setenv(config.EnvAPIKeyDeprecated, "")
+	t.Setenv(config.EnvAPISecretDeprecated, "")
+	t.Setenv(config.EnvBaseURLDeprecated, "")
+
+	runtime, err := LoadRuntime(RuntimeOptions{ConfigPath: path, IncludeUnbound: true})
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	if runtime.Clients.Unbound == nil || runtime.CaddyEndpoint.ServerIP != "10.10.0.8" || runtime.CaddyEndpoint.ServerPort != 2022 {
+		t.Fatalf("runtime did not use selected file: %#v", runtime)
+	}
+}
+
+func TestNewRuntimeFromConfigsDoesNotContactUnboundAtStartup(t *testing.T) {
+	// Client construction must remain pure. Ownership migration happens only in
+	// explicit, reviewed operations, never while displaying status or dry-run.
+	runtime, err := NewRuntimeFromConfigs(api.Config{
+		APIKey: "key", APISecret: "secret", BaseURL: "https://127.0.0.1:1",
+	}, config.AdguardConfig{}, config.CloudflareConfig{}, config.AuthentikConfig{}, RuntimeOptions{IncludeUnbound: true})
+	if err != nil {
+		t.Fatalf("construct runtime: %v", err)
+	}
+	if runtime.Clients.Unbound == nil {
+		t.Fatal("expected configured Unbound client")
 	}
 }
 

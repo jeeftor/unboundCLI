@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -29,6 +30,7 @@ type ConfigResponse struct {
 	Enabled         map[string]bool          `json:"enabled"`
 	MutationEnabled bool                     `json:"mutation_enabled"`
 	SaveTarget      string                   `json:"save_target"`
+	Revision        string                   `json:"revision"`
 	Summary         ConfigSummary            `json:"summary"`
 	CaddyEditor     caddyeditor.EditorConfig `json:"caddy_editor"`
 	Version         string                   `json:"version"`
@@ -61,6 +63,7 @@ type ConfigSource struct {
 }
 
 type ConfigUpdateRequest struct {
+	Revision    string                   `json:"revision"`
 	Unbound     *UnboundConfigUpdate     `json:"unbound,omitempty"`
 	Adguard     *AdguardConfigUpdate     `json:"adguard,omitempty"`
 	Cloudflare  *CloudflareConfigUpdate  `json:"cloudflare,omitempty"`
@@ -92,23 +95,28 @@ type ConfigTestResponse struct {
 }
 
 type UnboundConfigUpdate struct {
-	APIKey    string  `json:"api_key,omitempty"`
-	APISecret string  `json:"api_secret,omitempty"`
-	BaseURL   *string `json:"base_url,omitempty"`
-	Insecure  *bool   `json:"insecure,omitempty"`
+	APIKey         string  `json:"api_key,omitempty"`
+	APISecret      string  `json:"api_secret,omitempty"`
+	ClearAPIKey    bool    `json:"clear_api_key,omitempty"`
+	ClearAPISecret bool    `json:"clear_api_secret,omitempty"`
+	BaseURL        *string `json:"base_url,omitempty"`
+	Insecure       *bool   `json:"insecure,omitempty"`
 }
 
 type AdguardConfigUpdate struct {
-	Enabled  *bool   `json:"enabled,omitempty"`
-	Username string  `json:"username,omitempty"`
-	Password string  `json:"password,omitempty"`
-	BaseURL  *string `json:"base_url,omitempty"`
-	Insecure *bool   `json:"insecure,omitempty"`
+	Enabled       *bool   `json:"enabled,omitempty"`
+	Username      string  `json:"username,omitempty"`
+	Password      string  `json:"password,omitempty"`
+	ClearUsername bool    `json:"clear_username,omitempty"`
+	ClearPassword bool    `json:"clear_password,omitempty"`
+	BaseURL       *string `json:"base_url,omitempty"`
+	Insecure      *bool   `json:"insecure,omitempty"`
 }
 
 type CloudflareConfigUpdate struct {
 	Enabled         *bool   `json:"enabled,omitempty"`
 	APIToken        string  `json:"api_token,omitempty"`
+	ClearAPIToken   bool    `json:"clear_api_token,omitempty"`
 	AccountID       *string `json:"account_id,omitempty"`
 	ZoneID          *string `json:"zone_id,omitempty"`
 	TunnelID        *string `json:"tunnel_id,omitempty"`
@@ -148,7 +156,11 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		resp, err := s.applyConfigUpdate(request)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
+			if errors.Is(err, errConfigRevisionConflict) {
+				writeError(w, http.StatusConflict, err)
+			} else {
+				writeError(w, http.StatusBadRequest, err)
+			}
 			return
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -180,7 +192,12 @@ func (s *Server) handleConfigRaw(w http.ResponseWriter, r *http.Request) {
 		if err := json.Indent(&pretty, data, "", "  "); err != nil {
 			pretty.Write(data) // fall back to raw
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"raw": pretty.String(), "path": path})
+		revision, err := config.Revision(path)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"raw": pretty.String(), "path": path, "revision": revision})
 
 	case http.MethodPost:
 		r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
@@ -189,7 +206,8 @@ func (s *Server) handleConfigRaw(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var req struct {
-			Raw string `json:"raw"`
+			Raw      string `json:"raw"`
+			Revision string `json:"revision"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid request body: %w", err))
@@ -206,16 +224,15 @@ func (s *Server) handleConfigRaw(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		// Write pretty-printed
-		var pretty bytes.Buffer
-		if err := json.Indent(&pretty, []byte(req.Raw), "", "  "); err != nil {
-			pretty.WriteString(req.Raw)
+		if err := requireConfigRevision(path, req.Revision); err != nil {
+			writeError(w, http.StatusConflict, err)
+			return
 		}
-		if err := os.WriteFile(path, pretty.Bytes(), 0600); err != nil {
+		if err := config.WriteRawConfig(path, []byte(req.Raw)); err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Errorf("write config: %w", err))
 			return
 		}
-		if err := s.reloadRuntimeFromConfig(cfg); err != nil {
+		if err := s.reloadRuntimeFromSelectedConfig(); err != nil {
 			logging.Warn("Failed to reload runtime after config save", "error", err)
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"path": path, "status": "saved"})
@@ -251,6 +268,10 @@ func (s *Server) configResponse() (ConfigResponse, error) {
 	if err != nil {
 		return ConfigResponse{}, err
 	}
+	revision, err := config.Revision(saveTarget)
+	if err != nil {
+		return ConfigResponse{}, err
+	}
 	runtime := s.runtimeSnapshot()
 	return ConfigResponse{
 		Caddy: CaddyConfigResponse{
@@ -266,6 +287,7 @@ func (s *Server) configResponse() (ConfigResponse, error) {
 		},
 		MutationEnabled: s.mutationsEnabled(),
 		SaveTarget:      saveTarget,
+		Revision:        revision,
 		Summary:         s.configSummary(&runtime),
 		CaddyEditor:     s.loadCaddyEditorConfig(),
 		Version:         s.options.Version,
@@ -522,6 +544,9 @@ func (s *Server) applyConfigUpdate(request ConfigUpdateRequest) (ConfigResponse,
 	if err != nil {
 		return ConfigResponse{}, err
 	}
+	if err := requireConfigRevision(configPath, request.Revision); err != nil {
+		return ConfigResponse{}, err
+	}
 	cfg, err := s.loadWritableConfig(configPath)
 	if err != nil {
 		return ConfigResponse{}, err
@@ -541,17 +566,30 @@ func (s *Server) applyConfigUpdate(request ConfigUpdateRequest) (ConfigResponse,
 	if err := config.SaveExtendedConfig(cfg, configPath); err != nil {
 		return ConfigResponse{}, err
 	}
-	if err := s.reloadRuntimeFromConfig(cfg); err != nil {
+	if err := s.reloadRuntimeFromSelectedConfig(); err != nil {
 		return ConfigResponse{}, err
 	}
 	return s.configResponse()
 }
 
-func (s *Server) configPath() (string, error) {
-	if s.options.ConfigPath != "" {
-		return s.options.ConfigPath, nil
+var errConfigRevisionConflict = errors.New("configuration revision conflict")
+
+func requireConfigRevision(path, supplied string) error {
+	if strings.TrimSpace(supplied) == "" {
+		return fmt.Errorf("%w: configuration revision is required; reload settings and try again", errConfigRevisionConflict)
 	}
-	return config.GetDefaultConfigPath()
+	actual, err := config.Revision(path)
+	if err != nil {
+		return err
+	}
+	if supplied != actual {
+		return fmt.Errorf("%w: configuration changed since it was loaded; reload settings and review the latest version", errConfigRevisionConflict)
+	}
+	return nil
+}
+
+func (s *Server) configPath() (string, error) {
+	return config.SelectedConfigPath(s.options.ConfigPath)
 }
 
 func (s *Server) loadWritableConfig(configPath string) (config.ExtendedConfig, error) {
@@ -564,20 +602,20 @@ func (s *Server) loadWritableConfig(configPath string) (config.ExtendedConfig, e
 	} else if !os.IsNotExist(err) {
 		return config.ExtendedConfig{}, fmt.Errorf("error reading config file: %w", err)
 	}
-	runtime := s.runtimeSnapshot()
-	return config.ExtendedConfig{
-		Config:     runtime.UnboundConfig,
-		Caddy:      config.CaddyConfig{ServerIP: runtime.CaddyEndpoint.ServerIP, ServerPort: runtime.CaddyEndpoint.ServerPort},
-		Adguard:    runtime.AdguardConfig,
-		Cloudflare: runtime.CloudflareConfig,
-	}, nil
+	// Do not seed a new file from the resolved runtime: that runtime may carry
+	// credentials supplied only through the environment.
+	return config.ExtendedConfig{}, nil
 }
 
 func applyUnboundConfigUpdate(cfg *api.Config, update *UnboundConfigUpdate) {
-	if update.APIKey != "" {
+	if update.ClearAPIKey {
+		cfg.APIKey = ""
+	} else if update.APIKey != "" {
 		cfg.APIKey = update.APIKey
 	}
-	if update.APISecret != "" {
+	if update.ClearAPISecret {
+		cfg.APISecret = ""
+	} else if update.APISecret != "" {
 		cfg.APISecret = update.APISecret
 	}
 	if update.BaseURL != nil {
@@ -592,10 +630,14 @@ func applyAdguardConfigUpdate(cfg *config.AdguardConfig, update *AdguardConfigUp
 	if update.Enabled != nil {
 		cfg.Enabled = *update.Enabled
 	}
-	if update.Username != "" {
+	if update.ClearUsername {
+		cfg.Username = ""
+	} else if update.Username != "" {
 		cfg.Username = update.Username
 	}
-	if update.Password != "" {
+	if update.ClearPassword {
+		cfg.Password = ""
+	} else if update.Password != "" {
 		cfg.Password = update.Password
 	}
 	if update.BaseURL != nil {
@@ -613,7 +655,9 @@ func applyCloudflareConfigUpdate(cfg *config.CloudflareConfig, update *Cloudflar
 	if update.Enabled != nil {
 		cfg.Enabled = *update.Enabled
 	}
-	if update.APIToken != "" {
+	if update.ClearAPIToken {
+		cfg.APIToken = ""
+	} else if update.APIToken != "" {
 		cfg.APIToken = update.APIToken
 	}
 	if update.AccountID != nil {
@@ -666,7 +710,15 @@ func applyCaddyEditorConfigUpdate(cfg *caddyeditor.EditorConfig, update *CaddyEd
 	}
 }
 
-func (s *Server) reloadRuntimeFromConfig(cfg config.ExtendedConfig) error {
+func (s *Server) reloadRuntimeFromSelectedConfig() error {
+	path, err := s.configPath()
+	if err != nil {
+		return err
+	}
+	cfg, _, err := config.LoadEffectiveConfig(path)
+	if err != nil {
+		return fmt.Errorf("load effective saved config: %w", err)
+	}
 	current := s.runtimeSnapshot()
 	nextRuntime, err := app.NewRuntimeFromConfigs(cfg.Config, cfg.Adguard, cfg.Cloudflare, cfg.Authentik, app.RuntimeOptions{
 		CaddyServerIP:     current.CaddyEndpoint.ServerIP,

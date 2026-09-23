@@ -45,6 +45,9 @@ type Runtime struct {
 
 // RuntimeOptions controls which optional clients are constructed.
 type RuntimeOptions struct {
+	// ConfigPath is the selected configuration file. Empty uses the root
+	// command's --config selection, then the default path.
+	ConfigPath      string
 	CaddyServerIP   string
 	CaddyServerPort int
 	CaddyAdminHost  string // optional override for admin API host (see CaddyEndpoint.AdminHost)
@@ -60,37 +63,40 @@ type RuntimeOptions struct {
 
 // LoadRuntime loads repository configuration and builds the requested clients.
 func LoadRuntime(options RuntimeOptions) (*Runtime, error) {
+	effective, _, err := config.LoadEffectiveConfig(options.ConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("load effective configuration: %w", err)
+	}
 	var unboundConfig api.Config
-	var err error
-	if options.IncludeUnbound || options.IncludeDNSMasq {
-		unboundConfig, err = config.LoadConfig()
-		if err != nil {
-			return nil, fmt.Errorf("error loading main configuration: %w", err)
-		}
-	}
-
 	var adguardConfig config.AdguardConfig
-	if options.IncludeAdguard {
-		adguardConfig, err = config.LoadAdguardConfig()
-		if err != nil && options.RequireAdguard {
-			return nil, fmt.Errorf("error loading AdguardHome configuration: %w", err)
-		}
-	}
-
 	var cloudflareConfig config.CloudflareConfig
-	if options.IncludeCloudflare {
-		cloudflareConfig, err = config.LoadCloudflareConfig()
-		if err != nil {
-			return nil, fmt.Errorf("error loading Cloudflare configuration: %w", err)
-		}
-	}
-
 	var authentikConfig config.AuthentikConfig
+	if options.IncludeUnbound || options.IncludeDNSMasq {
+		unboundConfig = effective.Config
+	}
+	if options.IncludeAdguard {
+		adguardConfig = effective.Adguard
+	}
+	if options.IncludeCloudflare {
+		cloudflareConfig = effective.Cloudflare
+	}
 	if options.IncludeAuthentik {
-		authentikConfig, err = config.LoadAuthentikConfig()
-		if err != nil {
-			return nil, fmt.Errorf("error loading Authentik configuration: %w", err)
-		}
+		authentikConfig = effective.Authentik
+	}
+	if options.RequireAdguard && !isAdguardComplete(adguardConfig) {
+		return nil, fmt.Errorf("AdguardHome configuration missing required fields (BaseURL, Username, Password)")
+	}
+	if options.RequireCloudflare && (!cloudflareConfig.Enabled || cloudflareConfig.APIToken == "" || cloudflareConfig.AccountID == "") {
+		return nil, fmt.Errorf("Cloudflare configuration missing required enabled flag, API token, or account ID")
+	}
+	if options.CaddyServerIP == "" {
+		options.CaddyServerIP = effective.Caddy.ServerIP
+	}
+	if options.CaddyServerPort == 0 {
+		options.CaddyServerPort = effective.Caddy.ServerPort
+	}
+	if options.CaddyAdminHost == "" {
+		options.CaddyAdminHost = effective.Caddy.AdminHost
 	}
 
 	return NewRuntimeFromConfigs(unboundConfig, adguardConfig, cloudflareConfig, authentikConfig, options)
@@ -119,16 +125,15 @@ func NewRuntimeFromConfigs(
 	}
 
 	if options.IncludeUnbound {
-		runtime.Clients.Unbound = api.NewClient(unboundConfig)
-		// Best-effort: migrate old "unboundCLI" / "CaddySync" description stamps
-		// on existing Unbound overrides to the current "Managed by caddy-dns-sync"
-		// value so the description-based ownership model keeps working after the
-		// rename. Failures are logged but non-fatal.
-		MigrateUnboundDescriptions(runtime.Clients.Unbound)
+		if isUnboundComplete(unboundConfig) {
+			runtime.Clients.Unbound = api.NewClient(unboundConfig)
+		}
 	}
 
 	if options.IncludeDNSMasq {
-		runtime.Clients.DNSMasq = api.NewDNSMasqClient(unboundConfig)
+		if isUnboundComplete(unboundConfig) {
+			runtime.Clients.DNSMasq = api.NewDNSMasqClient(unboundConfig)
+		}
 	}
 
 	if options.IncludeAdguard {
@@ -188,4 +193,8 @@ func isAdguardComplete(adguardConfig config.AdguardConfig) bool {
 		adguardConfig.BaseURL != "" &&
 		adguardConfig.Username != "" &&
 		adguardConfig.Password != ""
+}
+
+func isUnboundComplete(unboundConfig api.Config) bool {
+	return unboundConfig.APIKey != "" && unboundConfig.APISecret != "" && unboundConfig.BaseURL != ""
 }

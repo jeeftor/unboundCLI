@@ -155,6 +155,7 @@ func initConfig() {
 	if cfgFile != "" {
 		// Use config file from the flag
 		viper.SetConfigFile(cfgFile)
+		viper.Set("config_path", cfgFile)
 	} else {
 		// Find home directory
 		home, err := os.UserHomeDir()
@@ -164,6 +165,7 @@ func initConfig() {
 		viper.AddConfigPath(home)
 		viper.SetConfigType("json")
 		viper.SetConfigName(".caddy-dns-sync")
+		viper.Set("config_path", "")
 	}
 
 	// Read in environment variables that match

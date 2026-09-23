@@ -1,7 +1,9 @@
 package config
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +12,21 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/caddyeditor"
 	"github.com/spf13/viper"
 )
+
+// Revision returns a stable opaque revision for optimistic configuration saves.
+// A missing file has its own revision so concurrent first-run saves conflict
+// rather than silently overwriting one another.
+func Revision(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "missing", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read config revision: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%x", sum[:]), nil
+}
 
 const (
 	// DefaultConfigFileName is the default name for the config file
@@ -152,6 +169,127 @@ func GetDefaultConfigPath() (string, error) {
 	return filepath.Join(homedir, DefaultConfigFileName), nil
 }
 
+// SelectedConfigPath resolves the one configuration file used by every
+// interface. An explicit path wins, followed by the root command's --config
+// selection, then the conventional default path.
+func SelectedConfigPath(explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	if configured := viper.GetString("config_path"); configured != "" {
+		return configured, nil
+	}
+	if used := viper.ConfigFileUsed(); used != "" {
+		return used, nil
+	}
+	return GetDefaultConfigPath()
+}
+
+// LoadExtendedConfigAt loads the selected JSON configuration file without
+// applying environment overrides. A missing file is reported to the caller.
+func LoadExtendedConfigAt(path string) (ExtendedConfig, error) {
+	var cfg ExtendedConfig
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, fmt.Errorf("read config file: %w", err)
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return cfg, fmt.Errorf("parse config file: %w", err)
+	}
+	return cfg, nil
+}
+
+// LoadEffectiveConfig resolves preferred environment variables, deprecated
+// aliases, and then the selected file. It never writes configuration or
+// contacts providers, so status and dry-run setup stay side-effect free.
+func LoadEffectiveConfig(explicitPath string) (ExtendedConfig, string, error) {
+	path, err := SelectedConfigPath(explicitPath)
+	if err != nil {
+		return ExtendedConfig{}, "", err
+	}
+	cfg := ExtendedConfig{}
+	if fileCfg, err := LoadExtendedConfigAt(path); err == nil {
+		cfg = fileCfg
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return ExtendedConfig{}, path, err
+	}
+	applyEnvironmentOverrides(&cfg)
+	if cfg.Adguard.Description == "" {
+		cfg.Adguard.Description = "Entry created by caddy-dns-sync adguard-sync"
+	}
+	return cfg, path, nil
+}
+
+func applyEnvironmentOverrides(cfg *ExtendedConfig) {
+	if envOr(EnvAPIKey, EnvAPIKeyDeprecated) != "" {
+		cfg.APIKey = envOr(EnvAPIKey, EnvAPIKeyDeprecated)
+	}
+	if envOr(EnvAPISecret, EnvAPISecretDeprecated) != "" {
+		cfg.APISecret = envOr(EnvAPISecret, EnvAPISecretDeprecated)
+	}
+	if envOr(EnvBaseURL, EnvBaseURLDeprecated) != "" {
+		cfg.BaseURL = envOr(EnvBaseURL, EnvBaseURLDeprecated)
+	}
+	if os.Getenv(EnvInsecure) != "" || os.Getenv(EnvInsecureDeprecated) != "" {
+		cfg.Insecure = envBoolOr(EnvInsecure, EnvInsecureDeprecated)
+	}
+
+	if enabled := os.Getenv(EnvAdguardEnabled); enabled != "" {
+		cfg.Adguard.Enabled = enabled == "true" || enabled == "1"
+		if username := os.Getenv(EnvAdguardUsername); username != "" {
+			cfg.Adguard.Username = username
+		} else if fallback := envOr(EnvAPIKey, EnvAPIKeyDeprecated); fallback != "" {
+			cfg.Adguard.Username = fallback
+		}
+		if password := os.Getenv(EnvAdguardPassword); password != "" {
+			cfg.Adguard.Password = password
+		} else if fallback := envOr(EnvAPISecret, EnvAPISecretDeprecated); fallback != "" {
+			cfg.Adguard.Password = fallback
+		}
+		if baseURL := os.Getenv(EnvAdguardBaseURL); baseURL != "" {
+			cfg.Adguard.BaseURL = baseURL
+		}
+		if insecure := os.Getenv(EnvAdguardInsecure); insecure != "" {
+			cfg.Adguard.Insecure = insecure == "true" || insecure == "1"
+		}
+	}
+
+	if enabled := os.Getenv(EnvCFEnabled); enabled != "" {
+		cfg.Cloudflare.Enabled = enabled == "true" || enabled == "1"
+		if value := os.Getenv(EnvCFAPIToken); value != "" {
+			cfg.Cloudflare.APIToken = value
+		}
+		if value := os.Getenv(EnvCFAccountID); value != "" {
+			cfg.Cloudflare.AccountID = value
+		}
+		if value := os.Getenv(EnvCFZoneID); value != "" {
+			cfg.Cloudflare.ZoneID = value
+		}
+		if value := os.Getenv(EnvCFTunnelID); value != "" {
+			cfg.Cloudflare.TunnelID = value
+		}
+		if value := os.Getenv(EnvCFCaddyServiceURL); value != "" {
+			cfg.Cloudflare.CaddyServiceURL = value
+		}
+		if value := os.Getenv(EnvCFInsecure); value != "" {
+			cfg.Cloudflare.Insecure = value == "true" || value == "1"
+		}
+	}
+
+	if enabled := os.Getenv(EnvAuthentikEnabled); enabled != "" {
+		cfg.Authentik.Enabled = enabled == "true" || enabled == "1"
+		if value := os.Getenv(EnvAuthentikAPIToken); value != "" {
+			cfg.Authentik.APIToken = value
+		}
+		if value := os.Getenv(EnvAuthentikBaseURL); value != "" {
+			cfg.Authentik.BaseURL = value
+		}
+		if value := os.Getenv(EnvAuthentikInsecure); value != "" {
+			cfg.Authentik.Insecure = value == "true" || value == "1"
+		}
+	}
+}
+
 // SaveConfig saves the API configuration to a file
 func SaveConfig(config api.Config, filePath string) error {
 	// If no path is provided, use the default
@@ -175,8 +313,7 @@ func SaveConfig(config api.Config, filePath string) error {
 		return fmt.Errorf("error marshaling config: %w", err)
 	}
 
-	// Write to file
-	if err := os.WriteFile(filePath, jsonData, 0o600); err != nil {
+	if err := atomicWriteFile(filePath, jsonData, 0o600); err != nil {
 		return fmt.Errorf("error writing config file: %w", err)
 	}
 
@@ -185,236 +322,43 @@ func SaveConfig(config api.Config, filePath string) error {
 
 // LoadConfig loads the API configuration from environment variables, Viper, or a file
 func LoadConfig() (api.Config, error) {
-	var config api.Config
-
-	// First check environment variables (new CADDY_DNS_SYNC_* names, with
-	// deprecated UNBOUND_CLI_* fallbacks for backwards compatibility).
-	if apiKey := envOr(EnvAPIKey, EnvAPIKeyDeprecated); apiKey != "" {
-		config.APIKey = apiKey
-		config.APISecret = envOr(EnvAPISecret, EnvAPISecretDeprecated)
-		config.BaseURL = envOr(EnvBaseURL, EnvBaseURLDeprecated)
-		config.Insecure = envBoolOr(EnvInsecure, EnvInsecureDeprecated)
-
-		// Validate required fields
-		if config.APISecret != "" && config.BaseURL != "" {
-			return config, nil
-		}
-	}
-
-	// Then try to load from viper
-	if viper.IsSet("api_key") && viper.IsSet("api_secret") && viper.IsSet("base_url") {
-		config.APIKey = viper.GetString("api_key")
-		config.APISecret = viper.GetString("api_secret")
-		config.BaseURL = viper.GetString("base_url")
-		config.Insecure = viper.GetBool("insecure")
-		return config, nil
-	}
-
-	// Finally try to load from JSON file
-	configPath, err := GetDefaultConfigPath()
+	cfg, _, err := LoadEffectiveConfig("")
 	if err != nil {
-		return config, err
+		return api.Config{}, err
 	}
-
-	// Check if the config file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return config, fmt.Errorf(
-			"no configuration found, please run 'config' command or set environment variables",
-		)
+	if cfg.APIKey == "" || cfg.APISecret == "" || cfg.BaseURL == "" {
+		return api.Config{}, fmt.Errorf("no complete Unbound configuration found; set environment variables or configure the selected file")
 	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return config, fmt.Errorf("error reading config file: %w", err)
-	}
-
-	if err := json.Unmarshal(data, &config); err != nil {
-		return config, fmt.Errorf("error parsing config file: %w", err)
-	}
-
-	// Store in viper for future use
-	viper.Set("api_key", config.APIKey)
-	viper.Set("api_secret", config.APISecret)
-	viper.Set("base_url", config.BaseURL)
-	viper.Set("insecure", config.Insecure)
-
-	return config, nil
+	return cfg.Config, nil
 }
 
 // LoadAdguardConfig loads AdguardHome-specific configuration from environment variables, viper, or config file
 func LoadAdguardConfig() (AdguardConfig, error) {
-	var config AdguardConfig
-
-	// Set defaults
-	config.Enabled = false
-	config.Description = "Entry created by caddy-dns-sync adguard-sync"
-
-	// Check environment variables first
-	if enabledEnv := os.Getenv(EnvAdguardEnabled); enabledEnv != "" {
-		config.Enabled = enabledEnv == "true" || enabledEnv == "1"
-
-		// Load AdguardHome-specific credentials or fall back to main config
-		if username := os.Getenv(EnvAdguardUsername); username != "" {
-			config.Username = username
-		} else {
-			config.Username = envOr(EnvAPIKey, EnvAPIKeyDeprecated) // Fallback to main API key
-		}
-
-		if password := os.Getenv(EnvAdguardPassword); password != "" {
-			config.Password = password
-		} else {
-			config.Password = envOr(EnvAPISecret, EnvAPISecretDeprecated) // Fallback to main API secret
-		}
-
-		if baseURL := os.Getenv(EnvAdguardBaseURL); baseURL != "" {
-			config.BaseURL = baseURL
-		}
-
-		if insecure := os.Getenv(EnvAdguardInsecure); insecure != "" {
-			config.Insecure = insecure == "true" || insecure == "1"
-		}
-
-		return config, nil
-	}
-
-	// Try to load from viper
-	if viper.IsSet("adguard") {
-		if err := viper.UnmarshalKey("adguard", &config); err != nil {
-			return config, fmt.Errorf("error parsing AdguardHome config from viper: %w", err)
-		}
-		return config, nil
-	}
-
-	// Try to load from config file
-	configPath, err := GetDefaultConfigPath()
+	cfg, _, err := LoadEffectiveConfig("")
 	if err != nil {
-		return config, err
+		return AdguardConfig{}, err
 	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		// Config file doesn't exist, return defaults
-		return config, nil
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return config, fmt.Errorf("error reading config file: %w", err)
-	}
-
-	var extendedConfig ExtendedConfig
-	if err := json.Unmarshal(data, &extendedConfig); err != nil {
-		return config, fmt.Errorf("error parsing extended config file: %w", err)
-	}
-
-	config = extendedConfig.Adguard
-
-	// Store in viper for future use
-	viper.Set("adguard", config)
-
-	return config, nil
+	return cfg.Adguard, nil
 }
 
 // LoadCloudflareConfig loads Cloudflare-specific configuration from environment variables, viper, or config file
 func LoadCloudflareConfig() (CloudflareConfig, error) {
-	var cfg CloudflareConfig
-
-	// Check environment variables first
-	if enabledEnv := os.Getenv(EnvCFEnabled); enabledEnv != "" {
-		cfg.Enabled = enabledEnv == "true" || enabledEnv == "1"
-		cfg.APIToken = os.Getenv(EnvCFAPIToken)
-		cfg.AccountID = os.Getenv(EnvCFAccountID)
-		cfg.ZoneID = os.Getenv(EnvCFZoneID)
-		cfg.TunnelID = os.Getenv(EnvCFTunnelID)
-		cfg.CaddyServiceURL = os.Getenv(EnvCFCaddyServiceURL)
-		insecureEnv := os.Getenv(EnvCFInsecure)
-		cfg.Insecure = insecureEnv == "true" || insecureEnv == "1"
-		return cfg, nil
-	}
-
-	// Try to load from viper
-	if viper.IsSet("cloudflare") {
-		if err := viper.UnmarshalKey("cloudflare", &cfg); err != nil {
-			return cfg, fmt.Errorf("error parsing Cloudflare config from viper: %w", err)
-		}
-		return cfg, nil
-	}
-
-	// Try to load from config file
-	configPath, err := GetDefaultConfigPath()
+	cfg, _, err := LoadEffectiveConfig("")
 	if err != nil {
-		return cfg, err
+		return CloudflareConfig{}, err
 	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return cfg, nil
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return cfg, fmt.Errorf("error reading config file: %w", err)
-	}
-
-	var extendedConfig ExtendedConfig
-	if err := json.Unmarshal(data, &extendedConfig); err != nil {
-		return cfg, fmt.Errorf("error parsing extended config file: %w", err)
-	}
-
-	cfg = extendedConfig.Cloudflare
-
-	viper.Set("cloudflare", cfg)
-
-	return cfg, nil
+	return cfg.Cloudflare, nil
 }
 
 // LoadAuthentikConfig loads Authentik-specific configuration from environment
 // variables, viper, or config file. Authentik is optional — if not configured,
 // the returned config will have Enabled=false.
 func LoadAuthentikConfig() (AuthentikConfig, error) {
-	var cfg AuthentikConfig
-
-	// Check environment variables first
-	if enabledEnv := os.Getenv(EnvAuthentikEnabled); enabledEnv != "" {
-		cfg.Enabled = enabledEnv == "true" || enabledEnv == "1"
-		cfg.APIToken = os.Getenv(EnvAuthentikAPIToken)
-		cfg.BaseURL = os.Getenv(EnvAuthentikBaseURL)
-		insecureEnv := os.Getenv(EnvAuthentikInsecure)
-		cfg.Insecure = insecureEnv == "true" || insecureEnv == "1"
-		return cfg, nil
-	}
-
-	// Try to load from viper
-	if viper.IsSet("authentik") {
-		if err := viper.UnmarshalKey("authentik", &cfg); err != nil {
-			return cfg, fmt.Errorf("error parsing Authentik config from viper: %w", err)
-		}
-		return cfg, nil
-	}
-
-	// Try to load from config file
-	configPath, err := GetDefaultConfigPath()
+	cfg, _, err := LoadEffectiveConfig("")
 	if err != nil {
-		return cfg, err
+		return AuthentikConfig{}, err
 	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return cfg, nil
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return cfg, fmt.Errorf("error reading config file: %w", err)
-	}
-
-	var extendedConfig ExtendedConfig
-	if err := json.Unmarshal(data, &extendedConfig); err != nil {
-		return cfg, fmt.Errorf("error parsing extended config file: %w", err)
-	}
-
-	cfg = extendedConfig.Authentik
-
-	viper.Set("authentik", cfg)
-
-	return cfg, nil
+	return cfg.Authentik, nil
 }
 
 // GetAdguardAPIConfig creates an AdguardConfig from the configuration suitable for API client use
@@ -430,9 +374,9 @@ func (a AdguardConfig) GetAdguardAPIConfig() api.AdguardConfig {
 
 // SaveExtendedConfig saves the extended configuration (including AdguardHome) to a file
 func SaveExtendedConfig(cfg ExtendedConfig, path string) error {
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	data, err := marshalExtendedConfigPreservingUnknown(cfg, path)
 	if err != nil {
-		return fmt.Errorf("error marshaling extended config: %w", err)
+		return err
 	}
 
 	// Ensure directory exists
@@ -440,34 +384,103 @@ func SaveExtendedConfig(cfg ExtendedConfig, path string) error {
 		return fmt.Errorf("error creating config directory: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("error writing config file: %w", err)
-	}
-
-	return nil
+	return atomicWriteFile(path, data, 0o600)
 }
 
 // LoadExtendedConfig loads the extended configuration (including Caddy and AdguardHome) from the default config file
 func LoadExtendedConfig() (ExtendedConfig, error) {
-	var cfg ExtendedConfig
-
-	configPath, err := GetDefaultConfigPath()
+	path, err := SelectedConfigPath("")
 	if err != nil {
-		return cfg, err
+		return ExtendedConfig{}, err
 	}
+	return LoadExtendedConfigAt(path)
+}
 
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return cfg, fmt.Errorf("config file not found at %s", configPath)
-	}
-
-	data, err := os.ReadFile(configPath)
+func marshalExtendedConfigPreservingUnknown(cfg ExtendedConfig, path string) ([]byte, error) {
+	encoded, err := json.Marshal(cfg)
 	if err != nil {
-		return cfg, fmt.Errorf("error reading config file: %w", err)
+		return nil, fmt.Errorf("marshal extended config: %w", err)
 	}
-
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return cfg, fmt.Errorf("error parsing config file: %w", err)
+	var replacement map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &replacement); err != nil {
+		return nil, fmt.Errorf("decode encoded config: %w", err)
 	}
+	current := map[string]json.RawMessage{}
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &current); err != nil {
+			return nil, fmt.Errorf("parse existing config: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("read existing config: %w", err)
+	}
+	merged := mergeJSONObject(current, replacement)
+	data, err := json.MarshalIndent(merged, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal merged config: %w", err)
+	}
+	return append(data, '\n'), nil
+}
 
-	return cfg, nil
+func mergeJSONObject(current, replacement map[string]json.RawMessage) map[string]json.RawMessage {
+	merged := make(map[string]json.RawMessage, len(current)+len(replacement))
+	for key, value := range current {
+		merged[key] = value
+	}
+	for key, replacementValue := range replacement {
+		var oldObject, newObject map[string]json.RawMessage
+		if json.Unmarshal(merged[key], &oldObject) == nil && json.Unmarshal(replacementValue, &newObject) == nil {
+			encoded, _ := json.Marshal(mergeJSONObject(oldObject, newObject))
+			merged[key] = encoded
+			continue
+		}
+		merged[key] = replacementValue
+	}
+	return merged
+}
+
+func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+	directory := filepath.Dir(path)
+	temporary, err := os.CreateTemp(directory, ".caddy-dns-sync-*")
+	if err != nil {
+		return fmt.Errorf("create temporary config: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(mode); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("set temporary config mode: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("write temporary config: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return fmt.Errorf("sync temporary config: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close temporary config: %w", err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("replace config atomically: %w", err)
+	}
+	return nil
+}
+
+// WriteRawConfig validates and atomically replaces a complete JSON document.
+// It is reserved for the explicit raw-editor endpoint; structured saves use
+// SaveExtendedConfig so unknown fields remain intact.
+func WriteRawConfig(path string, data []byte) error {
+	var document any
+	if err := json.Unmarshal(data, &document); err != nil {
+		return fmt.Errorf("parse raw config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	pretty, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return fmt.Errorf("format raw config: %w", err)
+	}
+	return atomicWriteFile(path, append(pretty, '\n'), 0o600)
 }
