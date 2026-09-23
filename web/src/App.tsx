@@ -63,10 +63,12 @@ export function App() {
           });
           const firstRow = rows.item(0)?.getBoundingClientRect();
           const firstHostname = rows.item(0)?.querySelector('td:first-child strong')?.getBoundingClientRect();
+          const primaryAction = document.querySelector<HTMLElement>('.toolbar-sync-all')?.getBoundingClientRect();
           const table = document.querySelector('#entries-panel')?.getBoundingClientRect();
           app?.setAttribute('data-visible-hostname-rows', String(visibleRows.length));
           app?.setAttribute('data-search-visible', String(Boolean(search && search.getBoundingClientRect().bottom <= window.innerHeight)));
           app?.setAttribute('data-first-hostname-visible', String(Boolean(firstHostname && firstHostname.top >= 0 && firstHostname.bottom <= window.innerHeight)));
+          app?.setAttribute('data-primary-action-accessible', String(Boolean(primaryAction && primaryAction.height >= 44)));
           app?.setAttribute('data-first-row-height', String(Math.round(firstRow?.height ?? 0)));
           app?.setAttribute('data-entries-top', String(Math.round(table?.top ?? 0)));
           app?.setAttribute('data-first-row-content-heights', Array.from(rows.item(0)?.cells ?? []).map((cell) => String(Math.round(Math.max(...Array.from(cell.children).map((child) => child.getBoundingClientRect().height), 0)))).join(','));

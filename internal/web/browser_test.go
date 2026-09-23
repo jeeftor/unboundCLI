@@ -218,6 +218,9 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(mobileDOM, `data-first-hostname-visible="true"`) {
 		t.Fatal("mobile viewport should show the first hostname without scrolling")
 	}
+	if !strings.Contains(mobileDOM, `data-primary-action-accessible="true"`) {
+		t.Fatal("mobile primary action should have a 44px touch target")
+	}
 	if !strings.Contains(mobileDOM, `tabindex="0"`) || !strings.Contains(mobileDOM, `class="row-sync-btn"`) {
 		t.Fatalf("entry rows should be keyboard-selectable:\n%s", mobileDOM)
 	}
