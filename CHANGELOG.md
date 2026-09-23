@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- return failure for unhealthy status checks ([8f163e8](8f163e873a07c5e0f435a71c0a5fa41d8b5a353f))
+
 - include rebuilt web assets ([da5a50b](da5a50b36f687edab1722108f9fd309767480bed))
 
 - report non-json API failures clearly ([bec2814](bec28140cc3dbbb07519555d8ee2e32b56ebde95))
@@ -120,6 +122,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([9b48563](9b485630db8c947e2c8de4dbf16b6e282db9610f))
 
 - update changelog ([21bda15](21bda1531cb5d2d53d7584f4151caef5860bad46))
 
