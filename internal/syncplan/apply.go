@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
 )
 
 type UnboundClient interface {
@@ -141,6 +142,9 @@ func applyUnboundAction(client UnboundClient, action Action) error {
 
 	switch action.Type {
 	case "add":
+		if err := ensureUnboundHostnameUnused(client, action.Hostname); err != nil {
+			return err
+		}
 		host, domain := SplitHostname(action.Hostname)
 		_, err := client.AddOverride(api.DNSOverride{
 			Enabled:     "1",
@@ -151,25 +155,19 @@ func applyUnboundAction(client UnboundClient, action Action) error {
 		})
 		return err
 	case "update":
-		uuid, err := findUnboundOverrideUUID(client, action.Hostname)
+		override, err := findManagedUnboundOverride(client, action.Hostname, action.OldIP)
 		if err != nil {
 			return err
 		}
-		host, domain := SplitHostname(action.Hostname)
-		return client.UpdateOverride(api.DNSOverride{
-			UUID:        uuid,
-			Enabled:     "1",
-			Host:        host,
-			Domain:      domain,
-			Server:      action.NewIP,
-			Description: "Managed by caddy-dns-sync",
-		})
+		override.Enabled = "1"
+		override.Server = action.NewIP
+		return client.UpdateOverride(override)
 	case "delete":
-		uuid, err := findUnboundOverrideUUID(client, action.Hostname)
+		override, err := findManagedUnboundOverride(client, action.Hostname, action.OldIP)
 		if err != nil {
 			return err
 		}
-		return client.DeleteOverride(uuid)
+		return client.DeleteOverride(override.UUID)
 	default:
 		return fmt.Errorf("unknown action type: %s", action.Type)
 	}
@@ -240,17 +238,57 @@ func applyCloudflareAction(client CloudflareClient, action Action) error {
 	}
 }
 
-func findUnboundOverrideUUID(client UnboundClient, hostname string) (string, error) {
+func ensureUnboundHostnameUnused(client UnboundClient, hostname string) error {
 	overrides, err := client.GetOverrides()
 	if err != nil {
-		return "", fmt.Errorf("failed to get overrides: %w", err)
+		return fmt.Errorf("get Unbound overrides: %w", err)
 	}
 	for _, override := range overrides {
 		if joinHostname(override.Host, override.Domain) == hostname {
-			return override.UUID, nil
+			return fmt.Errorf("Unbound override already exists for %s; explicit adoption is required", hostname)
 		}
 	}
-	return "", fmt.Errorf("override not found for %s", hostname)
+	return nil
+}
+
+func findManagedUnboundOverride(client UnboundClient, hostname, expectedIP string) (api.DNSOverride, error) {
+	overrides, err := client.GetOverrides()
+	if err != nil {
+		return api.DNSOverride{}, fmt.Errorf("get Unbound overrides: %w", err)
+	}
+	var match *api.DNSOverride
+	for index := range overrides {
+		override := &overrides[index]
+		if joinHostname(override.Host, override.Domain) != hostname {
+			continue
+		}
+		if !isManagedUnboundDescription(override.Description) {
+			continue
+		}
+		if expectedIP != "" && override.Server != expectedIP {
+			continue
+		}
+		if match != nil {
+			return api.DNSOverride{}, fmt.Errorf("ambiguous managed Unbound overrides for %s", hostname)
+		}
+		match = override
+	}
+	if match == nil {
+		return api.DNSOverride{}, fmt.Errorf("no matching managed Unbound override for %s; explicit adoption is required", hostname)
+	}
+	return *match, nil
+}
+
+func isManagedUnboundDescription(description string) bool {
+	if description == app.CurrentUnboundDescription {
+		return true
+	}
+	for _, legacy := range app.LegacyUnboundDescriptions {
+		if description == legacy {
+			return true
+		}
+	}
+	return false
 }
 
 // SplitHostname splits a fully qualified hostname into host and domain parts.

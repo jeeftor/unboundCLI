@@ -162,8 +162,8 @@ func TestLoadPlanApplyWithNoLANFixtures(t *testing.T) {
 	}
 	unbound := &fixtureApplyUnbound{
 		overrides: []api.DNSOverride{
-			{UUID: "uuid-app", Host: "app", Domain: "example.test", Server: "10.0.0.1"},
-			{UUID: "uuid-old", Host: "old", Domain: "example.test", Server: "10.0.0.1"},
+			{UUID: "uuid-app", Host: "app", Domain: "example.test", Server: "10.0.0.1", Description: "Managed by caddy-dns-sync"},
+			{UUID: "uuid-old", Host: "old", Domain: "example.test", Server: "10.0.0.1", Description: "Managed by caddy-dns-sync"},
 		},
 	}
 	unboundResult := syncplan.Apply(context.Background(), syncplan.Clients{Unbound: unbound}, unboundPlan, syncplan.ApplyOptions{})

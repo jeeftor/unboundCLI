@@ -11,7 +11,7 @@ import (
 func TestApplyUpdatesUnboundByFullHostnameAndRestartsOnce(t *testing.T) {
 	unbound := &fakeUnboundClient{
 		overrides: []api.DNSOverride{
-			{UUID: "uuid-1", Host: "app", Domain: "example.com", Server: "10.0.0.99"},
+			{UUID: "uuid-1", Host: "app", Domain: "example.com", Server: "10.0.0.99", Description: "Managed by caddy-dns-sync"},
 		},
 	}
 
@@ -43,6 +43,18 @@ func TestApplyUpdatesUnboundByFullHostnameAndRestartsOnce(t *testing.T) {
 	}
 	if len(result.ActionResults) != 1 || !result.ActionResults[0].Success {
 		t.Fatalf("expected successful per-action result, got %#v", result.ActionResults)
+	}
+}
+
+func TestApplyProtectsManualUnboundOverride(t *testing.T) {
+	unbound := &fakeUnboundClient{overrides: []api.DNSOverride{{
+		UUID: "manual", Host: "app", Domain: "example.com", Server: "10.0.0.99", Description: "manual record",
+	}}}
+	result := Apply(context.Background(), Clients{Unbound: unbound}, Plan{Actions: []Action{{
+		Type: "delete", Service: "unbound", Hostname: "app.example.com", OldIP: "10.0.0.99", Enabled: true,
+	}}}, ApplyOptions{})
+	if result.Success || len(unbound.deleted) != 0 {
+		t.Fatalf("manual override must be protected, result=%#v deleted=%#v", result, unbound.deleted)
 	}
 }
 
