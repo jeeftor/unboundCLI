@@ -364,30 +364,12 @@ func (m *AppModel) handleTableViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.cfEditWidget.WasDeleted() {
-				hostname := m.cfEditWidget.Spec().Hostname
-				cfClient := m.cfClient
 				return m, func() tea.Msg {
-					err := cfClient.DeleteTunnelRule(hostname)
-					return cfDeletedMsg{err: err}
+					return cfDeletedMsg{err: fmt.Errorf("direct Cloudflare edits are unavailable; use the sync dialog to preview an ownership-checked plan")}
 				}
 			}
-			// Save: call UpdateTunnelRule async
-			spec := m.cfEditWidget.Spec()
-			cfClient := m.cfClient
 			return m, func() tea.Msg {
-				apiSpec := api.IngressRuleSpec{
-					Hostname:            spec.Hostname,
-					Service:             spec.Service,
-					HTTPHostHeader:      spec.HTTPHostHeader,
-					OriginServerName:    spec.OriginServerName,
-					NoTLSVerify:         spec.NoTLSVerify,
-					Http2Origin:         spec.Http2Origin,
-					SetOriginServerName: true,
-					SetNoTLSVerify:      true,
-					SetHttp2Origin:      true,
-				}
-				err := cfClient.UpdateTunnelRule(apiSpec)
-				return cfEditSavedMsg{err: err}
+				return cfEditSavedMsg{err: fmt.Errorf("direct Cloudflare edits are unavailable; use the sync dialog to preview an ownership-checked plan")}
 			}
 		}
 		return m, cmd
