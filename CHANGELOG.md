@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- protect cloudflare DNS conflicts ([7644ab5](7644ab52575233b825903883ddd67220b5a8ee0a))
+
 - preserve cloudflare catch-all rules ([f454ba0](f454ba0eab112bccfe3003be19b5f2711ccf2acd))
 
 - invalidate web plans after config changes ([f4704ae](f4704aed022254ae95bdfe28159efd48d48742ed))
@@ -48,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([4a151f6](4a151f65e48fdf0e3b1fc5271166046427655b89))
 
 - update changelog ([6d71695](6d71695a522a66f38f2c5baf79efeb96601e88aa))
 
