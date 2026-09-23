@@ -59,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([2f55401](2f55401256a4da268e822d0677654f9ce7dbbaf4))
+
 - update changelog ([5d1f783](5d1f7838fd1744a575968f31482a304bb40c4a89))
 
 - update changelog ([36e517a](36e517a0b1ccc275c5ad869afbcee2b834c85407))
@@ -115,6 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 6 -->🧪 Testing
+
+- cover adguard adoption confirmation ([00ebcf7](00ebcf75141d8603017ba87b6bb8b237df992f9b))
 
 - strengthen web verification foundation ([1b985ff](1b985ff334466e2b5c724a140894037cf4630334))
 
