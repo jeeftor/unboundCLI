@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- make release snapshot verifiable ([121d576](121d5769633175a000aae8c4a8bcc21b2e0438ca))
+
 - show retained operation history ([14d3282](14d3282b846bafc4b43ca3f3bdd6c38e9a477b22))
 
 - issue unique IDs for duplicate plan actions ([7500e12](7500e12c5f16a5f13259fe7e9d8bba2674c22937))
@@ -138,6 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([ae30c79](ae30c793953221bb2b12dbe17f1bb8cb9a866a97))
 
 - update changelog ([564ee56](564ee5605ed83048f8cc66104a38f9739c35b43b))
 
