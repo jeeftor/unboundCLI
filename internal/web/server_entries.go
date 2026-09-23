@@ -200,7 +200,7 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
-	entries, report, err := s.loadEntries(r.Context())
+	entries, report, err := s.loadFreshEntries(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -473,6 +473,27 @@ func (s *Server) loadEntries(ctx context.Context) ([]*models.Entry, status.LoadR
 	s.entriesCacheAt = time.Now()
 	s.entriesMu.Unlock()
 
+	return entries, report, nil
+}
+
+// loadFreshEntries loads required plan sources without falling back to cached
+// inventory. A stale source must never be treated as evidence for a mutation.
+func (s *Server) loadFreshEntries(ctx context.Context) ([]*models.Entry, status.LoadReport, error) {
+	fetchCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	runtime := s.runtimeSnapshot()
+	entries, report, err := status.LoadEntries(fetchCtx, runtime.Clients, status.Options{
+		CaddyServerIP: runtime.CaddyEndpoint.ServerIP,
+	})
+	if err != nil {
+		return nil, report, err
+	}
+
+	s.entriesMu.Lock()
+	s.entriesCache = entries
+	s.entriesReport = report
+	s.entriesCacheAt = time.Now()
+	s.entriesMu.Unlock()
 	return entries, report, nil
 }
 

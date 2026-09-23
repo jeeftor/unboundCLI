@@ -14,10 +14,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/models"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
@@ -937,6 +939,21 @@ func TestPlanRouteRejectsUnknownService(t *testing.T) {
 	server.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlanRouteRejectsStaleCachedInventoryWhenSourceFails(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	server.entriesMu.Lock()
+	server.entriesCache = []*models.Entry{{Hostname: "stale.example.test"}}
+	server.entriesCacheAt = time.Now()
+	server.entriesMu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sync/plan?service=unbound", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected fresh source failure to reject plan, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
