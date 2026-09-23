@@ -57,7 +57,7 @@ jobs:
           go-version: '1.26'
           cache: true
       - name: govulncheck
-        uses: golang/govulncheck-action@v1.0.4
+        uses: golang/govulncheck-action@v1.1.0
         with:
           repo-checkout: false
         continue-on-error: true
