@@ -204,6 +204,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 			Type:     "delete",
 			Service:  "cloudflare",
 			Hostname: "old.example.com",
+			TunnelID: "selected-tunnel",
 			Enabled:  true,
 		},
 	}}, ApplyOptions{})
@@ -227,6 +228,9 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 	}
 	if len(cloudflare.deletedRules) != 1 || cloudflare.deletedRules[0] != "old.example.com" {
 		t.Fatalf("expected one deleted rule, got %#v", cloudflare.deletedRules)
+	}
+	if len(cloudflare.deleteTunnelIDs) != 1 || cloudflare.deleteTunnelIDs[0] != "selected-tunnel" {
+		t.Fatalf("expected delete to use selected tunnel, got %#v", cloudflare.deleteTunnelIDs)
 	}
 	if len(cloudflare.deletedDNS) != 1 || cloudflare.deletedDNS[0] != "old.example.com" {
 		t.Fatalf("expected one deleted DNS record, got %#v", cloudflare.deletedDNS)
@@ -318,10 +322,11 @@ func (f *fakeAdguardClient) DeleteRewrite(domain, answer string) error {
 }
 
 type fakeCloudflareClient struct {
-	updatedRules []api.IngressRuleSpec
-	deletedRules []string
-	ensuredDNS   []string
-	deletedDNS   []string
+	updatedRules    []api.IngressRuleSpec
+	deletedRules    []string
+	deleteTunnelIDs []string
+	ensuredDNS      []string
+	deletedDNS      []string
 }
 
 func (f *fakeCloudflareClient) UpdateTunnelRule(spec api.IngressRuleSpec) error {
@@ -331,6 +336,12 @@ func (f *fakeCloudflareClient) UpdateTunnelRule(spec api.IngressRuleSpec) error 
 
 func (f *fakeCloudflareClient) DeleteTunnelRule(hostname string) error {
 	f.deletedRules = append(f.deletedRules, hostname)
+	return nil
+}
+
+func (f *fakeCloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelID string) error {
+	f.deletedRules = append(f.deletedRules, hostname)
+	f.deleteTunnelIDs = append(f.deleteTunnelIDs, tunnelID)
 	return nil
 }
 

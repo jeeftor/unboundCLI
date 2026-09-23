@@ -26,6 +26,7 @@ type AdguardClient interface {
 type CloudflareClient interface {
 	UpdateTunnelRule(api.IngressRuleSpec) error
 	DeleteTunnelRule(hostname string) error
+	DeleteTunnelRuleInTunnel(hostname, tunnelID string) error
 	EnsureDNSRecord(hostname string) error
 	DeleteDNSRecord(hostname string) error
 }
@@ -229,7 +230,7 @@ func applyCloudflareAction(client CloudflareClient, action Action) error {
 			TunnelID:                  action.TunnelID,
 		})
 	case "delete":
-		if err := client.DeleteTunnelRule(action.Hostname); err != nil {
+		if err := client.DeleteTunnelRuleInTunnel(action.Hostname, action.TunnelID); err != nil {
 			return err
 		}
 		return client.DeleteDNSRecord(action.Hostname)
