@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- remove unused frontend config cache loader ([743c92a](743c92ab03d811f1f7f8bf6b4ae3641b35c5db81))
+
 - block unsafe diagnostics pruning ([9b06343](9b063430ec6fc975aa44b64259904b4aca8ffe52))
 
 - reject duplicate adguard rewrites ([4ad8e02](4ad8e02469a3ac1798ebf70c5d3d89b1252353d8))
@@ -74,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([78a40ca](78a40ca717ed703c28386b62622819a0c79159d2))
 
 - update changelog ([4cdd612](4cdd612134c2d7cf4e5dd606b01f3dfb6bec18e2))
 
