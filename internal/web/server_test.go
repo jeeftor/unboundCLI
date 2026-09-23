@@ -1244,6 +1244,52 @@ func TestMutatingApplyRejectsWildcardBindHost(t *testing.T) {
 	}
 }
 
+func TestClaimPlanPreventsReplayAndRetainsResult(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	action := syncplan.Action{Type: "add", Service: "unbound", Hostname: "claimed.example.test", NewIP: "10.0.0.15", Enabled: true}
+	server.storePlan("plan-test", []syncplan.Action{action}, []string{"action-test"})
+
+	actions, result, status, err := server.claimPlan("plan-test", []string{"action-test"})
+	if err != nil || status != "applying" || result != nil || len(actions) != 1 {
+		t.Fatalf("first claim = actions=%#v result=%#v status=%q err=%v", actions, result, status, err)
+	}
+
+	actions, result, status, err = server.claimPlan("plan-test", []string{"action-test"})
+	if err != nil || status != "applying" || result != nil || actions != nil {
+		t.Fatalf("concurrent claim = actions=%#v result=%#v status=%q err=%v", actions, result, status, err)
+	}
+
+	want := &syncplan.Result{Success: true, Message: "completed"}
+	server.completePlan("plan-test", want)
+	actions, result, status, err = server.claimPlan("plan-test", []string{"action-test"})
+	if err != nil || status != "completed" || result != want || actions != nil {
+		t.Fatalf("replay claim = actions=%#v result=%#v status=%q err=%v", actions, result, status, err)
+	}
+}
+
+func TestClaimPlanRejectsDuplicateActionID(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	action := syncplan.Action{Type: "add", Service: "unbound", Hostname: "duplicate.example.test", NewIP: "10.0.0.15", Enabled: true}
+	server.storePlan("plan-test", []syncplan.Action{action}, []string{"action-test"})
+	if _, _, _, err := server.claimPlan("plan-test", []string{"action-test", "action-test"}); err == nil {
+		t.Fatal("expected duplicate action IDs to be rejected")
+	}
+}
+
+func TestNewPlanIDIsUnique(t *testing.T) {
+	first, err := newPlanID()
+	if err != nil {
+		t.Fatalf("first plan ID: %v", err)
+	}
+	second, err := newPlanID()
+	if err != nil {
+		t.Fatalf("second plan ID: %v", err)
+	}
+	if first == second {
+		t.Fatalf("plan IDs must be unique, got %q", first)
+	}
+}
+
 func getJSON[T any](t *testing.T, handler http.Handler, path string) T {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)

@@ -80,6 +80,8 @@ type Server struct {
 type storedPlan struct {
 	ActionsByID map[string]syncplan.Action
 	createdAt   time.Time
+	status      string
+	result      *syncplan.Result
 }
 
 const planTTL = 10 * time.Minute

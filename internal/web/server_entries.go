@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -89,6 +90,7 @@ type ApplyRequest struct {
 
 type ApplyResponse struct {
 	Result *syncplan.Result `json:"result"`
+	Status string           `json:"status"`
 }
 
 // ─── Entry Handlers ─────────────────────────────────────────────────────────
@@ -232,7 +234,11 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 	if hostname != "" {
 		actions = filterPlanActionsByHostname(actions, hostname)
 	}
-	planID := planID(service, actions)
+	planID, err := newPlanID()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("issue sync plan: %w", err))
+		return
+	}
 	actionIDs := actionIDs(actions)
 	s.storePlan(planID, actions, actionIDs)
 	writeJSON(w, http.StatusOK, PlanResponse{
@@ -267,17 +273,27 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("mutating apply requires plan_id and action_ids"))
 			return
 		}
-		actions, err := s.actionsForIDs(request.PlanID, request.ActionIDs)
+		actions, priorResult, planStatus, err := s.claimPlan(request.PlanID, request.ActionIDs)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
+		if priorResult != nil {
+			writeJSON(w, http.StatusOK, ApplyResponse{Result: priorResult, Status: planStatus})
+			return
+		}
+		if planStatus == "applying" && actions == nil {
+			writeJSON(w, http.StatusAccepted, ApplyResponse{Status: planStatus})
+			return
+		}
 		if err := validateApplyActions(actions); err != nil {
+			s.completePlan(request.PlanID, failedPlanResult(err))
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 		result := s.applyActions(r.Context(), actions, false)
-		writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
+		s.completePlan(request.PlanID, result)
+		writeJSON(w, http.StatusOK, ApplyResponse{Result: result, Status: "completed"})
 		// Refresh auth cache — entries may have changed.
 		s.invalidateEntriesCache()
 		go s.refreshAuthCache()
@@ -288,7 +304,7 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := s.applyActions(r.Context(), request.Actions, request.DryRun)
-	writeJSON(w, http.StatusOK, ApplyResponse{Result: result})
+	writeJSON(w, http.StatusOK, ApplyResponse{Result: result, Status: "completed"})
 	if !request.DryRun {
 		s.invalidateEntriesCache()
 		go s.refreshAuthCache()
@@ -593,7 +609,7 @@ func (s *Server) storePlan(planID string, actions []syncplan.Action, actionIDs [
 		actionsByID[actionIDs[i]] = action
 	}
 	s.planMu.Lock()
-	s.plans[planID] = storedPlan{ActionsByID: actionsByID, createdAt: time.Now()}
+	s.plans[planID] = storedPlan{ActionsByID: actionsByID, createdAt: time.Now(), status: "pending"}
 	s.planMu.Unlock()
 }
 
@@ -609,22 +625,51 @@ func (s *Server) cleanExpiredPlans() {
 	}
 }
 
-func (s *Server) actionsForIDs(planID string, actionIDs []string) ([]syncplan.Action, error) {
+func (s *Server) claimPlan(planID string, actionIDs []string) ([]syncplan.Action, *syncplan.Result, string, error) {
 	s.planMu.Lock()
+	defer s.planMu.Unlock()
 	plan, ok := s.plans[planID]
-	s.planMu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("unknown or expired sync plan")
+		return nil, nil, "", fmt.Errorf("unknown or expired sync plan")
+	}
+	if plan.status == "completed" {
+		return nil, plan.result, plan.status, nil
+	}
+	if plan.status == "applying" {
+		return nil, nil, plan.status, nil
 	}
 	actions := make([]syncplan.Action, 0, len(actionIDs))
+	seen := make(map[string]struct{}, len(actionIDs))
 	for _, actionID := range actionIDs {
+		if _, duplicate := seen[actionID]; duplicate {
+			return nil, nil, "", fmt.Errorf("duplicate sync action %q", actionID)
+		}
+		seen[actionID] = struct{}{}
 		action, ok := plan.ActionsByID[actionID]
 		if !ok {
-			return nil, fmt.Errorf("unknown sync action %q", actionID)
+			return nil, nil, "", fmt.Errorf("unknown sync action %q", actionID)
 		}
 		actions = append(actions, action)
 	}
-	return actions, nil
+	plan.status = "applying"
+	s.plans[planID] = plan
+	return actions, nil, plan.status, nil
+}
+
+func (s *Server) completePlan(planID string, result *syncplan.Result) {
+	s.planMu.Lock()
+	defer s.planMu.Unlock()
+	plan, ok := s.plans[planID]
+	if !ok {
+		return
+	}
+	plan.status = "completed"
+	plan.result = result
+	s.plans[planID] = plan
+}
+
+func failedPlanResult(err error) *syncplan.Result {
+	return &syncplan.Result{Success: false, Errors: []string{err.Error()}, Message: "Plan validation failed"}
 }
 
 func (s *Server) webPlanActions(runtime *app.Runtime, service string, actions []syncplan.Action) []syncplan.Action {
@@ -660,16 +705,12 @@ func serviceEnabled(runtime *app.Runtime, service string) bool {
 	}
 }
 
-func planID(service string, actions []syncplan.Action) string {
-	data, err := json.Marshal(struct {
-		Service string            `json:"service"`
-		Actions []syncplan.Action `json:"actions"`
-	}{Service: service, Actions: actions})
-	if err != nil {
-		return "plan-error"
+func newPlanID() (string, error) {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return "", err
 	}
-	sum := sha256.Sum256(data)
-	return "plan-" + hex.EncodeToString(sum[:8])
+	return "plan-" + hex.EncodeToString(bytes[:]), nil
 }
 
 func actionIDs(actions []syncplan.Action) []string {
