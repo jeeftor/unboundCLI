@@ -1037,6 +1037,47 @@ func TestAdguardAdoptionPreviewAndConfirmation(t *testing.T) {
 	}
 }
 
+func TestCloudflareAdoptionPreviewAndConfirmation(t *testing.T) {
+	cloudflareAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/client/v4/accounts/test-account/cfd_tunnel":
+			fmt.Fprint(w, `{"success":true,"errors":[],"messages":[],"result":[{"id":"tunnel-default","name":"default","created_at":"2021-01-01T00:00:00Z","deleted_at":null,"connections":[]}],"result_info":{"page":1,"per_page":20,"total_pages":1,"count":1,"total_count":1}}`)
+		case "/client/v4/accounts/test-account/cfd_tunnel/tunnel-default/configurations":
+			fmt.Fprint(w, `{"success":true,"errors":[],"messages":[],"result":{"tunnel_id":"tunnel-default","version":1,"config":{"ingress":[{"hostname":"adopt.example.test","service":"http://10.0.0.44:80"},{"service":"http_status:404"}]}}}`)
+		case "/client/v4/zones/test-zone/dns_records":
+			fmt.Fprint(w, `{"success":true,"errors":[],"messages":[],"result":[{"id":"dns-record-1","type":"CNAME","name":"adopt.example.test","content":"tunnel-default.cfargotunnel.com"}],"result_info":{"page":1,"per_page":100,"total_pages":1,"count":1,"total_count":1}}`)
+		default:
+			t.Fatalf("unexpected Cloudflare path %s", r.URL.Path)
+		}
+	}))
+	defer cloudflareAPI.Close()
+	cfClient, err := api.NewCloudflareClientWithBaseURL(api.CloudflareConfig{APIToken: "fixture-token", AccountID: "test-account", ZoneID: "test-zone", TunnelID: "tunnel-default"}, cloudflareAPI.URL+"/client/v4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	server := NewServerWithOptions(&app.Runtime{Clients: app.ClientSet{Cloudflare: cfClient}}, Options{ApplyToken: "test-token", AllowMutations: true, AllowedOrigin: "http://127.0.0.1:8080", BoundHost: "127.0.0.1", ConfigPath: configPath})
+	preview := getJSON[adoptionResponse](t, server, "/api/ownership/adoption?provider=cloudflare")
+	if len(preview.Candidates) != 2 || preview.PreviewID == "" {
+		t.Fatalf("unexpected preview %#v", preview)
+	}
+	ids := []string{"ingress:tunnel-default:adopt.example.test:", "dns:dns-record-1"}
+	body, _ := json.Marshal(map[string]any{"preview_id": preview.PreviewID, "ids": ids})
+	req := httptest.NewRequest(http.MethodPost, "/api/ownership/adoption", bytes.NewReader(body))
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected confirmation success, got %d: %s", rec.Code, rec.Body.String())
+	}
+	state, err := ownership.Load(ownership.PathForConfig(configPath))
+	if err != nil || !state.Owns("cloudflare", "ingress", "tunnel-default:adopt.example.test:") || !state.Owns("cloudflare", "dns", "dns-record-1") {
+		t.Fatalf("expected separate adopted Cloudflare resources, state=%#v err=%v", state, err)
+	}
+}
+
 func TestApplyRejectsOversizedRequestBody(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 
