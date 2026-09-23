@@ -160,5 +160,5 @@ func init() {
 	rootCmd.AddCommand(deleteCmd)
 
 	// Add flags
-	deleteCmd.Flags().BoolVarP(&force, "force", "f", false, "Force deletion without confirmation")
+	deleteCmd.Flags().BoolVarP(&force, "force", "f", false, "Skip interactive confirmation (does not bypass ownership)")
 }
