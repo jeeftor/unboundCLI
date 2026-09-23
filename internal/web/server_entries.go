@@ -798,6 +798,10 @@ func (s *Server) claimPlan(planID string, actionIDs []string) ([]syncplan.Action
 	if !ok {
 		return nil, nil, "", fmt.Errorf("unknown or expired sync plan")
 	}
+	if time.Since(plan.createdAt) > planTTL {
+		delete(s.plans, planID)
+		return nil, nil, "", fmt.Errorf("unknown or expired sync plan")
+	}
 	if plan.configPath != "" {
 		currentRevision, err := config.Revision(plan.configPath)
 		if err != nil {

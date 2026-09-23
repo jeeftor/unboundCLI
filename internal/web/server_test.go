@@ -1396,6 +1396,22 @@ func TestClaimPlanPreventsReplayAndRetainsResult(t *testing.T) {
 	}
 }
 
+func TestClaimPlanRejectsExpiredPlan(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	server.plans["expired"] = storedPlan{
+		ActionsByID: map[string]syncplan.Action{"action-1": {Type: "add", Service: "unbound", Hostname: "expired.example.test"}},
+		createdAt:   time.Now().Add(-planTTL - time.Second),
+		status:      "pending",
+	}
+
+	if _, _, _, err := server.claimPlan("expired", []string{"action-1"}); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("expected expired plan to be rejected, got %v", err)
+	}
+	if _, ok := server.plans["expired"]; ok {
+		t.Fatal("expected expired plan to be removed")
+	}
+}
+
 func TestClaimPlanRejectsDuplicateActionID(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 	action := syncplan.Action{Type: "add", Service: "unbound", Hostname: "duplicate.example.test", NewIP: "10.0.0.15", Enabled: true}
