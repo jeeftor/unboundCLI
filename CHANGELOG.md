@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- reject ambiguous cloudflare tunnel hosts ([838bd8d](838bd8d6d0a5bd91b323c48b7c6af0db61a966fb))
+
 - protect cloudflare DNS conflicts ([7644ab5](7644ab52575233b825903883ddd67220b5a8ee0a))
 
 - preserve cloudflare catch-all rules ([f454ba0](f454ba0eab112bccfe3003be19b5f2711ccf2acd))
@@ -50,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([05750da](05750da0583d928443712edd16b55cc0e7800683))
 
 - update changelog ([4a151f6](4a151f65e48fdf0e3b1fc5271166046427655b89))
 
