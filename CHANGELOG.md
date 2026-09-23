@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- retain unrelated configuration drafts ([43fc8fa](43fc8fab45102b27143bc94f928d0337d26b4714))
+
 - reject superseded sync previews ([5632140](56321401e8aa36396b17cea331aa93f08a672ef5))
 
 - protect legacy deletes by ownership ([ed44448](ed44448e771d435ca7dd3405ece0e68aed5dc7b2))
@@ -106,6 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([0ff2c2a](0ff2c2afcb66a41f3d2e3dd3f706bf6654517429))
 
 - update changelog ([45dbdc9](45dbdc9927514f4d4bdf00ffbc7c1b87b4b063ec))
 
