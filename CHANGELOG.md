@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- retain sanitized local operation history ([3907135](3907135b35a352279f3e0bccb05cf90678c1b3dd))
+
 - add ownership adoption interface ([0f26fc9](0f26fc9c5f753ab1e76ba6e529bfd186e91f8630))
 
 - add cloudflare ownership adoption ([83c7d96](83c7d96655e9f263b293c7b2abaa777812873aa4))
@@ -82,6 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([fd81815](fd818157b7fd0649d340bfa4056150fcb26480b3))
 
 - update changelog ([fdc6687](fdc668758bf98e12e114e7462f7877c606b1ecb7))
 
