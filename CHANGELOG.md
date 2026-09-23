@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- require ownership for cloudflare plan mutations ([9803956](9803956ca027dea0f63043d2a2120797436d6d32))
+
 - remove unused frontend config cache loader ([743c92a](743c92ab03d811f1f7f8bf6b4ae3641b35c5db81))
 
 - block unsafe diagnostics pruning ([9b06343](9b063430ec6fc975aa44b64259904b4aca8ffe52))
@@ -76,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([f5fdb3e](f5fdb3e03eef919d5c331b4193d0824f4543c501))
 
 - update changelog ([78a40ca](78a40ca717ed703c28386b62622819a0c79159d2))
 
