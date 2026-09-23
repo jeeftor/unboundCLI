@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- improve mobile touch targets and contrast ([93c4421](93c4421972cd4bfac62b81a8c06acac9b289eed8))
+
 - recover deploy dialog from disconnected streams ([6dfe25b](6dfe25be58af9c3582c4cd9705f151a61d6c6a14))
 
 - preserve keyboard row action activation ([67a66e4](67a66e459e4c549aa182f6327f2b7c930b0421e9))
@@ -114,6 +116,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([eb9fd15](eb9fd1552294bed5bc36efc61a5318470d59fc1e))
 
 - update changelog ([79f6d91](79f6d91aab41c872444b56322ca042e8bb172b84))
 
