@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { previewSync, useStore } from '../src/store';
+import { previewSync, syncFormsFromConfig, useStore } from '../src/store';
 import type { ConfigResponse } from '../src/types';
 
 type Deferred<T> = {
@@ -30,6 +30,16 @@ const enabledConfig: ConfigResponse = {
   summary: {} as ConfigResponse['summary'],
 };
 
+function configWithEndpoints(unbound: string, adguard: string): ConfigResponse {
+  return {
+    ...enabledConfig,
+    summary: {
+      unbound: { label: 'Unbound', enabled: true, client_ready: true, source: { kind: 'file', label: 'file' }, endpoint: unbound },
+      adguard: { label: 'AdGuard', enabled: true, client_ready: true, source: { kind: 'file', label: 'file' }, endpoint: adguard },
+    } as ConfigResponse['summary'],
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   useStore.getState().clearPlan();
@@ -58,5 +68,21 @@ describe('sync previews', () => {
       hostname: 'second.example.test',
       actionIDs: ['action-second'],
     });
+  });
+});
+
+describe('configuration drafts', () => {
+  it('keeps an unrelated dirty draft when refreshed configuration arrives', () => {
+    const state = useStore.getState();
+    const savedForms = structuredClone(state.savedForms);
+    const forms = structuredClone(savedForms);
+    forms.adguard.base_url = 'https://draft.adguard.example.test';
+    useStore.setState({ forms, savedForms });
+
+    syncFormsFromConfig(configWithEndpoints('https://new.unbound.example.test', 'https://server.adguard.example.test'));
+
+    expect(useStore.getState().forms.unbound.base_url).toBe('https://new.unbound.example.test');
+    expect(useStore.getState().forms.adguard.base_url).toBe('https://draft.adguard.example.test');
+    expect(useStore.getState().savedForms.adguard.base_url).toBe(savedForms.adguard.base_url);
   });
 });

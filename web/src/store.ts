@@ -776,6 +776,26 @@ export function syncFormsFromConfig(config: ConfigResponse | null) {
           }
         : state.forms.caddyEditor,
     };
-    return { forms: next, savedForms: next };
+    const isClean = (key: keyof ConfigForms) =>
+      JSON.stringify(state.forms[key]) === JSON.stringify(state.savedForms[key]);
+    const merge = <K extends keyof ConfigForms>(key: K) =>
+      isClean(key) ? next[key] : state.forms[key];
+    const mergeSaved = <K extends keyof ConfigForms>(key: K) =>
+      isClean(key) ? next[key] : state.savedForms[key];
+
+    return {
+      forms: {
+        unbound: merge('unbound'),
+        adguard: merge('adguard'),
+        cloudflare: merge('cloudflare'),
+        caddyEditor: merge('caddyEditor'),
+      },
+      savedForms: {
+        unbound: mergeSaved('unbound'),
+        adguard: mergeSaved('adguard'),
+        cloudflare: mergeSaved('cloudflare'),
+        caddyEditor: mergeSaved('caddyEditor'),
+      },
+    };
   });
 }
