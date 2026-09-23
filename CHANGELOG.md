@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- route cloudflare changes through sync plans ([4905d8e](4905d8e58a2b2a1134f0dbbb16deef49f0f8f322))
+
 - keep cloudflare mutation guard vet-clean ([3791aac](3791aac03b43a329493660032656399b604cd8c4))
 
 - block direct cloudflare mutation bypasses ([11114d7](11114d76e0bb842d8ad7a7834b391c896928b729))
@@ -86,6 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([0c8e431](0c8e431e52bcdbbb161682f5d68e608b01c38e63))
 
 - update changelog ([2bfba27](2bfba276b76bd40071c8de3084133aa51ae63d20))
 
