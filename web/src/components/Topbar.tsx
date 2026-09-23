@@ -44,5 +44,3 @@ export function Topbar({ config, loading, syncLoading, view, setView, onRefresh,
     </header>
   );
 }
-
-
