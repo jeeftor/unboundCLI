@@ -1421,6 +1421,14 @@ func TestClaimPlanRejectsDuplicateActionID(t *testing.T) {
 	}
 }
 
+func TestActionIDsRemainUniqueForIdenticalActions(t *testing.T) {
+	action := syncplan.Action{Type: "add", Service: "unbound", Hostname: "same.example.test", NewIP: "10.0.0.15"}
+	ids := actionIDs([]syncplan.Action{action, action})
+	if len(ids) != 2 || ids[0] == ids[1] {
+		t.Fatalf("identical actions need unique IDs, got %#v", ids)
+	}
+}
+
 func TestClaimPlanRejectsChangedConfiguration(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(configPath, []byte(`{"caddy":{"server_ip":"10.0.0.15"}}`), 0o600); err != nil {

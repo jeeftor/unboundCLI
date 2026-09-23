@@ -922,14 +922,16 @@ func newPlanID() (string, error) {
 
 func actionIDs(actions []syncplan.Action) []string {
 	ids := make([]string, 0, len(actions))
-	for _, action := range actions {
+	for index, action := range actions {
 		data, err := json.Marshal(action)
 		if err != nil {
-			ids = append(ids, "action-error")
+			ids = append(ids, fmt.Sprintf("action-%d-error", index))
 			continue
 		}
 		sum := sha256.Sum256(data)
-		ids = append(ids, "action-"+hex.EncodeToString(sum[:8]))
+		// The plan ID binds an action to one issuance. The ordinal additionally
+		// keeps duplicate action values distinct within that immutable plan.
+		ids = append(ids, fmt.Sprintf("action-%d-%s", index, hex.EncodeToString(sum[:8])))
 	}
 	return ids
 }
