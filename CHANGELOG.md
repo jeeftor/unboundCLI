@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- require managed unbound records for mutations ([b80b766](b80b766481a793c81e595b5709ba046e9ee314c9))
+
 - protect direct web record removal ([d3de1ec](d3de1ec9e9ddb87bbff50f523481b6815be9a770))
 
 - require fresh inventory for sync plans ([6e51a96](6e51a964c9728c58d77002540fae4dea6956ef53))
@@ -42,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([6314f4d](6314f4d622c19a885ce3fcfd6011c84e47f67284))
 
 - update changelog ([0c38087](0c38087ce5e28f55d71e6a45de97736697cc05f1))
 
