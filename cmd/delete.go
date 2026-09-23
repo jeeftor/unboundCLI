@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/ui"
@@ -18,10 +19,11 @@ var deleteCmd = &cobra.Command{
 	Short:   "Delete a DNS override",
 	Args:    cobra.ExactArgs(1),
 	Aliases: []string{"del", "remove", "rm"},
-	Long: `Delete a DNS override from Unbound DNS.
+	Long: `Delete a caddy-dns-sync-managed DNS override from Unbound DNS.
 
-This command deletes a DNS override from Unbound DNS. You must specify
-the UUID of the override to delete. Use the 'list' command to find UUIDs.`,
+This command deletes only an override that is explicitly marked as managed by
+caddy-dns-sync. It refuses manual and unproven records. You must specify the
+UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 	RunE: runDelete,
 }
 
@@ -43,30 +45,19 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient(cfg)
 
+	overrides, err := client.GetOverrides()
+	if err != nil {
+		if logging.GetLogLevel() == logging.LogLevelDebug {
+			logging.Error("Error fetching overrides", "error", err)
+		}
+		return fmt.Errorf("error fetching overrides: %w", err)
+	}
+	targetOverride, err := managedOverrideForDelete(overrides, uuid)
+	if err != nil {
+		return err
+	}
+
 	if !force {
-		overrides, err := client.GetOverrides()
-		if err != nil {
-			if logging.GetLogLevel() == logging.LogLevelDebug {
-				logging.Error("Error fetching overrides", "error", err)
-			}
-			return fmt.Errorf("error fetching overrides: %w", err)
-		}
-
-		var targetOverride *api.DNSOverride
-		for _, o := range overrides {
-			if o.UUID == uuid {
-				targetOverride = &o
-				break
-			}
-		}
-
-		if targetOverride == nil {
-			if logging.GetLogLevel() == logging.LogLevelDebug {
-				logging.Error("No override found with UUID", "uuid", uuid)
-			}
-			return fmt.Errorf("no override found with UUID %s", uuid)
-		}
-
 		fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderConfirmation(*targetOverride))
 		fmt.Fprint(cmd.OutOrStdout(), "Confirm deletion (y/N): ")
 		var confirm string
@@ -90,6 +81,15 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		}
 		return fmt.Errorf("error deleting override: %w", err)
 	}
+	current, err := client.GetOverrides()
+	if err != nil {
+		return fmt.Errorf("verify deletion of override %s: %w", uuid, err)
+	}
+	for _, override := range current {
+		if override.UUID == uuid {
+			return fmt.Errorf("verify deletion of override %s: record remains; review provider state before retrying", uuid)
+		}
+	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), deleteUI.RenderApplyingMessage())
 	if err := client.ApplyChanges(); err != nil {
@@ -104,6 +104,20 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		logging.Info("DNS override deleted successfully", "uuid", uuid)
 	}
 	return nil
+}
+
+func managedOverrideForDelete(overrides []api.DNSOverride, uuid string) (*api.DNSOverride, error) {
+	for index := range overrides {
+		override := &overrides[index]
+		if override.UUID != uuid {
+			continue
+		}
+		if !app.IsManagedUnboundDescription(override.Description) {
+			return nil, fmt.Errorf("refusing to delete unowned Unbound override %s; explicitly adopt it before syncing or remove it in OPNSense", uuid)
+		}
+		return override, nil
+	}
+	return nil, fmt.Errorf("no override found with UUID %s", uuid)
 }
 
 type deleteUI struct {

@@ -653,15 +653,7 @@ func findManagedUnboundOverride(client UnboundClient, hostname, expectedIP strin
 }
 
 func isManagedUnboundDescription(description string) bool {
-	if description == app.CurrentUnboundDescription {
-		return true
-	}
-	for _, legacy := range app.LegacyUnboundDescriptions {
-		if description == legacy {
-			return true
-		}
-	}
-	return false
+	return app.IsManagedUnboundDescription(description)
 }
 
 // SplitHostname splits a fully qualified hostname into host and domain parts.

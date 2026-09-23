@@ -74,3 +74,11 @@ func isLegacyUnboundDescription(desc string) bool {
 	}
 	return false
 }
+
+// IsManagedUnboundDescription reports whether an Unbound override carries a
+// current or legacy caddy-dns-sync ownership description. It deliberately
+// does not modify legacy descriptions: a read or status operation must never
+// rewrite provider state.
+func IsManagedUnboundDescription(desc string) bool {
+	return desc == CurrentUnboundDescription || isLegacyUnboundDescription(desc)
+}

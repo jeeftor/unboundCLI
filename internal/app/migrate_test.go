@@ -111,3 +111,15 @@ func TestIsLegacyUnboundDescription(t *testing.T) {
 		}
 	}
 }
+
+func TestIsManagedUnboundDescription(t *testing.T) {
+	if !IsManagedUnboundDescription(CurrentUnboundDescription) {
+		t.Fatal("current management description must be recognized")
+	}
+	if !IsManagedUnboundDescription(LegacyUnboundDescriptions[0]) {
+		t.Fatal("legacy management description must be recognized")
+	}
+	if IsManagedUnboundDescription("manual record") {
+		t.Fatal("manual description must not establish ownership")
+	}
+}
