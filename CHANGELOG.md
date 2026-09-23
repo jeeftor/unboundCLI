@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- target cloudflare delete actions by tunnel ([dbfdb01](dbfdb019c8af7a8294b8d64127782327181a13af))
+
 - reject ambiguous cloudflare tunnel hosts ([838bd8d](838bd8d6d0a5bd91b323c48b7c6af0db61a966fb))
 
 - protect cloudflare DNS conflicts ([7644ab5](7644ab52575233b825903883ddd67220b5a8ee0a))
@@ -52,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([b9d216a](b9d216ae412bad61b2ebd0a235403be1173261d9))
 
 - update changelog ([05750da](05750da0583d928443712edd16b55cc0e7800683))
 
