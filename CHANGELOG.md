@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- publish releases to canonical repository ([b541faa](b541faabfff446a2aa1a82490a865da035ae1cd9))
+
 - make release snapshot verifiable ([121d576](121d5769633175a000aae8c4a8bcc21b2e0438ca))
 
 - show retained operation history ([14d3282](14d3282b846bafc4b43ca3f3bdd6c38e9a477b22))
@@ -140,6 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([4bd6901](4bd690129250a8c6589d9e5863d78643ca6be767))
 
 - update changelog ([ae30c79](ae30c793953221bb2b12dbe17f1bb8cb9a866a97))
 
