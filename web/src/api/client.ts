@@ -25,9 +25,22 @@ export class ApiError extends Error {
 }
 
 async function readJSON<T>(response: Response): Promise<T> {
-  const data = await response.json();
+  const body = await response.text();
+  let data: unknown;
+  if (body) {
+    try {
+      data = JSON.parse(body);
+    } catch {
+      if (!response.ok) {
+        throw new ApiError(`Request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ''})`, response.status);
+      }
+      throw new Error('Server returned an invalid JSON response');
+    }
+  }
   if (!response.ok) {
-    const message = typeof data?.error === 'string' ? data.error : response.statusText;
+    const message = typeof (data as { error?: unknown } | undefined)?.error === 'string'
+      ? (data as { error: string }).error
+      : `Request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ''})`;
     throw new ApiError(message, response.status);
   }
   return data as T;

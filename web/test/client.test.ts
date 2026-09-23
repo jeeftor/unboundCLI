@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../src/api/client';
+import { api, ApiError } from '../src/api/client';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -36,5 +36,21 @@ describe('sync plan requests', () => {
       '/api/sync/plan?service=unbound&hostname=printer.example.test',
       undefined,
     );
+  });
+});
+
+describe('API error decoding', () => {
+  it('reports an HTTP error when a proxy returns HTML instead of JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>Bad gateway</html>', {
+      status: 502,
+      statusText: 'Bad Gateway',
+      headers: { 'Content-Type': 'text/html' },
+    })));
+
+    await expect(api.planSync('unbound')).rejects.toEqual(expect.objectContaining<ApiError>({
+      name: 'ApiError',
+      status: 502,
+      message: 'Request failed (502 Bad Gateway)',
+    }));
   });
 });
