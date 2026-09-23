@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- invalidate web plans after config changes ([f4704ae](f4704aed022254ae95bdfe28159efd48d48742ed))
+
 - require managed unbound records for mutations ([b80b766](b80b766481a793c81e595b5709ba046e9ee314c9))
 
 - protect direct web record removal ([d3de1ec](d3de1ec9e9ddb87bbff50f523481b6815be9a770))
@@ -44,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([3f8ae94](3f8ae943b711b503305e300a11caf7d02cba25be))
 
 - update changelog ([6314f4d](6314f4d622c19a885ce3fcfd6011c84e47f67284))
 
