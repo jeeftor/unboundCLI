@@ -19,6 +19,7 @@ type Action struct {
 	OldHTTPHostHeader      string `json:"old_http_host_header,omitempty"`
 	NewHTTPHostHeader      string `json:"new_http_host_header,omitempty"`
 	TunnelID               string `json:"tunnel_id,omitempty"`
+	CloudflareDNSRecordID  string `json:"cloudflare_dns_record_id,omitempty"`
 	TunnelName             string `json:"tunnel_name,omitempty"`
 	Path                   string `json:"path,omitempty"`
 	NoTLSVerify            bool   `json:"no_tls_verify,omitempty"`
@@ -256,6 +257,7 @@ func buildCloudflareAction(entry *models.Entry, options Options) Action {
 	}
 
 	cf := entry.CloudflareStatus
+	base.CloudflareDNSRecordID = cf.DNSRecordID
 	if entry.IsConfiguredInCaddy() {
 		// For via-caddy mode, set OriginServerName so cloudflared presents the
 		// correct SNI during its TLS handshake with Caddy.

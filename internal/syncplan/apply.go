@@ -64,8 +64,13 @@ func Apply(ctx context.Context, clients Clients, plan Plan, options ApplyOptions
 	adguardChanged := false
 	var adguardOwnership *adguardOwnership
 	var adguardOwnershipErr error
+	var cloudflareOwnership ownership.State
+	var cloudflareOwnershipErr error
 	if !options.DryRun && hasEnabledAction(actions, "adguard") {
 		adguardOwnership, adguardOwnershipErr = loadAdguardOwnership(options.OwnershipPath)
+	}
+	if !options.DryRun && hasEnabledCloudflareExistingAction(actions) {
+		cloudflareOwnership, cloudflareOwnershipErr = loadCloudflareOwnership(options.OwnershipPath)
 	}
 
 	for _, action := range actions {
@@ -83,7 +88,7 @@ func Apply(ctx context.Context, clients Clients, plan Plan, options ApplyOptions
 
 		var err error
 		if !options.DryRun {
-			err = applyAction(clients, action, adguardOwnership, adguardOwnershipErr)
+			err = applyAction(clients, action, adguardOwnership, adguardOwnershipErr, cloudflareOwnership, cloudflareOwnershipErr)
 		}
 		if err != nil {
 			recordActionError(result, actionResult, err)
@@ -129,7 +134,7 @@ func ApplyActions(ctx context.Context, clients Clients, actions []Action, option
 	return Apply(ctx, clients, Plan{Actions: actions}, options)
 }
 
-func applyAction(clients Clients, action Action, adguardOwnership *adguardOwnership, adguardOwnershipErr error) error {
+func applyAction(clients Clients, action Action, adguardOwnership *adguardOwnership, adguardOwnershipErr error, cloudflareOwnership ownership.State, cloudflareOwnershipErr error) error {
 	switch action.Service {
 	case "unbound":
 		return applyUnboundAction(clients.Unbound, action)
@@ -139,7 +144,10 @@ func applyAction(clients Clients, action Action, adguardOwnership *adguardOwners
 		}
 		return applyAdguardAction(clients.Adguard, action, adguardOwnership)
 	case "cloudflare":
-		return applyCloudflareAction(clients.Cloudflare, action)
+		if cloudflareOwnershipErr != nil {
+			return cloudflareOwnershipErr
+		}
+		return applyCloudflareAction(clients.Cloudflare, action, cloudflareOwnership)
 	case "dhcp":
 		return fmt.Errorf("DHCP sync not yet implemented")
 	default:
@@ -257,6 +265,15 @@ func hasEnabledAction(actions []Action, service string) bool {
 	return false
 }
 
+func hasEnabledCloudflareExistingAction(actions []Action) bool {
+	for _, action := range actions {
+		if action.Enabled && action.Service == "cloudflare" && (action.Type == "update" || action.Type == "delete") {
+			return true
+		}
+	}
+	return false
+}
+
 type adguardOwnership struct {
 	path  string
 	state ownership.State
@@ -348,9 +365,20 @@ func isAdguardRewriteNotFound(err error) bool {
 	return err != nil && strings.HasPrefix(err.Error(), "no matching AdGuard rewrite for ")
 }
 
-func applyCloudflareAction(client CloudflareClient, action Action) error {
+func applyCloudflareAction(client CloudflareClient, action Action, state ownership.State) error {
 	if client == nil {
 		return fmt.Errorf("Cloudflare client not available")
+	}
+	if action.Type == "update" || action.Type == "delete" {
+		ingressID := cloudflareIngressResourceID(action)
+		if ingressID == "" || !state.Owns("cloudflare", "ingress", ingressID) {
+			return fmt.Errorf("Cloudflare ingress %s is not explicitly owned; adoption is required", action.Hostname)
+		}
+		if action.Type == "delete" {
+			if action.CloudflareDNSRecordID == "" || !state.Owns("cloudflare", "dns", action.CloudflareDNSRecordID) {
+				return fmt.Errorf("Cloudflare DNS record for %s is not explicitly owned; adoption is required", action.Hostname)
+			}
+		}
 	}
 
 	switch action.Type {
@@ -391,6 +419,24 @@ func applyCloudflareAction(client CloudflareClient, action Action) error {
 	default:
 		return fmt.Errorf("unknown action type: %s", action.Type)
 	}
+}
+
+func loadCloudflareOwnership(path string) (ownership.State, error) {
+	if strings.TrimSpace(path) == "" {
+		return ownership.State{}, fmt.Errorf("Cloudflare ownership state path is required for mutations")
+	}
+	state, err := ownership.Load(path)
+	if err != nil {
+		return ownership.State{}, fmt.Errorf("load Cloudflare ownership state: %w", err)
+	}
+	return state, nil
+}
+
+func cloudflareIngressResourceID(action Action) string {
+	if action.TunnelID == "" || action.Hostname == "" {
+		return ""
+	}
+	return action.TunnelID + ":" + action.Hostname + ":" + action.Path
 }
 
 func ensureUnboundHostnameUnused(client UnboundClient, hostname string) error {

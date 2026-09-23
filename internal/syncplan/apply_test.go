@@ -247,6 +247,11 @@ func adguardOwnershipPath(t *testing.T, resources map[string]string) string {
 
 func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 	cloudflare := &fakeCloudflareClient{}
+	path := cloudflareOwnershipPath(t, []ownership.Resource{
+		{Provider: "cloudflare", Kind: "ingress", ID: "selected-tunnel:update.example.com:"},
+		{Provider: "cloudflare", Kind: "ingress", ID: "selected-tunnel:old.example.com:"},
+		{Provider: "cloudflare", Kind: "dns", ID: "dns-old"},
+	})
 
 	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{
 		{
@@ -261,18 +266,20 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 			Type:              "update",
 			Service:           "cloudflare",
 			Hostname:          "update.example.com",
+			TunnelID:          "selected-tunnel",
 			NewService:        "http://10.0.0.15:80",
 			NewHTTPHostHeader: "update.example.com",
 			Enabled:           true,
 		},
 		{
-			Type:     "delete",
-			Service:  "cloudflare",
-			Hostname: "old.example.com",
-			TunnelID: "selected-tunnel",
-			Enabled:  true,
+			Type:                  "delete",
+			Service:               "cloudflare",
+			Hostname:              "old.example.com",
+			TunnelID:              "selected-tunnel",
+			CloudflareDNSRecordID: "dns-old",
+			Enabled:               true,
 		},
-	}}, ApplyOptions{})
+	}}, ApplyOptions{OwnershipPath: path})
 
 	if !result.Success {
 		t.Fatalf("expected success, got %#v", result.Errors)
@@ -300,6 +307,34 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 	if len(cloudflare.deletedDNS) != 1 || cloudflare.deletedDNS[0] != "old.example.com" {
 		t.Fatalf("expected one deleted DNS record, got %#v", cloudflare.deletedDNS)
 	}
+}
+
+func TestApplyProtectsUnownedCloudflareResources(t *testing.T) {
+	cloudflare := &fakeCloudflareClient{}
+	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{{
+		Type: "delete", Service: "cloudflare", Hostname: "manual.example.com", TunnelID: "selected-tunnel", CloudflareDNSRecordID: "manual-dns", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: cloudflareOwnershipPath(t, nil)})
+	if result.Success || len(cloudflare.deletedRules) != 0 || len(cloudflare.deletedDNS) != 0 {
+		t.Fatalf("unowned Cloudflare resources must be protected, result=%#v", result)
+	}
+}
+
+func cloudflareOwnershipPath(t *testing.T, resources []ownership.Resource) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "ownership.json")
+	state, err := ownership.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, resource := range resources {
+		if err := state.Record(resource); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ownership.Save(path, state); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestApplyCloudflareDryRunDoesNotMutate(t *testing.T) {
