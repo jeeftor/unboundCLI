@@ -21,6 +21,7 @@ var (
 	cfDirectOnly         bool
 	cfCaddyOnly          bool
 	cfPrompt             bool
+	cfApply              bool
 )
 
 // caddySyncCloudflareCmd represents the caddy-sync-cloudflare command
@@ -46,6 +47,9 @@ supporting both LAN optimization and external Cloudflare tunnel access patterns.
 func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 	if cfDirectOnly && cfCaddyOnly {
 		return fmt.Errorf("cannot specify both --direct-only and --caddy-only")
+	}
+	if cfApply && cmd.Flags().Changed("dry-run") {
+		return fmt.Errorf("cannot specify both --apply and --dry-run")
 	}
 	releaseLock, err := acquireSyncLockWithWait()
 	if err != nil {
@@ -78,7 +82,7 @@ func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 
 	options := sync2.CaddyCloudflareSyncOptions{
 		BaseSyncOptions: sync2.BaseSyncOptions{
-			DryRun:             cfDryRun,
+			DryRun:             !cfApply,
 			CaddyServerIP:      runtime.CaddyEndpoint.ServerIP,
 			CaddyServerPort:    runtime.CaddyEndpoint.ServerPort,
 			EntryDescription:   cfEntryDescription,
@@ -119,7 +123,7 @@ func runCaddySyncCloudflare(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareSummary(result))
-	if cfDryRun {
+	if !cfApply {
 		fmt.Fprint(cmd.OutOrStdout(), syncUI.RenderCloudflareDryRunOutput(result, cfEntryDescription))
 		return nil
 	}
@@ -133,7 +137,9 @@ func init() {
 
 	// Add flags
 	caddySyncCloudflareCmd.Flags().
-		BoolVar(&cfDryRun, "dry-run", false, "Show what would be done without making any changes")
+		BoolVar(&cfDryRun, "dry-run", false, "Show what would be done without making any changes (the default)")
+	caddySyncCloudflareCmd.Flags().
+		BoolVar(&cfApply, "apply", false, "Apply the previewed changes to Unbound")
 	caddySyncCloudflareCmd.Flags().
 		StringVar(&cfCaddyServerIP, "caddy-ip", "", "Caddy server IP (defaults to selected config)")
 	caddySyncCloudflareCmd.Flags().

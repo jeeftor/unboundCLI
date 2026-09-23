@@ -21,6 +21,7 @@ var (
 	syncUnboundOnly        bool
 	syncAdguardOnly        bool
 	syncPrompt             bool
+	syncApply              bool
 )
 
 // syncCmd is the parent command for sync operations
@@ -75,9 +76,9 @@ entries exist in AdguardHome pointing to the Caddy server.`,
 }
 
 // buildSyncOptions creates SyncOptions from command flags
-func buildSyncOptions() *sync.SyncOptions {
+func buildSyncOptions(dryRun bool) *sync.SyncOptions {
 	opts := sync.DefaultSyncOptions()
-	opts.DryRun = syncDryRun
+	opts.DryRun = dryRun
 	opts.CaddyServerIP = syncCaddyServerIP
 	opts.CaddyServerPort = syncCaddyServerPort
 	opts.EntryDescription = syncEntryDescription
@@ -97,6 +98,13 @@ func buildSyncOptions() *sync.SyncOptions {
 	return opts
 }
 
+func syncDryRunMode(cmd *cobra.Command) (bool, error) {
+	if syncApply && cmd.Flags().Changed("dry-run") {
+		return false, fmt.Errorf("cannot specify both --apply and --dry-run")
+	}
+	return !syncApply, nil
+}
+
 func applyRuntimeEndpoint(opts *sync.SyncOptions, runtime *runtimeapp.Runtime) {
 	opts.CaddyServerIP = runtime.CaddyEndpoint.ServerIP
 	opts.CaddyServerPort = runtime.CaddyEndpoint.ServerPort
@@ -107,6 +115,10 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 	if syncUnboundOnly && syncAdguardOnly {
 		return fmt.Errorf("cannot specify both --unbound-only and --adguard-only")
 	}
+	dryRun, err := syncDryRunMode(cmd)
+	if err != nil {
+		return err
+	}
 
 	// Acquire sync lock to prevent concurrent syncs.
 	releaseLock, err := acquireSyncLockWithWait()
@@ -115,7 +127,7 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 	}
 	defer releaseLock()
 
-	opts := buildSyncOptions()
+	opts := buildSyncOptions(dryRun)
 	syncUI := execsync.NewSyncUI()
 
 	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
@@ -188,7 +200,7 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 
 	fmt.Print(syncUI.RenderUnifiedSummary(result))
 
-	if syncDryRun {
+	if opts.DryRun {
 		fmt.Print(syncUI.RenderUnifiedDryRunOutput(result, opts.EntryDescription))
 	} else {
 		fmt.Print(syncUI.RenderUnifiedChanges(result, opts.EntryDescription))
@@ -198,13 +210,17 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 }
 
 func runSyncUnbound(cmd *cobra.Command, args []string) error {
+	dryRun, err := syncDryRunMode(cmd)
+	if err != nil {
+		return err
+	}
 	releaseLock, err := acquireSyncLockWithWait()
 	if err != nil {
 		return err
 	}
 	defer releaseLock()
 
-	opts := buildSyncOptions()
+	opts := buildSyncOptions(dryRun)
 	syncUI := execsync.NewSyncUI()
 
 	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
@@ -253,7 +269,7 @@ func runSyncUnbound(cmd *cobra.Command, args []string) error {
 
 	fmt.Print(syncUI.RenderSummary(result))
 
-	if syncDryRun {
+	if opts.DryRun {
 		fmt.Print(syncUI.RenderDryRunOutput(result, opts.EntryDescription))
 	} else {
 		fmt.Print(syncUI.RenderChanges(result, opts.EntryDescription))
@@ -263,13 +279,17 @@ func runSyncUnbound(cmd *cobra.Command, args []string) error {
 }
 
 func runSyncAdguard(cmd *cobra.Command, args []string) error {
+	dryRun, err := syncDryRunMode(cmd)
+	if err != nil {
+		return err
+	}
 	releaseLock, err := acquireSyncLockWithWait()
 	if err != nil {
 		return err
 	}
 	defer releaseLock()
 
-	opts := buildSyncOptions()
+	opts := buildSyncOptions(dryRun)
 	syncUI := execsync.NewSyncUI()
 
 	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
@@ -319,7 +339,7 @@ func runSyncAdguard(cmd *cobra.Command, args []string) error {
 
 	fmt.Print(syncUI.RenderAdguardSummary(result))
 
-	if syncDryRun {
+	if opts.DryRun {
 		fmt.Print(syncUI.RenderAdguardDryRunOutput(result, opts.EntryDescription))
 	} else {
 		fmt.Print(syncUI.RenderAdguardChanges(result, opts.EntryDescription))
@@ -359,7 +379,8 @@ func init() {
 	syncCmd.AddCommand(syncAdguardCmd)
 
 	// Shared flags for all sync commands
-	syncCmd.PersistentFlags().BoolVar(&syncDryRun, "dry-run", false, "Show what would be changed without applying")
+	syncCmd.PersistentFlags().BoolVar(&syncDryRun, "dry-run", false, "Show what would be changed without applying (the default)")
+	syncCmd.PersistentFlags().BoolVar(&syncApply, "apply", false, "Apply the previewed changes to providers")
 	syncCmd.PersistentFlags().StringVar(&syncCaddyServerIP, "caddy-ip", "", "Caddy server IP (defaults to selected config)")
 	syncCmd.PersistentFlags().IntVar(&syncCaddyServerPort, "caddy-port", 0, "Caddy admin API port (defaults to selected config)")
 	syncCmd.PersistentFlags().StringVar(&syncEntryDescription, "description", runtimeapp.CurrentUnboundDescription, "Description for DNS entries")
