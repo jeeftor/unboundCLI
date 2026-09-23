@@ -661,9 +661,8 @@ func TestEnsureDNSRecord_NoOpWhenCorrect(t *testing.T) {
 	}
 }
 
-func TestEnsureDNSRecord_UpdatesWrongTarget(t *testing.T) {
+func TestEnsureDNSRecord_RejectsWrongTunnelTarget(t *testing.T) {
 	var patchCalled bool
-	var capturedPatch map[string]interface{}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
@@ -683,8 +682,7 @@ func TestEnsureDNSRecord_UpdatesWrongTarget(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			if r.Method == http.MethodPatch {
 				patchCalled = true
-				json.NewDecoder(r.Body).Decode(&capturedPatch)
-				fmt.Fprint(w, dnsRecordResponse("stale-id", "app.example.com", "test-tunnel-uuid.cfargotunnel.com"))
+				t.Fatal("a conflicting tunnel CNAME must not be retargeted")
 			} else {
 				t.Errorf("unexpected method on record endpoint: %s", r.Method)
 			}
@@ -693,15 +691,11 @@ func TestEnsureDNSRecord_UpdatesWrongTarget(t *testing.T) {
 	client, srv := newTestClient(t, mux)
 	defer srv.Close()
 
-	if err := client.EnsureDNSRecord("app.example.com"); err != nil {
-		t.Fatalf("EnsureDNSRecord failed: %v", err)
+	if err := client.EnsureDNSRecord("app.example.com"); err == nil {
+		t.Fatal("expected conflicting tunnel target to be rejected")
 	}
-
-	if !patchCalled {
-		t.Error("expected PATCH to update DNS record with wrong target")
-	}
-	if capturedPatch["content"] != "test-tunnel-uuid.cfargotunnel.com" {
-		t.Errorf("expected updated content to be tunnel target, got %v", capturedPatch["content"])
+	if patchCalled {
+		t.Error("conflicting tunnel target must not be patched")
 	}
 }
 
@@ -767,16 +761,16 @@ func TestDeleteDNSRecord_NoOpWhenAbsent(t *testing.T) {
 	}
 }
 
-func TestDeleteDNSRecord_IgnoresNonTunnelCNAMEs(t *testing.T) {
+func TestDeleteDNSRecord_IgnoresOtherTunnelCNAMEs(t *testing.T) {
 	deleteCount := 0
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
 		func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			// Record exists but points somewhere other than cfargotunnel.com
+			// Record belongs to a different tunnel and must not be deleted.
 			records := []map[string]interface{}{
-				{"id": "other-id", "type": "CNAME", "name": "app.example.com", "content": "some-other-cdn.com"},
+				{"id": "other-id", "type": "CNAME", "name": "app.example.com", "content": "other-tunnel.cfargotunnel.com"},
 			}
 			fmt.Fprint(w, dnsListResponse(records))
 		})
@@ -794,7 +788,7 @@ func TestDeleteDNSRecord_IgnoresNonTunnelCNAMEs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if deleteCount != 0 {
-		t.Error("should not delete a CNAME that doesn't point to cfargotunnel.com")
+		t.Error("should not delete a CNAME that belongs to another tunnel")
 	}
 }
 

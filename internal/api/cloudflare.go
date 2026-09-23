@@ -465,39 +465,16 @@ func (c *CloudflareClient) EnsureDNSRecord(hostname string) error {
 		switch r.Type {
 		case "CNAME":
 			if strings.Contains(r.Content, "cfargotunnel.com") {
-				// Existing tunnel CNAME — update if wrong, leave alone if correct.
+				// Only the selected tunnel's exact CNAME is safe to manage.
 				if r.Content == target {
 					logging.Debug("DNS record already correct", "hostname", hostname)
 					return nil
 				}
-				_, err := c.api.UpdateDNSRecord(ctx,
-					cloudflare.ResourceIdentifier(c.zoneID),
-					cloudflare.UpdateDNSRecordParams{
-						ID:      r.ID,
-						Type:    "CNAME",
-						Name:    hostname,
-						Content: target,
-						Proxied: &proxied,
-						TTL:     1,
-					},
-				)
-				if err != nil {
-					return fmt.Errorf("error updating DNS record for %s: %w", hostname, err)
-				}
-				logging.Info("Updated DNS record", "hostname", hostname, "target", target)
-				return nil
+				return fmt.Errorf("conflicting tunnel CNAME for %s points to %s; explicit adoption is required", hostname, r.Content)
 			}
-			// Non-tunnel CNAME — delete it so we can create the correct one.
-			logging.Info("Replacing conflicting CNAME record", "hostname", hostname, "old", r.Content, "new", target)
-			if err := c.api.DeleteDNSRecord(ctx, cloudflare.ResourceIdentifier(c.zoneID), r.ID); err != nil {
-				return fmt.Errorf("error removing conflicting CNAME record for %s: %w", hostname, err)
-			}
+			return fmt.Errorf("conflicting CNAME record for %s; explicit adoption is required", hostname)
 		case "A", "AAAA":
-			// Conflicting address record — delete it so we can create the CNAME.
-			logging.Info("Replacing conflicting address record with tunnel CNAME", "hostname", hostname, "type", r.Type, "old", r.Content, "new", target)
-			if err := c.api.DeleteDNSRecord(ctx, cloudflare.ResourceIdentifier(c.zoneID), r.ID); err != nil {
-				return fmt.Errorf("error removing conflicting %s record for %s: %w", r.Type, hostname, err)
-			}
+			return fmt.Errorf("conflicting %s record for %s; explicit adoption is required", r.Type, hostname)
 		}
 	}
 
@@ -532,7 +509,7 @@ func (c *CloudflareClient) DeleteDNSRecord(hostname string) error {
 	}
 
 	for _, r := range records {
-		if strings.Contains(r.Content, "cfargotunnel.com") {
+		if r.Content == c.tunnelID+".cfargotunnel.com" {
 			if err := c.api.DeleteDNSRecord(ctx, cloudflare.ResourceIdentifier(c.zoneID), r.ID); err != nil {
 				return fmt.Errorf("error deleting DNS record for %s: %w", hostname, err)
 			}
