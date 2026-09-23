@@ -335,6 +335,10 @@ func (s *Server) handleDiagnosticsPrune(w http.ResponseWriter, r *http.Request) 
 	} else {
 		req.DryRun = true
 	}
+	if !req.DryRun {
+		writeError(w, http.StatusConflict, fmt.Errorf("destructive diagnostics pruning is unavailable until it can use a server-issued ownership-checked plan; preview again and remove records through the sync plan or explicit adoption workflow"))
+		return
+	}
 
 	// Build a set of requested hostnames for filtering (case-insensitive)
 	requestedHosts := make(map[string]bool)
