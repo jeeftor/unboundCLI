@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- honor selected config in cloudflare sync ([1bc4c62](1bc4c62962df58e3dc6d19fb2fa73fef2f3c2923))
+
 - claim web sync plans before apply ([0b15378](0b153786463b9bd587bcb4512ed9e6ae86eebe60))
 
 - enforce explicit adguard ownership ([71a6470](71a64705c1ccf4b145bb6b09fd74e329f85d4dd5))
@@ -36,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([6828d5d](6828d5dc765080b156ea875a31f7d5f858a73efc))
 
 - update changelog ([7c6c9cc](7c6c9cc69da80881d1929fe71d044396d146debe))
 
