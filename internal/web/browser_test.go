@@ -149,6 +149,21 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 		t.Fatalf("browser DOM should color failed DNS resolution as bad:\n%s", dom)
 	}
 
+	firstRunHandler := NewServerWithOptions(&app.Runtime{}, Options{
+		BoundHost:       "127.0.0.1",
+		EnableTestHooks: true,
+		ConfigPath:      filepath.Join(t.TempDir(), "first-run-config.json"),
+	})
+	firstRunServer := httptest.NewServer(firstRunHandler)
+	firstRunHandler.options.AllowedOrigin = firstRunServer.URL
+	defer firstRunServer.Close()
+	firstRunDOM := runChromeSmoke(t, chromePath, firstRunServer.URL, 1280, 900)
+	if !strings.Contains(firstRunDOM, `class="first-run-callout"`) ||
+		!strings.Contains(firstRunDOM, "Set up your first DNS destination") ||
+		!strings.Contains(firstRunDOM, "Configure DNS") {
+		t.Fatalf("an unconfigured session should show first-run setup guidance:\n%s", firstRunDOM)
+	}
+
 	loadingDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=holdloading", 1280, 900)
 	if !strings.Contains(loadingDOM, `data-loading="true"`) ||
 		!strings.Contains(loadingDOM, `id="top-progress-title"`) ||

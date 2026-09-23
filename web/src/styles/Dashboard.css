@@ -9,6 +9,27 @@
   padding: 15px 20px 28px;
 }
 
+.first-run-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 16px;
+  border: 1px solid rgba(79, 168, 255, .32);
+  border-radius: var(--radius);
+  background: rgba(79, 168, 255, .09);
+}
+
+.first-run-callout > div { display: grid; gap: 3px; }
+.first-run-callout strong { font-size: 14px; color: var(--text); }
+.first-run-callout p { margin: 0; color: var(--text-2); font-size: 12.5px; }
+.first-run-callout .btn-primary { min-height: 44px; flex: 0 0 auto; }
+
+@media (max-width: 760px) {
+  .first-run-callout { align-items: stretch; flex-direction: column; gap: 10px; }
+  .first-run-callout .btn-primary { width: 100%; }
+}
+
 /* ============================================================
    Operations Header
    ============================================================ */

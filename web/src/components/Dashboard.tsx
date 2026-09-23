@@ -93,6 +93,11 @@ export function AppShell() {
   const canSyncNow = mutationEnabled && plan.planID !== '' && plan.actionIDs.length > 0;
   const plannedActions = plan.actions;
   const enabledServices = config?.enabled ?? ({} as Partial<Record<ServiceKey, boolean>>);
+  const hasConfiguredDestination = Boolean(
+    config?.summary.unbound.client_ready ||
+    config?.summary.adguard.client_ready ||
+    config?.summary.cloudflare.client_ready,
+  );
 
   // ── Actions from store ──
   const setView = useStore((s) => s.setView);
@@ -270,6 +275,15 @@ export function AppShell() {
                 progress={progress}
                 summary={summary}
               />
+              {!hasConfiguredDestination && (
+                <section className="first-run-callout" aria-labelledby="first-run-title">
+                  <div>
+                    <strong id="first-run-title">Set up your first DNS destination</strong>
+                    <p>Configure Unbound, AdGuard, or Cloudflare before previewing changes. DHCP remains inventory-only.</p>
+                  </div>
+                  <button type="button" className="btn-primary btn-sm" onClick={() => setConfigOpen(true)}>Configure DNS</button>
+                </section>
+              )}
               <MetricGrid summary={summary} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
               <EntriesToolbar
                 entriesCount={entries.length}
