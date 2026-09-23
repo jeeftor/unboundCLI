@@ -98,6 +98,7 @@ const EntryRow = memo(function EntryRow({
         : 'Not in DNS';
   const selectRow = () => onSelect(entry.hostname);
   const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     selectRow();
