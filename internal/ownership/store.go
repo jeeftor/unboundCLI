@@ -26,10 +26,23 @@ type Resource struct {
 	OwnedAt  time.Time `json:"owned_at"`
 }
 
+// Intent records a provider mutation before it is attempted. An intent left on
+// disk signals an interrupted or ambiguous operation and must be reviewed
+// instead of being silently retried.
+type Intent struct {
+	Operation string    `json:"operation"`
+	Provider  string    `json:"provider"`
+	Kind      string    `json:"kind"`
+	ID        string    `json:"id"`
+	Expected  string    `json:"expected,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // State is the versioned on-disk ownership document.
 type State struct {
 	Version   int                 `json:"version"`
 	Resources map[string]Resource `json:"resources"`
+	Intents   map[string]Intent   `json:"intents,omitempty"`
 }
 
 // Key returns a stable key for a provider-specific resource identity.
@@ -40,7 +53,7 @@ func Key(provider, kind, id string) string {
 
 // Load returns an empty state for a missing file and rejects unknown versions.
 func Load(path string) (State, error) {
-	state := State{Version: stateVersion, Resources: map[string]Resource{}}
+	state := State{Version: stateVersion, Resources: map[string]Resource{}, Intents: map[string]Intent{}}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return state, nil
@@ -57,11 +70,17 @@ func Load(path string) (State, error) {
 	if state.Resources == nil {
 		state.Resources = map[string]Resource{}
 	}
+	if state.Intents == nil {
+		state.Intents = map[string]Intent{}
+	}
 	return state, nil
 }
 
 // Owns reports whether the exact provider resource was explicitly recorded.
 func (s State) Owns(provider, kind, id string) bool {
+	if _, unresolved := s.Intents[Key(provider, kind, id)]; unresolved {
+		return false
+	}
 	_, ok := s.Resources[Key(provider, kind, id)]
 	return ok
 }
@@ -86,6 +105,9 @@ func (s *State) Record(resource Resource) error {
 	if s.Resources == nil {
 		s.Resources = map[string]Resource{}
 	}
+	if s.Intents == nil {
+		s.Intents = map[string]Intent{}
+	}
 	s.Resources[Key(resource.Provider, resource.Kind, resource.ID)] = resource
 	return nil
 }
@@ -93,6 +115,42 @@ func (s *State) Record(resource Resource) error {
 // Forget removes a resource only after the provider mutation has been verified.
 func (s *State) Forget(provider, kind, id string) {
 	delete(s.Resources, Key(provider, kind, id))
+}
+
+// Begin records a mutation intent before a provider write.
+func (s *State) Begin(intent Intent) error {
+	intent.Operation = strings.ToLower(strings.TrimSpace(intent.Operation))
+	intent.Provider = strings.ToLower(strings.TrimSpace(intent.Provider))
+	intent.Kind = strings.ToLower(strings.TrimSpace(intent.Kind))
+	intent.ID = strings.TrimSpace(intent.ID)
+	if intent.Operation == "" || intent.Provider == "" || intent.Kind == "" || intent.ID == "" {
+		return errors.New("operation, provider, kind, and resource ID are required")
+	}
+	if intent.CreatedAt.IsZero() {
+		intent.CreatedAt = time.Now().UTC()
+	}
+	if s.Version == 0 {
+		s.Version = stateVersion
+	}
+	if s.Version != stateVersion {
+		return fmt.Errorf("unsupported ownership state version %d", s.Version)
+	}
+	if s.Intents == nil {
+		s.Intents = map[string]Intent{}
+	}
+	s.Intents[Key(intent.Provider, intent.Kind, intent.ID)] = intent
+	return nil
+}
+
+// Resolve clears an intent only after provider readback confirms the outcome.
+func (s *State) Resolve(provider, kind, id string) {
+	delete(s.Intents, Key(provider, kind, id))
+}
+
+// HasIntent reports an operation that requires recovery rather than retry.
+func (s State) HasIntent(provider, kind, id string) bool {
+	_, ok := s.Intents[Key(provider, kind, id)]
+	return ok
 }
 
 // Save atomically replaces the state file with restrictive permissions.
@@ -105,6 +163,9 @@ func Save(path string, state State) error {
 	}
 	if state.Resources == nil {
 		state.Resources = map[string]Resource{}
+	}
+	if state.Intents == nil {
+		state.Intents = map[string]Intent{}
 	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -140,6 +201,13 @@ func Save(path string, state State) error {
 		return fmt.Errorf("replace ownership state: %w", err)
 	}
 	return nil
+}
+
+// PathForConfig keeps ownership state beside its selected configuration file.
+func PathForConfig(configPath string) string {
+	dir := filepath.Dir(configPath)
+	base := strings.TrimSuffix(filepath.Base(configPath), filepath.Ext(configPath))
+	return filepath.Join(dir, base+".ownership.json")
 }
 
 // Fingerprint returns a stable value fingerprint suitable for drift detection

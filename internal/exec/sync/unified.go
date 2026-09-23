@@ -213,19 +213,13 @@ func syncCaddyWithAdguardInternal(
 		return nil, fmt.Errorf("error fetching AdguardHome rewrites: %w", err)
 	}
 
-	// Organize rewrites (logic from caddy_adguard.go)
-	var syncCreatedRewrites []api.Rewrite
-	var otherRewrites []api.Rewrite
-	syncRewriteMap := make(map[string]api.Rewrite)
-
-	for _, rewrite := range existingRewrites {
-		if rewrite.Answer == options.CaddyServerIP {
-			syncCreatedRewrites = append(syncCreatedRewrites, rewrite)
-			syncRewriteMap[rewrite.Domain] = rewrite
-		} else {
-			otherRewrites = append(otherRewrites, rewrite)
-		}
+	owned, err := loadAdguardOwnership(options.OwnershipPath)
+	if err != nil {
+		return nil, err
 	}
+	// A matching answer is not proof of ownership. Only a current exact state
+	// record may enter the mutable set.
+	syncCreatedRewrites, otherRewrites, syncRewriteMap := classifyAdguardRewrites(existingRewrites, owned.state)
 
 	// Process changes
 	var toAdd, toUpdate []string
@@ -279,6 +273,7 @@ func syncCaddyWithAdguardInternal(
 			toAdd,
 			toUpdate,
 			toRemove,
+			owned,
 		)
 	}
 

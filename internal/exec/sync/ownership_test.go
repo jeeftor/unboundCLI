@@ -4,7 +4,46 @@ import (
 	"testing"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 )
+
+func TestClassifyAdguardRewritesRequiresRecordedOwnership(t *testing.T) {
+	rewrites := []api.Rewrite{
+		{Domain: "manual.example.test", Answer: "10.0.0.15"},
+		{Domain: "owned.example.test", Answer: "10.0.0.15"},
+	}
+	state := ownership.State{}
+	if err := state.Record(ownership.Resource{
+		Provider: "adguard", Kind: "rewrite", ID: "owned.example.test",
+		Expected: ownership.Fingerprint("10.0.0.15"),
+	}); err != nil {
+		t.Fatalf("record fixture ownership: %v", err)
+	}
+	owned, other, byDomain := classifyAdguardRewrites(rewrites, state)
+	if len(owned) != 1 || owned[0].Domain != "owned.example.test" {
+		t.Fatalf("owned rewrites = %#v, want only recorded rewrite", owned)
+	}
+	if len(other) != 1 || other[0].Domain != "manual.example.test" {
+		t.Fatalf("manual rewrite with matching target must remain protected: %#v", other)
+	}
+	if _, ok := byDomain["manual.example.test"]; ok {
+		t.Fatal("manual rewrite was incorrectly added to mutable map")
+	}
+}
+
+func TestClassifyAdguardRewritesProtectsExternalDrift(t *testing.T) {
+	state := ownership.State{}
+	if err := state.Record(ownership.Resource{
+		Provider: "adguard", Kind: "rewrite", ID: "app.example.test",
+		Expected: ownership.Fingerprint("10.0.0.15"),
+	}); err != nil {
+		t.Fatalf("record fixture ownership: %v", err)
+	}
+	owned, other, _ := classifyAdguardRewrites([]api.Rewrite{{Domain: "app.example.test", Answer: "10.0.0.99"}}, state)
+	if len(owned) != 0 || len(other) != 1 {
+		t.Fatalf("externally changed rewrite must require recovery, owned=%#v other=%#v", owned, other)
+	}
+}
 
 func TestIsLegacyDescription(t *testing.T) {
 	legacy := []string{"old desc 1", "old desc 2"}

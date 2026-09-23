@@ -49,6 +49,30 @@ func TestSaveLoadAndForget(t *testing.T) {
 	}
 }
 
+func TestIntentBlocksOwnershipUntilResolved(t *testing.T) {
+	state := State{}
+	resource := Resource{Provider: "adguard", Kind: "rewrite", ID: "app.example.test", Expected: Fingerprint("10.0.0.5")}
+	if err := state.Record(resource); err != nil {
+		t.Fatalf("record ownership: %v", err)
+	}
+	if err := state.Begin(Intent{Operation: "update", Provider: "adguard", Kind: "rewrite", ID: "app.example.test"}); err != nil {
+		t.Fatalf("record intent: %v", err)
+	}
+	if state.Owns("adguard", "rewrite", "app.example.test") {
+		t.Fatal("unresolved intent must block mutation ownership")
+	}
+	state.Resolve("adguard", "rewrite", "app.example.test")
+	if !state.Owns("adguard", "rewrite", "app.example.test") {
+		t.Fatal("resolved intent should restore recorded ownership")
+	}
+}
+
+func TestPathForConfig(t *testing.T) {
+	if got, want := PathForConfig("/tmp/caddy-sync.json"), "/tmp/caddy-sync.ownership.json"; got != want {
+		t.Fatalf("ownership path = %q, want %q", got, want)
+	}
+}
+
 func TestLoadRejectsUnknownStateVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := os.WriteFile(path, []byte(`{"version":99,"resources":{}}`), 0o600); err != nil {

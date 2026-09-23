@@ -4,12 +4,17 @@ import (
 	"fmt"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 )
 
 // CaddyAdguardSyncOptions contains options for the Caddy to AdguardHome sync operation
 type CaddyAdguardSyncOptions struct {
 	BaseSyncOptions
+	// OwnershipPath stores explicit AdGuard rewrite identities. Empty uses the
+	// selected configuration file's adjacent ownership state.
+	OwnershipPath string
 }
 
 // AdguardSyncResult contains the results of the AdguardHome sync operation
@@ -46,141 +51,7 @@ func SyncCaddyWithAdguard(
 		logging.Warn("No hostnames found in Caddy config")
 		return &AdguardSyncResult{HostnameMap: hostnameMap}, nil
 	}
-
-	// Get existing rewrites from AdguardHome
-	existingRewrites, err := adguardClient.ListRewrites()
-	if err != nil {
-		logging.Error("Error fetching AdguardHome rewrites", "error", err)
-		return nil, fmt.Errorf("error fetching AdguardHome rewrites: %w", err)
-	}
-
-	if options.Verbose {
-		logging.Info("AdguardHome sync analysis",
-			"totalRewrites", len(existingRewrites),
-			"caddyHostnames", len(hostnameMap),
-			"caddyServerIP", options.CaddyServerIP)
-	}
-
-	// Organize rewrites for easier processing
-	var syncCreatedRewrites []api.Rewrite
-	var otherRewrites []api.Rewrite
-	syncRewriteMap := make(map[string]api.Rewrite)
-
-	// Get the current hostnames from Caddy to determine what we should manage
-	caddyHostnameSet := make(map[string]bool)
-	for hostname := range hostnameMap {
-		// Skip non-FQDN hostnames
-		if IsFQDN(hostname) {
-			caddyHostnameSet[hostname] = true
-		}
-	}
-
-	for _, rewrite := range existingRewrites {
-		// More precise logic: Only consider rewrites that:
-		// 1. Point to our Caddy server IP AND
-		// 2. Have domains that are currently in Caddy config
-		// This prevents us from managing manually created rewrites that happen to use the same IP
-		if rewrite.Answer == options.CaddyServerIP && caddyHostnameSet[rewrite.Domain] {
-			syncCreatedRewrites = append(syncCreatedRewrites, rewrite)
-			syncRewriteMap[rewrite.Domain] = rewrite
-		} else {
-			otherRewrites = append(otherRewrites, rewrite)
-		}
-	}
-
-	if options.Verbose {
-		logging.Info("AdguardHome rewrite categorization",
-			"syncManaged", len(syncCreatedRewrites),
-			"otherRewrites", len(otherRewrites))
-	}
-
-	// Process each hostname from Caddy
-	var toAdd, toUpdate []string
-	addedDomains := make(map[string]bool) // Track domains we've already processed
-
-	for hostname, serverIP := range hostnameMap {
-		// Skip if hostname doesn't contain a dot (not a FQDN)
-		if !IsFQDN(hostname) {
-			continue
-		}
-
-		// Skip if we've already processed this domain (avoid duplicates)
-		if addedDomains[hostname] {
-			continue
-		}
-		addedDomains[hostname] = true
-
-		// Check if this hostname already exists in AdguardHome rewrites
-		existingRewrite, existsInSync := syncRewriteMap[hostname]
-
-		// Check if this domain exists in other rewrites (not pointing to Caddy)
-		existsOther := false
-		for _, rewrite := range otherRewrites {
-			if rewrite.Domain == hostname {
-				existsOther = true
-				break
-			}
-		}
-
-		if !existsInSync && !existsOther {
-			// Need to add this hostname
-			toAdd = append(toAdd, hostname)
-		} else if !existsInSync && existsOther {
-			// Exists but not pointing to Caddy - leave it alone
-			if options.Verbose {
-				logging.Info("Hostname already exists in AdguardHome (not pointing to Caddy)",
-					"hostname", hostname)
-			}
-		} else if existsInSync {
-			// Created by sync, check if it needs updating.
-			// After NormalizeHostnameMapToCaddyIP, serverIP is always CaddyServerIP,
-			// so this only triggers when the Caddy server IP itself changes.
-			if existingRewrite.Answer != serverIP {
-				if options.Verbose {
-					logging.Info("AdguardHome rewrite needs IP update",
-						"hostname", hostname,
-						"existingIP", existingRewrite.Answer,
-						"newIP", serverIP)
-				}
-				toUpdate = append(toUpdate, hostname)
-			}
-		}
-	}
-
-	// Find entries to remove (in sync but not in Caddy)
-	var toRemove []string
-	for domain := range syncRewriteMap {
-		if _, exists := hostnameMap[domain]; !exists {
-			toRemove = append(toRemove, domain)
-		}
-	}
-
-	// If not a dry run, perform the actual changes
-	changesApplied := false
-	var failedHostnames []string
-	if !options.DryRun {
-		changesApplied, failedHostnames = applyAdguardChanges(
-			adguardClient,
-			options,
-			hostnameMap,
-			syncRewriteMap,
-			toAdd,
-			toUpdate,
-			toRemove,
-		)
-	}
-
-	return &AdguardSyncResult{
-		HostnameMap:     hostnameMap,
-		ToAdd:           toAdd,
-		ToUpdate:        toUpdate,
-		ToRemove:        toRemove,
-		ChangesApplied:  changesApplied,
-		SyncRewrites:    syncCreatedRewrites,
-		OtherRewrites:   otherRewrites,
-		ExistingCount:   len(existingRewrites),
-		FailedHostnames: failedHostnames,
-	}, nil
+	return syncCaddyWithAdguardInternal(adguardClient, options, hostnameMap)
 }
 
 // applyAdguardChanges applies the changes to the AdguardHome DNS rewrites.
@@ -191,6 +62,7 @@ func applyAdguardChanges(
 	hostnameMap map[string]string,
 	syncRewriteMap map[string]api.Rewrite,
 	toAdd, toUpdate, toRemove []string,
+	owned *adguardOwnership,
 ) (bool, []string) {
 	changesApplied := false
 	var failed []string
@@ -198,6 +70,11 @@ func applyAdguardChanges(
 	// Add new rewrites
 	for _, hostname := range toAdd {
 		serverIP := hostnameMap[hostname]
+		if err := owned.begin("add", hostname, serverIP); err != nil {
+			failed = append(failed, hostname)
+			logging.Error("Failed to persist AdGuard ownership intent", "error", err, "domain", hostname)
+			continue
+		}
 
 		logging.Info("Adding DNS rewrite", "domain", hostname, "answer", serverIP)
 
@@ -214,12 +91,21 @@ func applyAdguardChanges(
 		}
 
 		changesApplied = true
+		if err := owned.verifyAndRecord(client, hostname, serverIP); err != nil {
+			failed = append(failed, hostname)
+			logging.Error("AdGuard rewrite outcome is unresolved", "error", err, "domain", hostname)
+		}
 	}
 
 	// Update existing rewrites
 	for _, hostname := range toUpdate {
 		existingRewrite := syncRewriteMap[hostname]
 		newServerIP := hostnameMap[hostname]
+		if err := owned.begin("update", hostname, newServerIP); err != nil {
+			failed = append(failed, hostname)
+			logging.Error("Failed to persist AdGuard ownership intent", "error", err, "domain", hostname)
+			continue
+		}
 
 		logging.Info("Updating DNS rewrite",
 			"domain", hostname,
@@ -244,11 +130,20 @@ func applyAdguardChanges(
 		}
 
 		changesApplied = true
+		if err := owned.verifyAndRecord(client, hostname, newServerIP); err != nil {
+			failed = append(failed, hostname)
+			logging.Error("AdGuard rewrite outcome is unresolved", "error", err, "domain", hostname)
+		}
 	}
 
 	// Remove stale rewrites
 	for _, hostname := range toRemove {
 		existingRewrite := syncRewriteMap[hostname]
+		if err := owned.begin("delete", hostname, existingRewrite.Answer); err != nil {
+			failed = append(failed, hostname)
+			logging.Error("Failed to persist AdGuard ownership intent", "error", err, "domain", hostname)
+			continue
+		}
 
 		logging.Info("Removing DNS rewrite",
 			"domain", hostname,
@@ -266,6 +161,10 @@ func applyAdguardChanges(
 		}
 
 		changesApplied = true
+		if err := owned.verifyDeleted(client, hostname); err != nil {
+			failed = append(failed, hostname)
+			logging.Error("AdGuard rewrite deletion is unresolved", "error", err, "domain", hostname)
+		}
 	}
 
 	if changesApplied {
@@ -275,4 +174,80 @@ func applyAdguardChanges(
 	}
 
 	return changesApplied, failed
+}
+
+type adguardOwnership struct {
+	path  string
+	state ownership.State
+}
+
+func loadAdguardOwnership(path string) (*adguardOwnership, error) {
+	if path == "" {
+		configPath, err := config.SelectedConfigPath("")
+		if err != nil {
+			return nil, fmt.Errorf("resolve ownership state path: %w", err)
+		}
+		path = ownership.PathForConfig(configPath)
+	}
+	state, err := ownership.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("load AdGuard ownership state: %w", err)
+	}
+	return &adguardOwnership{path: path, state: state}, nil
+}
+
+func classifyAdguardRewrites(rewrites []api.Rewrite, state ownership.State) ([]api.Rewrite, []api.Rewrite, map[string]api.Rewrite) {
+	owned := make([]api.Rewrite, 0)
+	other := make([]api.Rewrite, 0)
+	ownedByDomain := make(map[string]api.Rewrite)
+	for _, rewrite := range rewrites {
+		key := ownership.Key("adguard", "rewrite", rewrite.Domain)
+		resource, known := state.Resources[key]
+		if known && state.Owns("adguard", "rewrite", rewrite.Domain) && resource.Expected == ownership.Fingerprint(rewrite.Answer) {
+			owned = append(owned, rewrite)
+			ownedByDomain[rewrite.Domain] = rewrite
+			continue
+		}
+		other = append(other, rewrite)
+	}
+	return owned, other, ownedByDomain
+}
+
+func (o *adguardOwnership) begin(operation, domain, expected string) error {
+	if err := o.state.Begin(ownership.Intent{Operation: operation, Provider: "adguard", Kind: "rewrite", ID: domain, Expected: ownership.Fingerprint(expected)}); err != nil {
+		return err
+	}
+	return ownership.Save(o.path, o.state)
+}
+
+func (o *adguardOwnership) verifyAndRecord(client *api.AdguardClient, domain, answer string) error {
+	rewrites, err := client.ListRewrites()
+	if err != nil {
+		return fmt.Errorf("read back rewrites: %w", err)
+	}
+	for _, rewrite := range rewrites {
+		if rewrite.Domain == domain && rewrite.Answer == answer {
+			if err := o.state.Record(ownership.Resource{Provider: "adguard", Kind: "rewrite", ID: domain, Expected: ownership.Fingerprint(answer)}); err != nil {
+				return err
+			}
+			o.state.Resolve("adguard", "rewrite", domain)
+			return ownership.Save(o.path, o.state)
+		}
+	}
+	return fmt.Errorf("readback did not find %s -> %s", domain, answer)
+}
+
+func (o *adguardOwnership) verifyDeleted(client *api.AdguardClient, domain string) error {
+	rewrites, err := client.ListRewrites()
+	if err != nil {
+		return fmt.Errorf("read back rewrites: %w", err)
+	}
+	for _, rewrite := range rewrites {
+		if rewrite.Domain == domain {
+			return fmt.Errorf("readback still found %s -> %s", domain, rewrite.Answer)
+		}
+	}
+	o.state.Forget("adguard", "rewrite", domain)
+	o.state.Resolve("adguard", "rewrite", domain)
+	return ownership.Save(o.path, o.state)
 }
