@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([48d3233](48d32330879f867f044f5bf68376963dc8c7ddeb))
+
 - update changelog ([244dce8](244dce83fb4d0dd8b94c9c590f48d499ad5da1ec))
 
 - update changelog ([ff33775](ff33775e79ef98aeb46c43bb7b17a97a267ef6ee))
@@ -39,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- update govulncheck action runtime ([d5bc79d](d5bc79d522550eee0e9d3a4e0282376a26c7bf8f))
 
 - update CodeQL upload action runtime ([b969c81](b969c81c3c9ff8d4d2753fc563e1f31b648f5b68))
 
