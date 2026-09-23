@@ -1489,6 +1489,17 @@ func TestOperationsRetainSanitizedPlanResults(t *testing.T) {
 	}
 }
 
+func TestOperationsRetainOnlyLatestHundred(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	for index := 0; index < 101; index++ {
+		server.recordOperation(fmt.Sprintf("plan-%d", index), &syncplan.Result{Success: true})
+	}
+	operations := getJSON[[]operationRecord](t, server, "/api/operations")
+	if len(operations) != 100 || operations[0].PlanID != "plan-100" || operations[len(operations)-1].PlanID != "plan-1" {
+		t.Fatalf("expected newest 100 records, got %#v", operations)
+	}
+}
+
 func getJSON[T any](t *testing.T, handler http.Handler, path string) T {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
