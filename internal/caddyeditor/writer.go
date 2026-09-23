@@ -53,8 +53,10 @@ func writeAndValidate(cfg EditorConfig, absPath, newContent string) error {
 
 	// Syntax valid — atomically replace the real file.
 	if err := os.Rename(tmpPath, absPath); err != nil {
-		// Fallback for cross-device rename.
-		return os.WriteFile(absPath, []byte(newContent), 0o644)
+		// The temporary file is deliberately created beside the target, so a
+		// rename failure must leave the original untouched rather than falling
+		// back to a destructive direct write.
+		return fmt.Errorf("atomically replacing caddyfile: %w", err)
 	}
 	return nil
 }
@@ -191,16 +193,89 @@ func AddEntry(cfg EditorConfig, block SiteBlock, templateName string) error {
 	return writeAndValidate(cfg, path, updated)
 }
 
-// UpdateEntry replaces the existing entry for the given hostname in the Caddyfile.
-func UpdateEntry(cfg EditorConfig, block SiteBlock, templateName string, data TemplateData) error {
+// UpdateEntry changes only the upstream of one unambiguous managed entry.
+// Authentication directives, comments, and all unrelated Caddyfile content are
+// retained verbatim. The complete candidate is validated before a single atomic
+// replacement.
+func UpdateEntry(cfg EditorConfig, block SiteBlock, _ string, data TemplateData) error {
 	editorMu.Lock()
 	defer editorMu.Unlock()
 
-	if err := removeEntryLocked(cfg, block.Hostname); err != nil {
-		return fmt.Errorf("removing old entry: %w", err)
+	if strings.TrimSpace(data.Upstream) == "" {
+		return fmt.Errorf("upstream is required")
 	}
-	block.Upstream = data.Upstream
-	return addEntryLocked(cfg, block, templateName)
+	path := AbsCaddyfilePath(cfg)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading caddyfile: %w", err)
+	}
+	blocks, err := ParseCaddyfile(path)
+	if err != nil {
+		return fmt.Errorf("parsing caddyfile: %w", err)
+	}
+	var target *SiteBlock
+	for i := range blocks {
+		if blocks[i].Hostname != block.Hostname {
+			continue
+		}
+		if target != nil {
+			return fmt.Errorf("entry %q is ambiguous in caddyfile", block.Hostname)
+		}
+		target = &blocks[i]
+	}
+	if target == nil {
+		return fmt.Errorf("entry %q not found in caddyfile", block.Hostname)
+	}
+	updated, err := replaceEntryUpstream(string(content), target.MatcherName, data.Upstream)
+	if err != nil {
+		return fmt.Errorf("updating entry %q: %w", block.Hostname, err)
+	}
+	return writeAndValidate(cfg, path, updated)
+}
+
+func replaceEntryUpstream(content, matcherName, upstream string) (string, error) {
+	lines := strings.Split(content, "\n")
+	handleStart := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "handle @"+matcherName) {
+			handleStart = i
+			break
+		}
+	}
+	if handleStart < 0 {
+		return "", fmt.Errorf("managed handle @%s not found", matcherName)
+	}
+
+	depth := strings.Count(lines[handleStart], "{") - strings.Count(lines[handleStart], "}")
+	reverseProxyLine := -1
+	for i := handleStart + 1; i < len(lines) && depth > 0; i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, "reverse_proxy ") {
+			if reverseProxyLine >= 0 {
+				return "", fmt.Errorf("multiple reverse_proxy directives")
+			}
+			reverseProxyLine = i
+		}
+		depth += strings.Count(lines[i], "{") - strings.Count(lines[i], "}")
+	}
+	if depth != 0 {
+		return "", fmt.Errorf("unterminated managed handle")
+	}
+	if reverseProxyLine < 0 {
+		return "", fmt.Errorf("no reverse_proxy directive")
+	}
+
+	parts := strings.Fields(lines[reverseProxyLine])
+	if len(parts) < 2 || strings.HasPrefix(parts[1], "/") {
+		return "", fmt.Errorf("ambiguous reverse_proxy directive")
+	}
+	needle := parts[1]
+	pos := strings.Index(lines[reverseProxyLine], needle)
+	if pos < 0 {
+		return "", fmt.Errorf("unable to locate reverse_proxy upstream")
+	}
+	lines[reverseProxyLine] = lines[reverseProxyLine][:pos] + upstream + lines[reverseProxyLine][pos+len(needle):]
+	return strings.Join(lines, "\n"), nil
 }
 
 // RemoveEntry deletes the @matcher line and handle block for the given hostname.

@@ -399,3 +399,72 @@ func TestUpdateEntry(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateEntryFailureLeavesOriginalBytesUnchanged(t *testing.T) {
+	cfg := writeCaddyfile(t, sampleCaddyfile)
+	path := AbsCaddyfilePath(cfg)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	// A path-style reverse_proxy is intentionally outside the bounded
+	// upstream-only editor. It must be rejected without first deleting the
+	// existing managed block.
+	pathStyle := strings.Replace(sampleCaddyfile, "reverse_proxy http://10.0.0.112:8989", "reverse_proxy /api/* http://10.0.0.112:8989", 1)
+	if err := os.WriteFile(path, []byte(pathStyle), 0o644); err != nil {
+		t.Fatalf("write path-style fixture: %v", err)
+	}
+	before, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read path-style fixture: %v", err)
+	}
+	err = UpdateEntry(cfg, SiteBlock{Hostname: "sonarr.vookie.net"}, "simple", TemplateData{Upstream: "http://10.0.0.112:9999"})
+	if err == nil {
+		t.Fatal("expected path-style reverse_proxy update to be rejected")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("failed update changed Caddyfile:\n--- before\n%s\n--- after\n%s", before, after)
+	}
+}
+
+func TestReplaceEntryUpstreamPreservesAuthenticationAndComments(t *testing.T) {
+	content := `*.example.test {
+	# shared comment
+	@app host app.example.test
+	handle @app {
+		# preserve this authentication flow
+		forward_auth authentik:9000 {
+			uri /outpost.goauthentik.io/auth/caddy
+		}
+		reverse_proxy http://10.0.0.8:8080
+	}
+
+	handle {
+		respond "not found" 404
+	}
+}
+`
+	updated, err := replaceEntryUpstream(content, "app", "http://10.0.0.9:8080")
+	if err != nil {
+		t.Fatalf("replace upstream: %v", err)
+	}
+	for _, preserved := range []string{
+		"# shared comment",
+		"# preserve this authentication flow",
+		"forward_auth authentik:9000 {",
+		"uri /outpost.goauthentik.io/auth/caddy",
+		"respond \"not found\" 404",
+	} {
+		if !strings.Contains(updated, preserved) {
+			t.Fatalf("updated entry lost %q:\n%s", preserved, updated)
+		}
+	}
+	if !strings.Contains(updated, "reverse_proxy http://10.0.0.9:8080") {
+		t.Fatalf("updated entry did not contain new upstream:\n%s", updated)
+	}
+}
