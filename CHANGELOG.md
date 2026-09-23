@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- show recent operation history ([0360027](0360027fb2ddf8130b539e2306c581dc731ba75b))
+
 - retain sanitized local operation history ([3907135](3907135b35a352279f3e0bccb05cf90678c1b3dd))
 
 - add ownership adoption interface ([0f26fc9](0f26fc9c5f753ab1e76ba6e529bfd186e91f8630))
@@ -84,6 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([4adfef6](4adfef644b348f7f284aa5741881ced5cb20c8e8))
 
 - update changelog ([fd81815](fd818157b7fd0649d340bfa4056150fcb26480b3))
 
