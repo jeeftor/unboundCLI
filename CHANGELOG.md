@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- enforce explicit adguard ownership ([71a6470](71a64705c1ccf4b145bb6b09fd74e329f85d4dd5))
+
 - make caddy upstream edits transactional ([15fdbf7](15fdbf7c562bc6efd4dd8973fc7b1fe438c00781))
 
 - honor selected caddy endpoint everywhere ([2f1fe2c](2f1fe2cbfcc5586f13e97505be0b530e8c4c517e))
@@ -32,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([b389120](b3891204c89486ced6a85ed9749bddee821f9d6c))
 
 - update changelog ([f6b1b77](f6b1b77cacad13dd57ffb5b2c0620d3443f185f2))
 
