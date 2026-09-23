@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- protect legacy deletes by ownership ([ed44448](ed44448e771d435ca7dd3405ece0e68aed5dc7b2))
+
 - route web removals through sync plans ([4b801a3](4b801a3755c56445d2c57f134f1740c3482ccc1e))
 
 - read cloudflare ingress by hostname and path ([872f75c](872f75c9a6af85d6a6d1aa04f632a0662b6eb02d))
@@ -102,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([1bed70e](1bed70ec338f36dcacabab83ca026d218de5053f))
 
 - update changelog ([16ee899](16ee899d641901baf880c6b28e00db77b6157ce1))
 
