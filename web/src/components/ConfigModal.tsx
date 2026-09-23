@@ -104,7 +104,15 @@ function ConfigWorkspace(props: {
   onSaveCaddyEditor: () => Promise<void>;
   onTest: (service: ServiceKey) => Promise<void>;
 }) {
-  const [activeTab, setActiveTab] = useState<ConfigTab>('caddy');
+  // Browser smoke tests select a stable initial tab through a test-only query
+  // parameter. Production navigation always starts on Caddy.
+  const smokeTab = window.UNBOUNDCLI_TEST_HOOKS === true
+    ? new URLSearchParams(window.location.search).get('configtab')
+    : null;
+  const initialTab: ConfigTab = configTabOrder.includes(smokeTab as ConfigTab)
+    ? smokeTab as ConfigTab
+    : 'caddy';
+  const [activeTab, setActiveTab] = useState<ConfigTab>(initialTab);
   return (
     <div id="config-summary" className="config-workspace">
       <div id="config-status" className={`config-status ${props.statusKind}`} role="status" aria-live="polite">{props.status}</div>

@@ -70,7 +70,7 @@ export function App() {
 
   // E2E test hooks.
   useEffect(() => {
-    if (!config || e2eRanRef.current || window.UNBOUNDCLI_TEST_HOOKS !== true) return;
+    if (!config || loading || e2eRanRef.current || window.UNBOUNDCLI_TEST_HOOKS !== true) return;
     e2eRanRef.current = true;
     const script = new URLSearchParams(window.location.search).get('e2e');
     if (!script) return;
@@ -106,7 +106,7 @@ export function App() {
       document.getElementById('app')?.setAttribute('data-e2e', 'done');
     };
     void run();
-  }, [config, setConfigOpen]);
+  }, [config, loading, setConfigOpen]);
 
   // ── Standalone visualize page (/visualize/hostname) ──
   const visualizeMatch = typeof window !== 'undefined'

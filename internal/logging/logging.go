@@ -27,6 +27,7 @@ const (
 var (
 	// Default logger instance
 	logger     *slog.Logger
+	loggerMu   sync.RWMutex
 	loggerOnce sync.Once
 
 	// Current log level
@@ -45,10 +46,7 @@ func Init(level LogLevel) {
 		})
 
 		// Create the logger
-		logger = slog.New(handler)
-
-		// Set as default logger
-		slog.SetDefault(logger)
+		setLogger(slog.New(handler))
 	})
 }
 
@@ -75,10 +73,25 @@ func setLevel(level LogLevel) {
 
 // GetLogger returns the configured logger
 func GetLogger() *slog.Logger {
-	if logger == nil {
+	loggerMu.RLock()
+	configured := logger
+	loggerMu.RUnlock()
+	if configured == nil {
 		Init(LogLevelInfo) // Initialize with default level if not done yet
+		loggerMu.RLock()
+		configured = logger
+		loggerMu.RUnlock()
 	}
-	return logger
+	return configured
+}
+
+// setLogger installs logger for package helpers and the slog package default.
+// The mutex keeps handler replacement safe while background work is logging.
+func setLogger(next *slog.Logger) {
+	loggerMu.Lock()
+	logger = next
+	loggerMu.Unlock()
+	slog.SetDefault(next)
 }
 
 // GetLogLevel returns the current log level
@@ -208,8 +221,7 @@ func (h *customHandler) WithGroup(name string) slog.Handler {
 // SetCustomHandler sets a custom log handler for TUI mode
 func SetCustomHandler(handler LogHandler) {
 	customH := newCustomHandler(handler, currentLevel)
-	logger = slog.New(customH)
-	slog.SetDefault(logger)
+	setLogger(slog.New(customH))
 }
 
 // ResetToStderr resets logging back to stderr (for non-TUI mode)
@@ -217,8 +229,7 @@ func ResetToStderr() {
 	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: currentLevel,
 	})
-	logger = slog.New(handler)
-	slog.SetDefault(logger)
+	setLogger(slog.New(handler))
 }
 
 // ── Ring buffer for web UI log streaming ────────────────────────────────────
@@ -272,8 +283,7 @@ func GetLogLinesSince(since int) ([]LogLine, int) {
 // Call this once when starting the web server.
 func EnableBuffer() {
 	stderrH := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: currentLevel})
-	logger = slog.New(&multiHandler{primary: stderrH})
-	slog.SetDefault(logger)
+	setLogger(slog.New(&multiHandler{primary: stderrH}))
 }
 
 // multiHandler writes to a primary slog.Handler AND appends to the ring buffer.

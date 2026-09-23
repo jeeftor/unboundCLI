@@ -27,6 +27,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Build web UI
         run: cd web && npm ci --legacy-peer-deps && npm run build
+      - name: Check web UI
+        run: cd web && npm run lint && npm run test && npm run typecheck
+      - name: Install Chrome Headless Shell
+        run: |
+          cd web
+          npx --yes @puppeteer/browsers@2.13.2 install chrome-headless-shell@stable --path "$RUNNER_TEMP/puppeteer"
+          echo "CHROME_HEADLESS_SHELL=$(find "$RUNNER_TEMP/puppeteer" -type f -name chrome-headless-shell -perm -u+x | head -n 1)" >> "$GITHUB_ENV"
       - name: Install Caddy
         run: |
           curl -sSL "https://caddyserver.com/api/download?os=linux&arch=amd64" -o /usr/local/bin/caddy
@@ -35,5 +42,6 @@ jobs:
       - name: Build
         run: go build -v ./...
       - name: Test
-        run: |
-          go list ./... | grep -v -E 'internal/web|internal/status' | xargs go test -race -v
+        run: go test -race -v ./...
+      - name: Browser smoke test
+        run: CADDY_DNS_SYNC_BROWSER_TESTS=1 go test -v ./internal/web -run TestBrowserSmokeWithFakeData -count=1

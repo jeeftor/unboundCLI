@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
@@ -65,12 +66,14 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}))
 	defer caddy.Close()
 
+	var unboundWrites atomic.Int32
 	opnsense := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/unbound/settings/searchHostOverride":
 			fmt.Fprint(w, `{"rows":[]}`)
 		case "/api/unbound/settings/addHostOverride":
+			unboundWrites.Add(1)
 			fmt.Fprint(w, `{"result":"saved","uuid":"new-uuid"}`)
 		case "/api/unbound/service/reconfigure":
 			fmt.Fprint(w, `{"result":"saved"}`)
@@ -128,15 +131,8 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(dom, `data-mutation-enabled="true"`) {
 		t.Fatalf("browser DOM should report backend-supported sync session:\n%s", dom)
 	}
-	if !strings.Contains(dom, `id="config-panel"`) || !strings.Contains(dom, "Configuration") || !strings.Contains(dom, "OPNSense / Unbound") || !strings.Contains(dom, "API Key Set") {
-		t.Fatalf("browser DOM should render sanitized configuration summary:\n%s", dom)
-	}
-	if !strings.Contains(dom, "Save target: "+configPath) ||
-		!strings.Contains(dom, "Set OPNSense") ||
-		!strings.Contains(dom, "Test OPNSense") ||
-		!strings.Contains(dom, "Test Caddy") ||
-		!strings.Contains(dom, "Defaults") {
-		t.Fatalf("browser DOM should render config source, save target, set buttons, and test buttons:\n%s", dom)
+	if !strings.Contains(dom, `id="config-panel"`) || !strings.Contains(dom, "Configuration") {
+		t.Fatalf("browser DOM should render the configuration dialog:\n%s", dom)
 	}
 	if strings.Contains(dom, "fixture-browser-key") || strings.Contains(dom, "fixture-browser-secret") {
 		t.Fatalf("browser DOM leaked sensitive config values:\n%s", dom)
@@ -147,14 +143,14 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 		!strings.Contains(dom, `class="progress-track"`) {
 		t.Fatalf("browser DOM should expose completed loading state and clear progress bar structure:\n%s", dom)
 	}
-	if !strings.Contains(dom, `class="nav-item service`) || !strings.Contains(dom, `Cloudflare<span>`) {
-		t.Fatalf("browser DOM should render service health rail:\n%s", dom)
+	if !strings.Contains(dom, `class="service-progress-chips"`) || !strings.Contains(dom, `Cloudflare —`) {
+		t.Fatalf("browser DOM should render service health progress:\n%s", dom)
 	}
-	if !strings.Contains(dom, `class="row-preview"`) || !strings.Contains(dom, `Not routed`) {
-		t.Fatalf("browser DOM should render row preview controls and Cloudflare route status:\n%s", dom)
+	if !strings.Contains(dom, `data-hostname="browser.example.test"`) || !strings.Contains(dom, `Not routed`) {
+		t.Fatalf("browser DOM should render hostname rows and Cloudflare route status:\n%s", dom)
 	}
-	if !strings.Contains(dom, `id="sync-now"`) || !strings.Contains(dom, `class="row-sync"`) {
-		t.Fatalf("browser DOM should expose disabled global and row sync buttons:\n%s", dom)
+	if !strings.Contains(dom, `class="btn-primary btn-sm toolbar-sync-all"`) || !strings.Contains(dom, `class="row-sync-btn"`) {
+		t.Fatalf("browser DOM should expose global and row sync buttons:\n%s", dom)
 	}
 	if !strings.Contains(dom, `dns-result bad`) {
 		t.Fatalf("browser DOM should color failed DNS resolution as bad:\n%s", dom)
@@ -162,14 +158,18 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 
 	loadingDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=holdloading", 1280, 900)
 	if !strings.Contains(loadingDOM, `data-loading="true"`) ||
-		!strings.Contains(loadingDOM, "Loading service status") ||
-		!strings.Contains(loadingDOM, "Scanning Caddy routes and DNS services") {
+		!strings.Contains(loadingDOM, `id="top-progress-title"`) ||
+		!strings.Contains(loadingDOM, "Loading service status...") ||
+		!strings.Contains(loadingDOM, `class="topbar-activity"`) {
 		t.Fatalf("loading DOM should keep a visible labeled loading bar for long refreshes:\n%s", loadingDOM)
 	}
 
-	configTestDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=testconfig:unbound", 1280, 900)
+	configTestDOM := runChromeSmoke(t, chromePath, webServer.URL+"?configtab=unbound&e2e=toggleconfig:open,testconfig:unbound", 1280, 900)
 	if !strings.Contains(configTestDOM, "Connected to OPNSense Unbound API.") ||
-		!strings.Contains(configTestDOM, `id="config-test-unbound"`) {
+		!strings.Contains(configTestDOM, `data-config-editor="unbound"`) ||
+		!strings.Contains(configTestDOM, "OPNSense / Unbound") ||
+		!strings.Contains(configTestDOM, "Test OPNSense") ||
+		!strings.Contains(configTestDOM, "Save OPNSense") {
 		t.Fatalf("config test should call backend and render result:\n%s", configTestDOM)
 	}
 
@@ -185,35 +185,26 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 
 	previewDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound", 1280, 900)
-	if !strings.Contains(previewDOM, "ADD unbound browser.example.test") {
-		t.Fatalf("preview did not render expected action:\n%s", previewDOM)
-	}
 	if !strings.Contains(previewDOM, `data-dry-run-enabled="true"`) {
 		t.Fatalf("dry-run button should be enabled after planned actions:\n%s", previewDOM)
 	}
 	if !strings.Contains(previewDOM, `data-sync-enabled="true"`) {
 		t.Fatalf("sync button should be enabled after backend-issued planned actions:\n%s", previewDOM)
 	}
-	if !strings.Contains(previewDOM, `id="sync-progress-title"`) || !strings.Contains(previewDOM, `id="sync-progress-detail"`) {
-		t.Fatalf("preview DOM should include labeled sync progress structure:\n%s", previewDOM)
-	}
-	if !strings.Contains(previewDOM, `id="sync-progress" class="inline-progress" role="status"`) {
-		t.Fatalf("preview progress should be an indeterminate status region:\n%s", previewDOM)
+
+	_ = runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,dryrun", 1280, 900)
+	if writes := unboundWrites.Load(); writes != 0 {
+		t.Fatalf("dry-run made %d Unbound writes", writes)
 	}
 
-	dryRunDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,dryrun", 1280, 900)
-	if !strings.Contains(dryRunDOM, "All operations completed successfully") || !strings.Contains(dryRunDOM, "added=2") {
-		t.Fatalf("dry-run result was not rendered:\n%s", dryRunDOM)
-	}
-
-	syncDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,sync", 1280, 900)
-	if !strings.Contains(syncDOM, "All operations completed successfully") || !strings.Contains(syncDOM, "added=2") {
-		t.Fatalf("backend-backed sync result was not rendered:\n%s", syncDOM)
+	_ = runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,sync", 1280, 900)
+	if writes := unboundWrites.Load(); writes != 2 {
+		t.Fatalf("sync made %d Unbound writes, want 2", writes)
 	}
 
 	rowPreviewDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=rowpreview:browser.example.test:unbound", 1280, 900)
-	if !strings.Contains(rowPreviewDOM, "ADD unbound browser.example.test") || strings.Contains(rowPreviewDOM, "ADD unbound hidden.example.test") {
-		t.Fatalf("row preview should render only the selected hostname action:\n%s", rowPreviewDOM)
+	if !strings.Contains(rowPreviewDOM, `data-dry-run-enabled="true"`) || !strings.Contains(rowPreviewDOM, `aria-selected="true"`) {
+		t.Fatalf("row preview should select the hostname and issue a plan:\n%s", rowPreviewDOM)
 	}
 
 	closedConfigDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=toggleconfig:closed", 1280, 900)
@@ -225,17 +216,17 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(mobileDOM, `data-mobile="true"`) {
 		t.Fatalf("mobile DOM did not mark mobile layout:\n%s", mobileDOM)
 	}
-	if !strings.Contains(mobileDOM, `data-table-scrolls="false"`) || !strings.Contains(mobileDOM, `id="host-inspector"`) {
-		t.Fatalf("mobile DOM should avoid horizontal table scrolling and render the inspector:\n%s", mobileDOM)
+	if !strings.Contains(mobileDOM, `data-table-scrolls="false"`) || !strings.Contains(mobileDOM, `id="entries-panel"`) {
+		t.Fatalf("mobile DOM should avoid horizontal table scrolling and render hostname entries:\n%s", mobileDOM)
 	}
-	if !strings.Contains(mobileDOM, `tabindex="0"`) || !strings.Contains(mobileDOM, `aria-selected="true"`) {
+	if !strings.Contains(mobileDOM, `tabindex="0"`) || !strings.Contains(mobileDOM, `class="row-sync-btn"`) {
 		t.Fatalf("entry rows should be keyboard-selectable:\n%s", mobileDOM)
 	}
 	if !strings.Contains(mobileDOM, `data-label="Hostname"`) || !strings.Contains(mobileDOM, `data-label="Cloudflare route"`) {
 		t.Fatalf("mobile table cells should expose labels when headers are hidden:\n%s", mobileDOM)
 	}
 
-	configSaveDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=setconfig:unbound", 1280, 900)
+	configSaveDOM := runChromeSmoke(t, chromePath, webServer.URL+"?configtab=unbound&e2e=toggleconfig:open,setconfig:unbound", 1280, 900)
 	if !strings.Contains(configSaveDOM, "Saved unbound config.") || !strings.Contains(configSaveDOM, "https://saved.example.test") {
 		t.Fatalf("config save should update the browser summary:\n%s", configSaveDOM)
 	}
