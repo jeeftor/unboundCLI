@@ -11,6 +11,7 @@ import type {
   EntriesResponse,
   PlanResponse,
 	OwnershipAdoptionPreview,
+	OperationRecord,
   PruneResponse,
   ServiceKey,
   SyncAction
@@ -138,4 +139,5 @@ export const api = {
     getJSON<OwnershipAdoptionPreview>(`/api/ownership/adoption?provider=${provider}`),
   ownershipAdopt: (previewID: string, ids: string[]) =>
     postJSON<{ adopted: number }>('/api/ownership/adoption', { preview_id: previewID, ids }),
+  operations: () => getJSON<OperationRecord[]>('/api/operations'),
 };

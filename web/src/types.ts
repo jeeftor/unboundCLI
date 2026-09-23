@@ -272,3 +272,4 @@ export type PruneResponse = {
 
 export type OwnershipCandidate = { id: string; kind: string; current: string };
 export type OwnershipAdoptionPreview = { preview_id: string; candidates: OwnershipCandidate[] };
+export type OperationRecord = { completed_at: string; plan_id: string; success: boolean; message: string; items_added: number; items_updated: number; items_deleted: number; actions: { service: string; hostname: string; type: string; success: boolean; skipped: boolean }[] };

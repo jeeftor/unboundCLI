@@ -107,6 +107,12 @@
 .ownership-candidates label { display: grid; grid-template-columns: auto 90px minmax(0, 1fr); gap: 8px; align-items: start; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .ownership-candidates code, .ownership-candidates small { grid-column: 3; overflow-wrap: anywhere; }
 .ownership-candidates small { color: var(--text-2); }
+.operation-history { display: grid; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
+.operation-history > div:first-child { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.operation-history span { color: var(--text-2); font-size: 12px; }
+.operation-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--bg-3); font-size: 12px; }
+.operation-row.ok { border-left: 3px solid var(--success); }
+.operation-row.error { border-left: 3px solid var(--danger); }
 
 .config-overview {
   display: flex;
