@@ -145,6 +145,8 @@ func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusForbidden, err)
 		return
 	}
+	writeError(w, http.StatusConflict, fmt.Errorf("direct Cloudflare route changes are unavailable until they use a server-issued ownership-checked plan"))
+	return
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	runtime := s.runtimeSnapshot()
 	if runtime.Clients.Cloudflare == nil {
@@ -206,6 +208,8 @@ func (s *Server) handleCloudflareRemoveRoute(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusForbidden, err)
 		return
 	}
+	writeError(w, http.StatusConflict, fmt.Errorf("direct Cloudflare route changes are unavailable until they use a server-issued ownership-checked plan"))
+	return
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	runtime := s.runtimeSnapshot()
 	if runtime.Clients.Cloudflare == nil {
@@ -248,6 +252,8 @@ func (s *Server) handleCloudflareRepairDNS(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusForbidden, err)
 		return
 	}
+	writeError(w, http.StatusConflict, fmt.Errorf("direct Cloudflare DNS repair is unavailable until it uses a server-issued ownership-checked plan"))
+	return
 	runtime := s.runtimeSnapshot()
 	if runtime.Clients.Cloudflare == nil {
 		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare not configured"))

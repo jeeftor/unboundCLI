@@ -1465,6 +1465,20 @@ func TestDiagnosticsPruneRejectsDestructiveExecution(t *testing.T) {
 	}
 }
 
+func TestDirectCloudflareMutationsRequirePlan(t *testing.T) {
+	server := NewServerWithOptions(&app.Runtime{}, Options{ApplyToken: "test-token", AllowMutations: true, AllowedOrigin: "http://127.0.0.1:8080", BoundHost: "127.0.0.1"})
+	for _, path := range []string{"/api/cloudflare/set-route", "/api/cloudflare/remove-route", "/api/cloudflare/repair-dns"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
+		req.Header.Set("X-UnboundCLI-Token", "test-token")
+		req.Header.Set("Origin", "http://127.0.0.1:8080")
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("%s: expected ownership-plan rejection, got %d: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func getJSON[T any](t *testing.T, handler http.Handler, path string) T {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
