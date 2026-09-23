@@ -15,6 +15,7 @@ import (
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/models"
 	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
@@ -38,6 +39,20 @@ func TestLoadEntriesReportsMissingCaddyClient(t *testing.T) {
 	}
 	if report.Services[ServiceDNS].Status == ServicePending {
 		t.Fatal("expected DNS report to have terminal status after Caddy failure")
+	}
+}
+
+func TestEnrichWithCloudflareCarriesDNSRecordIdentity(t *testing.T) {
+	entries := []*models.Entry{{Hostname: "app.example.test"}}
+	loader := &DataLoader{}
+	loader.enrichWithCloudflare(entries, map[string]api.CloudflareIngressEntry{
+		"app.example.test": {Hostname: "app.example.test", TunnelID: "tunnel-1", Service: "http://10.0.0.15"},
+	}, map[string]api.CloudflareDNSRecord{
+		"app.example.test": {ID: "dns-record-1", Hostname: "app.example.test", Target: "tunnel-1.cfargotunnel.com"},
+	})
+	status := entries[0].CloudflareStatus
+	if !status.HasDNSRecord || status.DNSRecordID != "dns-record-1" {
+		t.Fatalf("expected immutable DNS record identity in status, got %#v", status)
 	}
 }
 

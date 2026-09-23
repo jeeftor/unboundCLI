@@ -212,7 +212,7 @@ type fetchedData struct {
 	dhcpLeases       map[string]*api.DNSMasqLease
 	dhcpLeaseCount   int
 	cfDetails        map[string]api.CloudflareIngressEntry
-	cfDNSRecords     map[string]string
+	cfDNSRecords     map[string]api.CloudflareDNSRecord
 }
 
 // fetchErrors holds errors from parallel API fetches.
@@ -355,12 +355,21 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 			if d.contextErr() != nil {
 				return
 			}
-			records, err := cfClient.ListManagedDNSRecords()
+			records, err := cfClient.ListTunnelDNSRecords()
 			if err != nil {
 				logging.Warn("Failed to load Cloudflare DNS records", "error", err)
 			} else {
-				data.cfDNSRecords = records
-				logging.Info("Loaded Cloudflare DNS records", "count", len(records))
+				byHostname := make(map[string]api.CloudflareDNSRecord, len(records))
+				for _, record := range records {
+					if _, duplicate := byHostname[record.Hostname]; duplicate {
+						errs.cf = fmt.Errorf("ambiguous Cloudflare tunnel DNS records for %s", record.Hostname)
+						logging.Warn("Failed to load Cloudflare DNS records", "error", errs.cf)
+						return
+					}
+					byHostname[record.Hostname] = record
+				}
+				data.cfDNSRecords = byHostname
+				logging.Info("Loaded Cloudflare DNS records", "count", len(byHostname))
 			}
 		}()
 	}
@@ -370,7 +379,7 @@ func (d *DataLoader) fetchAllData() (fetchedData, fetchErrors) {
 }
 
 // enrichWithCloudflare merges Cloudflare tunnel and DNS data into the entries.
-func (d *DataLoader) enrichWithCloudflare(entries []*models.Entry, cfDetails map[string]api.CloudflareIngressEntry, cfDNSRecords map[string]string) {
+func (d *DataLoader) enrichWithCloudflare(entries []*models.Entry, cfDetails map[string]api.CloudflareIngressEntry, cfDNSRecords map[string]api.CloudflareDNSRecord) {
 	if cfDetails == nil {
 		return
 	}
@@ -379,7 +388,7 @@ func (d *DataLoader) enrichWithCloudflare(entries []*models.Entry, cfDetails map
 		hostIndex[e.Hostname] = i
 	}
 	for hostname, cfEntry := range cfDetails {
-		_, hasDNSRecord := cfDNSRecords[hostname]
+		dnsRecord, hasDNSRecord := cfDNSRecords[hostname]
 		cfStatus := models.CloudflareStatus{
 			Configured:       true,
 			TunnelName:       cfEntry.TunnelName,
@@ -393,6 +402,7 @@ func (d *DataLoader) enrichWithCloudflare(entries []*models.Entry, cfDetails map
 			Http2Origin:      cfEntry.Http2Origin,
 			HasAccessPolicy:  cfEntry.HasAccessPolicy,
 			HasDNSRecord:     hasDNSRecord,
+			DNSRecordID:      dnsRecord.ID,
 		}
 		if idx, ok := hostIndex[hostname]; ok {
 			entries[idx].CloudflareStatus = cfStatus

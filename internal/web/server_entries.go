@@ -56,6 +56,7 @@ type CloudflareStatusResponse struct {
 	Http2Origin      bool   `json:"http2_origin"`
 	HasAccessPolicy  bool   `json:"has_access_policy"`
 	HasDNSRecord     bool   `json:"has_dns_record"`
+	DNSRecordID      string `json:"dns_record_id"`
 }
 
 type EntryResponse struct {
@@ -701,6 +702,7 @@ func entryResponses(entries []*models.Entry) []EntryResponse {
 				Http2Origin:      entry.CloudflareStatus.Http2Origin,
 				HasAccessPolicy:  entry.CloudflareStatus.HasAccessPolicy,
 				HasDNSRecord:     entry.CloudflareStatus.HasDNSRecord,
+				DNSRecordID:      entry.CloudflareStatus.DNSRecordID,
 			},
 			OverallStatus:              entry.OverallStatus,
 			StatusLabel:                entry.OverallStatus.Label(),
