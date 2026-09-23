@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- make caddy upstream edits transactional ([15fdbf7](15fdbf7c562bc6efd4dd8973fc7b1fe438c00781))
+
 - honor selected caddy endpoint everywhere ([2f1fe2c](2f1fe2cbfcc5586f13e97505be0b530e8c4c517e))
 
 - resolve effective configuration safely ([4c3a664](4c3a664f952079151bc9dacb21e040f79ca9d496))
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([d8cda1d](d8cda1de2704d2d6eddf3e5b7aebef3a7edc926c))
 
 - update changelog ([ea443fb](ea443fb8758a25e086333593f6ec383b3c859380))
 
