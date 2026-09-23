@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- include rebuilt web assets ([da5a50b](da5a50b36f687edab1722108f9fd309767480bed))
+
 - report non-json API failures clearly ([bec2814](bec28140cc3dbbb07519555d8ee2e32b56ebde95))
 
 - improve mobile touch targets and contrast ([93c4421](93c4421972cd4bfac62b81a8c06acac9b289eed8))
@@ -118,6 +120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([21bda15](21bda1531cb5d2d53d7584f4151caef5860bad46))
 
 - update changelog ([c7d4041](c7d4041b0803fe8afa7b26d995da61d8d0129578))
 
