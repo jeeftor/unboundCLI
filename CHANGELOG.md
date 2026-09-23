@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- preserve cloudflare catch-all rules ([f454ba0](f454ba0eab112bccfe3003be19b5f2711ccf2acd))
+
 - invalidate web plans after config changes ([f4704ae](f4704aed022254ae95bdfe28159efd48d48742ed))
 
 - require managed unbound records for mutations ([b80b766](b80b766481a793c81e595b5709ba046e9ee314c9))
@@ -46,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([6d71695](6d71695a522a66f38f2c5baf79efeb96601e88aa))
 
 - update changelog ([3f8ae94](3f8ae943b711b503305e300a11caf7d02cba25be))
 
