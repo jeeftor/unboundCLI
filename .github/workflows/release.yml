@@ -45,7 +45,6 @@ jobs:
           BINARY=$(find . -type f ! -name "*.intoto.jsonl" ! -name "*.sig" ! -name "*.pem" ! -name "*.bundle" | head -1)
           echo "Signing: $BINARY"
           cosign sign-blob --yes \
-            --oidc-issuer=https://token.actions.githubusercontent.com \
             --bundle="${BINARY}.bundle" \
             --output-signature="${BINARY}.sig" \
             --output-certificate="${BINARY}.pem" \

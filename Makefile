@@ -156,4 +156,4 @@ uninstall-service:
 # Run GoReleaser in dry-run mode
 release-dry-run:
 	@echo "Running GoReleaser in dry-run mode..."
-	goreleaser release --snapshot --clean --skip=publish
+	goreleaser release --snapshot --clean --skip=publish,sign
