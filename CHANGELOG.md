@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- block unsafe diagnostics pruning ([9b06343](9b063430ec6fc975aa44b64259904b4aca8ffe52))
+
 - reject duplicate adguard rewrites ([4ad8e02](4ad8e02469a3ac1798ebf70c5d3d89b1252353d8))
 
 - enforce ownership in shared adguard applies ([5f526ea](5f526eabf35369f47143e7288f43efb14f2a28ce))
@@ -64,6 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([29485a2](29485a2b19afd65449b7aab3d7c8d23ba27cc789))
 
 - update changelog ([d41ada0](d41ada005e0793621c98a6b5afa1ad51f016a543))
 
