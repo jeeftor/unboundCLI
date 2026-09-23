@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- harden web access and probe policy ([46bb98a](46bb98a17e948f8d5fb65c28db1570930ece1a88))
+
 - satisfy frontend end-of-file check ([086dea9](086dea9783511c653dc0c5f7f1f781576202036d))
 
 - sync button 502s and file_server hostnames skipped ([18f4b6b](18f4b6bc812c30d953011b94cf2e20a28946acee))
@@ -19,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([c58650d](c58650dcf32ff29bb537de4674f5197bb73f116d))
 
 - update changelog ([a85a191](a85a191887a6c5717c4e3079e50ca8efa71ab067))
 
