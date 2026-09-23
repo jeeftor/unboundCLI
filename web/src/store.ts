@@ -297,15 +297,6 @@ export const useStore = create<AppState>((set, _get) => ({
 
 const CONFIG_CACHE_KEY = 'caddy-dns-sync:config';
 
-function loadCachedConfig(): ConfigResponse | null {
-  try {
-    const raw = sessionStorage.getItem(CONFIG_CACHE_KEY);
-    return raw ? (JSON.parse(raw) as ConfigResponse) : null;
-  } catch {
-    return null;
-  }
-}
-
 function saveCachedConfig(cfg: ConfigResponse) {
   try {
     sessionStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(cfg));
