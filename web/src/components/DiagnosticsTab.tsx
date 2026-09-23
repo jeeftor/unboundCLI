@@ -17,6 +17,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { PruneModal } from './PruneModal';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { diagnosticsEmptyState } from '../lib/diagnostics';
 import type {
   DiagnosticCategory,
   DiagnosticIssue,
@@ -184,6 +185,7 @@ export function DiagnosticsTab() {
     byHostname.set(issue.hostname, list);
   }
   const sortedHostnames = Array.from(byHostname.keys()).sort();
+  const emptyState = data ? diagnosticsEmptyState(issues.length, data.total_entries) : null;
 
   return (
     <main className="dashboard-shell diagnostics-shell">
@@ -321,8 +323,8 @@ export function DiagnosticsTab() {
       ) : filteredIssues.length === 0 && data ? (
         <div className="diagnostics-all-clear">
           <CheckCircle2 size={32} />
-          <h3>All clear!</h3>
-          <p>No issues found across {data.total_entries} entries.</p>
+          <h3>{emptyState?.title}</h3>
+          <p>{emptyState?.detail}</p>
         </div>
       ) : (
         <div className="diagnostics-issues">
