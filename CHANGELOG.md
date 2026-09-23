@@ -105,6 +105,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- clarify delete force behavior ([447af3e](447af3eac5220140665bc77ac67212e99e96f42a))
+
+- update changelog ([cea8c87](cea8c8723ba4f47bbdc903c77be24fd463b7bff7))
+
 - update changelog ([1bed70e](1bed70ec338f36dcacabab83ca026d218de5053f))
 
 - update changelog ([16ee899](16ee899d641901baf880c6b28e00db77b6157ce1))
