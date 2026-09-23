@@ -1159,5 +1159,33 @@ func TestGetAllTunnelsDetails(t *testing.T) {
 	}
 }
 
+func TestGetAllTunnelsDetailsRejectsDuplicateHostname(t *testing.T) {
+	accountID := "test-account"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"success":true,"errors":[],"messages":[],"result":[
+			{"id":"tunnel-alpha","name":"alpha","created_at":"2021-01-01T00:00:00Z","deleted_at":null,"connections":[]},
+			{"id":"tunnel-beta","name":"beta","created_at":"2021-01-01T00:00:00Z","deleted_at":null,"connections":[]}
+		],"result_info":{"page":1,"per_page":20,"total_pages":1,"count":2,"total_count":2}}`)
+	})
+	for _, tunnelID := range []string{"tunnel-alpha", "tunnel-beta"} {
+		path := fmt.Sprintf("/client/v4/accounts/%s/cfd_tunnel/%s/configurations", accountID, tunnelID)
+		mux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"success":true,"errors":[],"messages":[],"result":{"version":1,"config":{"ingress":[{"hostname":"duplicate.example.com","service":"http://10.0.0.1"},{"service":"http_status:404"}]}}}`)
+		})
+	}
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	client, err := NewCloudflareClientWithBaseURL(CloudflareConfig{APIToken: "token", AccountID: accountID, TunnelID: "tunnel-alpha"}, srv.URL+"/client/v4")
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	if _, err := client.GetAllTunnelsDetails(); err == nil {
+		t.Fatal("expected duplicate hostname to be rejected")
+	}
+}
+
 // ensure strings import is used (avoids lint warnings if helpers are inlined later)
 var _ = strings.Contains

@@ -258,7 +258,8 @@ type CloudflareIngressEntry struct {
 }
 
 // GetAllTunnelsHostnames scans every active tunnel in the account and returns
-// a consolidated hostname map. First tunnel wins on duplicates (logged as warning).
+// a consolidated hostname map. Duplicate hostnames are rejected because choosing
+// by tunnel listing order could send mutations to the wrong resource.
 // Does NOT use c.tunnelID — scans the whole account.
 func (c *CloudflareClient) GetAllTunnelsHostnames() (map[string]TunnelHostEntry, error) {
 	ctx := c.getCtx()
@@ -297,11 +298,7 @@ func (c *CloudflareClient) GetAllTunnelsHostnames() (map[string]TunnelHostEntry,
 			}
 
 			if existing, exists := result[ingress.Hostname]; exists {
-				logging.Warn("Hostname found in multiple tunnels, keeping first",
-					"hostname", ingress.Hostname,
-					"firstTunnel", existing.TunnelName,
-					"duplicateTunnel", tunnel.Name)
-				continue
+				return nil, fmt.Errorf("hostname %s is configured in multiple tunnels (%s and %s)", ingress.Hostname, existing.TunnelName, tunnel.Name)
 			}
 
 			result[ingress.Hostname] = TunnelHostEntry{
@@ -879,7 +876,8 @@ func (c *CloudflareClient) ListTunnelBackups() ([]string, error) {
 // GetAllTunnelsDetails scans every active tunnel in the account and returns a
 // consolidated map of hostname → CloudflareIngressEntry with full OriginRequest data.
 // Per-rule OriginRequest settings override the tunnel-level defaults.
-// First tunnel wins on duplicate hostnames (with warning log).
+// Duplicate hostnames are rejected so callers cannot mistake one tunnel's
+// ingress rule for another's.
 // Does NOT use c.tunnelID for filtering — scans the whole account.
 func (c *CloudflareClient) GetAllTunnelsDetails() (map[string]CloudflareIngressEntry, error) {
 	ctx := c.getCtx()
@@ -920,11 +918,7 @@ func (c *CloudflareClient) GetAllTunnelsDetails() (map[string]CloudflareIngressE
 			}
 
 			if existing, exists := result[ingress.Hostname]; exists {
-				logging.Warn("Hostname found in multiple tunnels, keeping first",
-					"hostname", ingress.Hostname,
-					"firstTunnel", existing.TunnelName,
-					"duplicateTunnel", tunnel.Name)
-				continue
+				return nil, fmt.Errorf("hostname %s is configured in multiple tunnels (%s and %s)", ingress.Hostname, existing.TunnelName, tunnel.Name)
 			}
 
 			// Merge: start from tunnel default, override with per-rule values
