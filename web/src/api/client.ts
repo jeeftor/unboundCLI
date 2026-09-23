@@ -75,16 +75,15 @@ export const api = {
   config: (signal?: AbortSignal) => getJSON<ConfigResponse>('/api/config', signal),
   entries: (signal?: AbortSignal) => getJSON<EntriesResponse>('/api/entries', signal),
   logs: (since: number) => getJSON<{ lines: Array<{ index: number; level: string; message: string; time: string }>; cursor: number }>(`/api/logs?since=${since}`),
-  planSync: (service: string, hostname = '') => {
+  planSync: (service: string, hostname = '', unsync = false) => {
     const query = new URLSearchParams();
     query.set('service', service);
     if (hostname) query.set('hostname', hostname);
+    if (unsync) query.set('unsync', 'true');
     return getJSON<PlanResponse>(`/api/sync/plan?${query.toString()}`);
   },
   applySync: (payload: { dry_run: boolean; actions?: SyncAction[]; plan_id?: string; action_ids?: string[] }) =>
     postJSON<ApplyResponse>('/api/sync/apply', payload),
-  removeEntry: (hostname: string, service: 'all' | 'unbound' | 'adguard' = 'all') =>
-    postJSON<{ removed: number; message: string }>('/api/sync/remove', { hostname, service }),
   saveConfig: (payload: unknown) => postJSON<ConfigResponse>('/api/config', payload),
   testConfig: (service: ServiceKey) => postJSON<ConfigTestResponse>('/api/config/test', { service }),
 

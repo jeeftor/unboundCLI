@@ -960,7 +960,7 @@ func TestPlanRouteRejectsStaleCachedInventoryWhenSourceFails(t *testing.T) {
 	}
 }
 
-func TestSyncRemoveProtectsUnownedAdguardRewrite(t *testing.T) {
+func TestSyncRemoveRequiresServerIssuedPlan(t *testing.T) {
 	adguard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/control/rewrite/list":
@@ -993,19 +993,8 @@ func TestSyncRemoveProtectsUnownedAdguardRewrite(t *testing.T) {
 	req.Header.Set("Origin", "http://127.0.0.1:8080")
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var response struct {
-		Removed int      `json:"removed"`
-		Message string   `json:"message"`
-		Errors  []string `json:"errors"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if response.Removed != 0 || len(response.Errors) != 0 || !strings.Contains(response.Message, "protected unmanaged") {
-		t.Fatalf("expected protected manual rewrite, got %#v", response)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "server-issued") {
+		t.Fatalf("expected plan-required conflict, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

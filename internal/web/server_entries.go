@@ -354,6 +354,11 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, err)
 		return
 	}
+	if s.directSyncRemovalsBlocked() {
+		writeError(w, http.StatusConflict, fmt.Errorf("direct record removal is unavailable; issue an unsync plan and apply its server-issued action IDs"))
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		Hostname string `json:"hostname"`
@@ -494,6 +499,12 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 	// Refresh auth cache — entries may have changed.
 	s.invalidateEntriesCache()
 	go s.refreshAuthCache()
+}
+
+// directSyncRemovalsBlocked keeps the legacy handler fail-closed until every
+// interface uses an immutable unsync plan rather than a direct provider write.
+func (s *Server) directSyncRemovalsBlocked() bool {
+	return true
 }
 
 func (s *Server) loadOwnershipState() (ownership.State, string, error) {

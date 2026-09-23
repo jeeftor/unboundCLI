@@ -14,7 +14,7 @@ import { CopyButton } from './CopyButton';
 export function EntriesTable({
   entries,
   selectedHostname,
-  mutationEnabled,
+  mutationEnabled: _mutationEnabled,
   enabledServices: _enabledServices,
   caddyServerIP,
   suppressed,
@@ -23,7 +23,6 @@ export function EntriesTable({
   onQuickSync,
   onOpenModify,
   onOpenVisualize,
-  onRemove,
 }: {
   entries: Entry[];
   selectedHostname: string;
@@ -36,7 +35,6 @@ export function EntriesTable({
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
   onOpenVisualize: (hostname: string) => void;
-  onRemove: (hostname: string, service?: string) => Promise<void>;
 }) {
   return (
     <section id="entries-panel" className="panel entries-panel">
@@ -52,7 +50,6 @@ export function EntriesTable({
               key={entry.hostname}
               entry={entry}
               selected={entry.hostname === selectedHostname}
-              mutationEnabled={mutationEnabled}
               caddyServerIP={caddyServerIP}
               suppressed={suppressed}
               onToggleSuppress={onToggleSuppress}
@@ -60,7 +57,6 @@ export function EntriesTable({
               onQuickSync={onQuickSync}
               onOpenModify={onOpenModify}
               onOpenVisualize={onOpenVisualize}
-              onRemove={onRemove}
             />
           ))}
         </tbody>
@@ -72,7 +68,6 @@ export function EntriesTable({
 const EntryRow = memo(function EntryRow({
   entry,
   selected,
-  mutationEnabled,
   caddyServerIP,
   suppressed,
   onToggleSuppress,
@@ -80,11 +75,9 @@ const EntryRow = memo(function EntryRow({
   onQuickSync,
   onOpenModify,
   onOpenVisualize,
-  onRemove,
 }: {
   entry: Entry;
   selected: boolean;
-  mutationEnabled: boolean;
   caddyServerIP: string;
   suppressed: Set<string>;
   onToggleSuppress: (key: string) => void;
@@ -92,7 +85,6 @@ const EntryRow = memo(function EntryRow({
   onQuickSync: (hostname: string) => void;
   onOpenModify: (hostname: string) => void;
   onOpenVisualize: (hostname: string) => void;
-  onRemove: (hostname: string, service?: string) => Promise<void>;
 }) {
   const isStale = entry.overall_status === 4;
   const decision = getHostnameDecision(entry, caddyServerIP);
@@ -134,8 +126,8 @@ const EntryRow = memo(function EntryRow({
       <td data-label="Actions">
         <div className="row-actions">
           {isStale ? (
-            <button className="row-remove-btn" type="button" disabled={!mutationEnabled} onClick={(e) => { e.stopPropagation(); void onRemove(entry.hostname); }}>
-              Remove
+            <button className="row-remove-btn" type="button" onClick={(e) => { e.stopPropagation(); onOpenModify(entry.hostname); }}>
+              Review
             </button>
           ) : (
             <button className="row-sync-btn" type="button" onClick={(e) => { e.stopPropagation(); onQuickSync(entry.hostname); }}>

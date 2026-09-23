@@ -27,9 +27,9 @@ import {
   useStore,
   refreshEntries,
   previewSync,
+  previewRemoval,
   dryRunSync,
   syncNow,
-  removeEntry,
   syncAll,
   saveConfig,
   saveCaddyEditor,
@@ -299,7 +299,6 @@ export function AppShell() {
                 onQuickSync={openQuickSync}
                 onOpenModify={openModify}
                 onOpenVisualize={openVisualize}
-                onRemove={(hostname, service) => removeEntry(hostname, service as 'all' | 'unbound' | 'adguard')}
               />
             </main>
           )}
@@ -325,10 +324,10 @@ export function AppShell() {
         canSyncNow={canSyncNow}
         mutationEnabled={mutationEnabled}
         onPreviewFor={(service, hostname) => previewSync(service, hostname)}
+        onPreviewRemoval={(service, hostname) => previewRemoval(service, hostname)}
         onDryRun={() => dryRunSync()}
         onSync={() => syncNow()}
         onRefresh={() => void refreshEntries()}
-        onRemoveEntry={(hostname, service) => removeEntry(hostname, service as 'all' | 'unbound' | 'adguard')}
       />
       {visualizeOpen && visualizeEntry && (
         <VisualizeModal entry={visualizeEntry} onClose={() => setVisualizeOpen(false)} />

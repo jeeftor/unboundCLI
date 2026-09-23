@@ -477,7 +477,7 @@ export function refreshEntries(onDataChanged?: () => void) {
 
 // ─── Sync actions ────────────────────────────────────────────────────────────
 
-export async function previewSync(service = useStore.getState().syncService, hostname = ''): Promise<boolean> {
+export async function previewSync(service = useStore.getState().syncService, hostname = '', unsync = false): Promise<boolean> {
   const store = useStore.getState();
   const enabledServices = store.config?.enabled || {};
 
@@ -492,13 +492,13 @@ export async function previewSync(service = useStore.getState().syncService, hos
 
   store.setSyncLoading(true);
   store.setSyncProgress({
-    title: hostname ? 'Planning selected host' : 'Planning sync',
-    detail: hostname ? `Checking available actions for ${hostname}...` : 'Checking Caddy entries against available DNS targets...',
+    title: unsync ? 'Planning removal' : hostname ? 'Planning selected host' : 'Planning sync',
+    detail: unsync ? `Checking owned records that can be removed for ${hostname}...` : hostname ? `Checking available actions for ${hostname}...` : 'Checking Caddy entries against available DNS targets...',
   });
-  store.setSyncLog(hostname ? `Planning ${service} sync for ${hostname}...` : `Planning ${service} sync...`);
+  store.setSyncLog(unsync ? `Planning ${service} removal for ${hostname}...` : hostname ? `Planning ${service} sync for ${hostname}...` : `Planning ${service} sync...`);
 
   try {
-    const data = await api.planSync(service, hostname);
+    const data = await api.planSync(service, hostname, unsync);
     const nextPlan: PlanState = {
       actions: data.actions || [],
       actionIDs: data.action_ids || [],
@@ -552,13 +552,13 @@ export async function dryRunSync(): Promise<void> {
   }
 }
 
-export async function syncNow(): Promise<void> {
+export async function syncNow(): Promise<boolean> {
   const store = useStore.getState();
   const activePlan = store.plan;
 
   if (!store.mutationEnabled || !activePlan.planID || !activePlan.actionIDs.length) {
     store.setSyncLog(store.mutationEnabled ? 'Preview sync before syncing.' : 'Sync is unavailable for this web session.');
-    return;
+    return false;
   }
 
   store.setSyncLoading(true);
@@ -580,25 +580,23 @@ export async function syncNow(): Promise<void> {
     // Refresh auth cache — backend also refreshes its cache, but this
     // updates the frontend store so the VisualizeModal shows fresh data.
     void useStore.getState().refreshAuth();
+    return true;
   } catch (err) {
     store.setSyncLog(err instanceof Error ? err.message : String(err));
+    return false;
   } finally {
     store.setSyncLoading(false);
   }
 }
 
-export async function removeEntry(hostname: string, service: 'all' | 'unbound' | 'adguard' = 'all'): Promise<void> {
-  await api.removeEntry(hostname, service);
-  void refreshEntries();
-  void useStore.getState().refreshAuth();
+export async function previewRemoval(service: 'unbound' | 'adguard', hostname: string): Promise<boolean> {
+  return previewSync(service, hostname, true);
 }
 
 export async function syncAll(): Promise<void> {
   const ok = await previewSync('all', '');
   if (ok) {
     await syncNow();
-    void refreshEntries();
-    void useStore.getState().refreshAuth();
   }
 }
 

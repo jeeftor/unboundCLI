@@ -43,10 +43,10 @@ export function SyncModal({
   canSyncNow: _canSyncNow,
   mutationEnabled,
   onPreviewFor,
+  onPreviewRemoval,
   onDryRun: _onDryRun,
   onSync,
   onRefresh,
-  onRemoveEntry,
 }: {
   open: boolean;
   autoSync: boolean;
@@ -66,10 +66,10 @@ export function SyncModal({
   canSyncNow: boolean;
   mutationEnabled: boolean;
   onPreviewFor: (service: string, hostname: string) => Promise<boolean>;
+  onPreviewRemoval: (service: 'unbound' | 'adguard', hostname: string) => Promise<boolean>;
   onDryRun: () => Promise<void>;
-  onSync: () => Promise<void>;
+  onSync: () => Promise<boolean>;
   onRefresh: () => void;
-  onRemoveEntry: (hostname: string, service?: string) => Promise<void>;
 }) {
   const isStale = entry?.overall_status === 4;
   const hostnameDecision = entry ? getHostnameDecision(entry, caddyServerIP) : null;
@@ -84,7 +84,6 @@ export function SyncModal({
 
   // Track which services have been removed in this modal session so buttons
   // flip immediately without waiting for the next data refresh.
-  const [removingService, setRemovingService] = useState<string | null>(null);
   const [localRemoved, setLocalRemoved] = useState<Set<string>>(() => new Set());
   const [confirmSync, setConfirmSync] = useState<{ service: string; apply: () => Promise<void> } | null>(null);
   const [noActionsMsg, setNoActionsMsg] = useState<string>('');
@@ -99,8 +98,6 @@ export function SyncModal({
       // eslint-disable-next-line @eslint-react/set-state-in-effect
       setLocalRemoved(new Set());
       // eslint-disable-next-line @eslint-react/set-state-in-effect
-      setRemovingService(null);
-      // eslint-disable-next-line @eslint-react/set-state-in-effect
       setConfirmSync(null);
       // eslint-disable-next-line @eslint-react/set-state-in-effect
       setNoActionsMsg('');
@@ -110,7 +107,7 @@ export function SyncModal({
     }
   }, [open, hostname]);
 
-  const busy = syncLoading || removingService !== null;
+  const busy = syncLoading;
 
   // Clear liveLog when an operation finishes so syncLog (with the result/error)
   // is visible instead of being masked by stale polled logs.
@@ -202,25 +199,22 @@ export function SyncModal({
     },
   ].filter(s => enabledServices[s.key as ServiceKey]);
 
-  const handleServiceRemove = async (key: string) => {
-    setRemovingService(key);
-    try {
-      await onRemoveEntry(hostname, key);
-      setLocalRemoved(prev => new Set([...prev, key]));
-      onRefresh();
-    } finally {
-      setRemovingService(null);
-    }
-  };
-
-  const handleRemoveAll = async () => {
-    setRemovingService('all');
-    try {
-      await onRemoveEntry(hostname, 'all');
-      onRefresh();
-      onClose();
-    } finally {
-      setRemovingService(null);
+  const runServiceRemoval = async (serviceKey: 'unbound' | 'adguard') => {
+    setSyncService(serviceKey);
+    setNoActionsMsg('');
+    const ok = await onPreviewRemoval(serviceKey, hostname);
+    if (ok) {
+      setConfirmSync({
+        service: `${serviceKey} removal`,
+        apply: async () => {
+          if (await onSync()) {
+            setLocalRemoved(prev => new Set([...prev, serviceKey]));
+            onRefresh();
+          }
+        }
+      });
+    } else {
+      setNoActionsMsg(`No owned ${serviceKey} record can be removed for this hostname.`);
     }
   };
 
@@ -231,7 +225,7 @@ export function SyncModal({
     if (ok) {
       setConfirmSync({
         service: serviceKey,
-        apply: async () => { await onSync(); onRefresh(); }
+        apply: async () => { if (await onSync()) onRefresh(); }
       });
     } else {
       setNoActionsMsg(`No actions needed for ${serviceKey} — already in sync (or unavailable).`);
@@ -245,7 +239,7 @@ export function SyncModal({
     if (ok) {
       setConfirmSync({
         service: 'all',
-        apply: async () => { await onSync(); onRefresh(); }
+        apply: async () => { if (await onSync()) onRefresh(); }
       });
     } else {
       setNoActionsMsg('No actions needed — all services already in sync (or unavailable).');
@@ -260,8 +254,6 @@ export function SyncModal({
   };
 
   // Any service with a real entry that can be removed.
-  const canRemoveAll = serviceRows.some(({ key, removable, status }) => removable && !localRemoved.has(key) && status?.configured === true);
-
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div className="modal sync-modal" ref={modalRef}>
@@ -270,9 +262,6 @@ export function SyncModal({
           <div className="modal-header-actions">
             <button type="button" className="btn-primary" onClick={() => void runSyncAll()} disabled={busy}>
               <Zap size={13} /> Sync all
-            </button>
-            <button type="button" className="btn-danger" onClick={() => void handleRemoveAll()} disabled={busy || !mutationEnabled || !canRemoveAll}>
-              <Trash2 size={13} /> {removingService === 'all' ? 'Removing...' : 'Remove all'}
             </button>
             <button type="button" className="modal-close" onClick={onClose} disabled={busy}><X size={16} /></button>
           </div>
@@ -326,7 +315,6 @@ export function SyncModal({
           <div className="service-sync-rows">
             {serviceRows.map(({ key, label, removable, status }) => {
               const isLocallyRemoved = localRemoved.has(key);
-              const isRemoving = removingService === key;
               const configured = status?.configured ?? false;
               const inSync = status?.in_sync ?? false;
 
@@ -343,8 +331,8 @@ export function SyncModal({
               //   in sync -> show "In sync" indicator + Remove
               //   out of sync / missing -> Sync button (+ Remove if configured)
               const removeBtn = removable && configured && !isLocallyRemoved && mutationEnabled ? (
-                <button type="button" className="btn-sm btn-danger-sm" onClick={() => void handleServiceRemove(key)} disabled={busy}>
-                  <Trash2 size={12} /> {isRemoving ? 'Removing...' : 'Remove'}
+                <button type="button" className="btn-sm btn-danger-sm" onClick={() => void runServiceRemoval(key as 'unbound' | 'adguard')} disabled={busy}>
+                  <Trash2 size={12} /> Remove
                 </button>
               ) : null;
 
