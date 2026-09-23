@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### <!-- 0 -->🚀 Features
+
+- add durable resource ownership state ([0ca805d](0ca805d4db7016a67e5dd75285ce618d04ed08cb))
+
+
 ### <!-- 1 -->🐛 Bug Fixes
 
 - make caddy upstream edits transactional ([15fdbf7](15fdbf7c562bc6efd4dd8973fc7b1fe438c00781))
@@ -27,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([f6b1b77](f6b1b77cacad13dd57ffb5b2c0620d3443f185f2))
 
 - update changelog ([d8cda1d](d8cda1de2704d2d6eddf3e5b7aebef3a7edc926c))
 
