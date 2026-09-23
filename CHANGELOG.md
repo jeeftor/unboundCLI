@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- require fresh inventory for sync plans ([6e51a96](6e51a964c9728c58d77002540fae4dea6956ef53))
+
 - honor selected config in cloudflare sync ([1bc4c62](1bc4c62962df58e3dc6d19fb2fa73fef2f3c2923))
 
 - claim web sync plans before apply ([0b15378](0b153786463b9bd587bcb4512ed9e6ae86eebe60))
@@ -38,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([fbfbaa1](fbfbaa1650fcffe9b7a6f729723d2101b0a49c74))
 
 - update changelog ([6828d5d](6828d5dc765080b156ea875a31f7d5f858a73efc))
 
