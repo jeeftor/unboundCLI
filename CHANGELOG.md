@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- resolve effective configuration safely ([4c3a664](4c3a664f952079151bc9dacb21e040f79ca9d496))
+
 - harden web access and probe policy ([46bb98a](46bb98a17e948f8d5fb65c28db1570930ece1a88))
 
 - satisfy frontend end-of-file check ([086dea9](086dea9783511c653dc0c5f7f1f781576202036d))
@@ -21,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([f01519f](f01519f54d61c0d6449ce333e5c8d3b064ffd44b))
 
 - update changelog ([c58650d](c58650dcf32ff29bb537de4674f5197bb73f116d))
 
