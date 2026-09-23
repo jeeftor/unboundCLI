@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- retain cloudflare tunnel IDs in tui plans ([99b7908](99b7908e59714307549266a04b33a745daccd900))
+
 - block direct cloudflare edits in tui ([4ec5593](4ec5593b156b29672768430cf54f67a903f985b6))
 
 - make cloudflare sync ownership transactional ([cd1a7f7](cd1a7f728fb441e3c265d37395442255f4ee6e05))
@@ -94,6 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([79d5892](79d5892c99a9c6946280bed93803f11effb98b15))
 
 - update changelog ([c252cbf](c252cbfebb0be4435cfc3212ec622e102625a469))
 
