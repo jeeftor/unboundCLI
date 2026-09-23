@@ -800,8 +800,8 @@ func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
 
 	host, port := splitWebTestServerHostPort(t, caddy.URL)
 	server := NewServer(&app.Runtime{
-		CaddyEndpoint:   app.CaddyEndpoint{ServerIP: host, ServerPort: port},
-		CaddyServiceURL: "http://10.0.0.15:80",
+		CaddyEndpoint:    app.CaddyEndpoint{ServerIP: host, ServerPort: port},
+		CaddyServiceURL:  "http://10.0.0.15:80",
 		CloudflareConfig: config.CloudflareConfig{TunnelID: "tunnel-default"},
 		Clients: app.ClientSet{
 			Caddy:      api.NewCaddyClient(host, port),

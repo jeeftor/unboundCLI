@@ -471,8 +471,18 @@ func (c *CloudflareClient) ListTunnelDNSRecords() ([]CloudflareDNSRecord, error)
 // error is returned so the caller can prompt the user to resolve the conflict
 // in the Cloudflare dashboard rather than receiving a cryptic API error 81053.
 func (c *CloudflareClient) EnsureDNSRecord(hostname string) error {
+	return c.EnsureDNSRecordInTunnel(hostname, c.tunnelID)
+}
+
+// EnsureDNSRecordInTunnel creates a proxied CNAME for the exact tunnel ID.
+// Callers that select a non-default tunnel must use this method so ingress and
+// DNS cannot silently point at different tunnels.
+func (c *CloudflareClient) EnsureDNSRecordInTunnel(hostname, tunnelID string) error {
 	ctx := c.getCtx()
-	target := c.tunnelID + ".cfargotunnel.com"
+	if strings.TrimSpace(tunnelID) == "" {
+		return fmt.Errorf("tunnel ID is required for DNS record %s", hostname)
+	}
+	target := tunnelID + ".cfargotunnel.com"
 	proxied := true
 
 	// Fetch ALL record types for this hostname so we can detect conflicts.
@@ -545,9 +555,63 @@ func (c *CloudflareClient) DeleteDNSRecord(hostname string) error {
 	return nil
 }
 
+// DeleteDNSRecordByID removes one already-verified Cloudflare DNS resource.
+// The immutable ID prevents a concurrent or manually-created same-name record
+// from being selected by hostname during a destructive operation.
+func (c *CloudflareClient) DeleteDNSRecordByID(recordID string) error {
+	if strings.TrimSpace(recordID) == "" {
+		return fmt.Errorf("DNS record ID is required")
+	}
+	if err := c.api.DeleteDNSRecord(c.getCtx(), cloudflare.ResourceIdentifier(c.zoneID), recordID); err != nil {
+		return fmt.Errorf("error deleting DNS record %s: %w", recordID, err)
+	}
+	logging.Info("Deleted DNS record", "recordID", recordID)
+	return nil
+}
+
+// FindTunnelDNSRecord returns the unique tunnel CNAME for hostname. A duplicate
+// is an ambiguity, not a reason to choose one record by list order.
+func (c *CloudflareClient) FindTunnelDNSRecord(hostname string) (CloudflareDNSRecord, bool, error) {
+	records, err := c.ListTunnelDNSRecords()
+	if err != nil {
+		return CloudflareDNSRecord{}, false, err
+	}
+	var found *CloudflareDNSRecord
+	for index := range records {
+		if records[index].Hostname != hostname {
+			continue
+		}
+		if found != nil {
+			return CloudflareDNSRecord{}, false, fmt.Errorf("ambiguous tunnel DNS records for %s", hostname)
+		}
+		found = &records[index]
+	}
+	if found == nil {
+		return CloudflareDNSRecord{}, false, nil
+	}
+	return *found, true, nil
+}
+
+// FindTunnelIngress returns the exact hostname/path ingress rule in tunnelID.
+// Account-wide duplicate hostnames are rejected by GetAllTunnelsDetails.
+func (c *CloudflareClient) FindTunnelIngress(tunnelID, hostname, path string) (CloudflareIngressEntry, bool, error) {
+	entries, err := c.GetAllTunnelsDetails()
+	if err != nil {
+		return CloudflareIngressEntry{}, false, err
+	}
+	entry, ok := entries[hostname]
+	if !ok || entry.TunnelID != tunnelID || entry.Path != path {
+		return CloudflareIngressEntry{}, false, nil
+	}
+	return entry, true, nil
+}
+
 // IngressRuleSpec describes the desired state for a single tunnel ingress rule.
 type IngressRuleSpec struct {
-	Hostname       string
+	Hostname string
+	// Path identifies the exact hostname/path ingress rule. Empty is the
+	// hostname-only rule; it is not a wildcard for every path on that host.
+	Path           string
 	Service        string
 	HTTPHostHeader string // empty = not set in OriginRequest
 	// OriginServerName is the TLS SNI hostname cloudflared uses when connecting
@@ -607,7 +671,7 @@ func (c *CloudflareClient) UpdateTunnelRule(spec IngressRuleSpec) error {
 		if index == insertionIndex && found == 0 {
 			newIngress = append(newIngress, buildCFIngressRule(spec))
 		}
-		if rule.Hostname == spec.Hostname {
+		if rule.Hostname == spec.Hostname && rule.Path == spec.Path {
 			newIngress = append(newIngress, patchCFIngressRule(rule, spec))
 			found++
 		} else {
@@ -645,6 +709,11 @@ func (c *CloudflareClient) DeleteTunnelRule(hostname string) error {
 // DeleteTunnelRuleInTunnel removes a single ingress rule from the specified tunnel.
 // If tunnelIDOverride is empty the client's configured tunnel is used.
 func (c *CloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelIDOverride string) error {
+	return c.DeleteTunnelRuleAtPath(hostname, tunnelIDOverride, "")
+}
+
+// DeleteTunnelRuleAtPath removes exactly one hostname/path ingress rule.
+func (c *CloudflareClient) DeleteTunnelRuleAtPath(hostname, tunnelIDOverride, path string) error {
 	ctx := c.getCtx()
 
 	tunnelID := c.tunnelID
@@ -670,7 +739,7 @@ func (c *CloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelIDOverride s
 	newIngress := make([]cloudflare.UnvalidatedIngressRule, 0, len(current.Config.Ingress))
 	found := 0
 	for _, rule := range current.Config.Ingress {
-		if rule.Hostname == hostname {
+		if rule.Hostname == hostname && rule.Path == path {
 			found++
 			continue // drop this rule
 		}
@@ -720,6 +789,7 @@ func cloudflareCatchAll(rules []cloudflare.UnvalidatedIngressRule) (cloudflare.U
 func buildCFIngressRule(spec IngressRuleSpec) cloudflare.UnvalidatedIngressRule {
 	rule := cloudflare.UnvalidatedIngressRule{
 		Hostname: spec.Hostname,
+		Path:     spec.Path,
 		Service:  spec.Service,
 	}
 	needsOriginRequest := spec.HTTPHostHeader != "" ||

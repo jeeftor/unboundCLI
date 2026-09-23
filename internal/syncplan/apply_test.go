@@ -246,11 +246,19 @@ func adguardOwnershipPath(t *testing.T, resources map[string]string) string {
 }
 
 func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
-	cloudflare := &fakeCloudflareClient{}
+	cloudflare := &fakeCloudflareClient{
+		ingress: map[string]api.CloudflareIngressEntry{
+			"selected-tunnel:update.example.com:": {TunnelID: "selected-tunnel", Hostname: "update.example.com", Service: "http://10.0.0.14:80"},
+			"selected-tunnel:old.example.com:":    {TunnelID: "selected-tunnel", Hostname: "old.example.com", Service: "http://10.0.0.13:80"},
+		},
+		dns: map[string]api.CloudflareDNSRecord{
+			"old.example.com": {ID: "dns-old", Hostname: "old.example.com", Target: "selected-tunnel.cfargotunnel.com"},
+		},
+	}
 	path := cloudflareOwnershipPath(t, []ownership.Resource{
-		{Provider: "cloudflare", Kind: "ingress", ID: "selected-tunnel:update.example.com:"},
-		{Provider: "cloudflare", Kind: "ingress", ID: "selected-tunnel:old.example.com:"},
-		{Provider: "cloudflare", Kind: "dns", ID: "dns-old"},
+		{Provider: "cloudflare", Kind: "ingress", ID: "selected-tunnel:update.example.com:", Expected: ownership.Fingerprint("selected-tunnel|update.example.com||http://10.0.0.14:80||")},
+		{Provider: "cloudflare", Kind: "ingress", ID: "selected-tunnel:old.example.com:", Expected: ownership.Fingerprint("selected-tunnel|old.example.com||http://10.0.0.13:80||")},
+		{Provider: "cloudflare", Kind: "dns", ID: "dns-old", Expected: ownership.Fingerprint("selected-tunnel.cfargotunnel.com")},
 	})
 
 	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{
@@ -268,6 +276,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 			Service:           "cloudflare",
 			Hostname:          "update.example.com",
 			TunnelID:          "selected-tunnel",
+			OldService:        "http://10.0.0.14:80",
 			NewService:        "http://10.0.0.15:80",
 			NewHTTPHostHeader: "update.example.com",
 			Enabled:           true,
@@ -277,6 +286,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 			Service:               "cloudflare",
 			Hostname:              "old.example.com",
 			TunnelID:              "selected-tunnel",
+			OldService:            "http://10.0.0.13:80",
 			CloudflareDNSRecordID: "dns-old",
 			Enabled:               true,
 		},
@@ -305,7 +315,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 	if len(cloudflare.deleteTunnelIDs) != 1 || cloudflare.deleteTunnelIDs[0] != "selected-tunnel" {
 		t.Fatalf("expected delete to use selected tunnel, got %#v", cloudflare.deleteTunnelIDs)
 	}
-	if len(cloudflare.deletedDNS) != 1 || cloudflare.deletedDNS[0] != "old.example.com" {
+	if len(cloudflare.deletedDNS) != 1 || cloudflare.deletedDNS[0] != "dns-old" {
 		t.Fatalf("expected one deleted DNS record, got %#v", cloudflare.deletedDNS)
 	}
 }
@@ -317,6 +327,50 @@ func TestApplyCloudflareAddRejectsMissingTunnelIdentity(t *testing.T) {
 	}}}, ApplyOptions{OwnershipPath: cloudflareOwnershipPath(t, nil)})
 	if result.Success || len(cloudflare.updatedRules) != 0 || len(cloudflare.ensuredDNS) != 0 {
 		t.Fatalf("Cloudflare add without an explicit tunnel must not write, result=%#v", result)
+	}
+}
+
+func TestApplyCloudflareAddRecordsOwnershipOnlyAfterReadback(t *testing.T) {
+	cloudflare := &fakeCloudflareClient{}
+	path := cloudflareOwnershipPath(t, nil)
+	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{{
+		Type: "add", Service: "cloudflare", Hostname: "new.example.com", TunnelID: "selected-tunnel",
+		NewService: "https://10.0.0.15", NewHTTPHostHeader: "new.example.com", OriginServerName: "new.example.com", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: path})
+	if !result.Success {
+		t.Fatalf("expected Cloudflare add success, got %#v", result.Errors)
+	}
+	state, err := ownership.Load(path)
+	if err != nil || !state.Owns("cloudflare", "ingress", "selected-tunnel:new.example.com:") || !state.Owns("cloudflare", "dns", "dns-new.example.com") {
+		t.Fatalf("expected verified Cloudflare ownership, state=%#v err=%v", state, err)
+	}
+}
+
+func TestApplyCloudflareAddLeavesUnresolvedIntentOnDNSFailure(t *testing.T) {
+	cloudflare := &fakeCloudflareClient{ensureErr: errors.New("DNS write failed")}
+	path := cloudflareOwnershipPath(t, nil)
+	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{{
+		Type: "add", Service: "cloudflare", Hostname: "new.example.com", TunnelID: "selected-tunnel",
+		NewService: "https://10.0.0.15", NewHTTPHostHeader: "new.example.com", OriginServerName: "new.example.com", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: path})
+	if result.Success {
+		t.Fatal("expected DNS write failure")
+	}
+	state, err := ownership.Load(path)
+	if err != nil || !state.HasIntent("cloudflare", "dns", "pending:selected-tunnel:new.example.com") {
+		t.Fatalf("expected unresolved DNS intent after failed write, state=%#v err=%v", state, err)
+	}
+}
+
+func TestApplyCloudflareAddProtectsExistingUnownedIngress(t *testing.T) {
+	cloudflare := &fakeCloudflareClient{ingress: map[string]api.CloudflareIngressEntry{
+		"selected-tunnel:manual.example.com:": {TunnelID: "selected-tunnel", Hostname: "manual.example.com", Service: "https://manual.example.com"},
+	}}
+	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{{
+		Type: "add", Service: "cloudflare", Hostname: "manual.example.com", TunnelID: "selected-tunnel", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: cloudflareOwnershipPath(t, nil)})
+	if result.Success || len(cloudflare.updatedRules) != 0 {
+		t.Fatalf("existing unowned ingress must not be overwritten, result=%#v", result)
 	}
 }
 
@@ -460,10 +514,20 @@ type fakeCloudflareClient struct {
 	deleteTunnelIDs []string
 	ensuredDNS      []string
 	deletedDNS      []string
+	ingress         map[string]api.CloudflareIngressEntry
+	dns             map[string]api.CloudflareDNSRecord
+	ensureErr       error
 }
 
 func (f *fakeCloudflareClient) UpdateTunnelRule(spec api.IngressRuleSpec) error {
 	f.updatedRules = append(f.updatedRules, spec)
+	if f.ingress == nil {
+		f.ingress = map[string]api.CloudflareIngressEntry{}
+	}
+	f.ingress[cloudflareFakeIngressKey(spec.TunnelID, spec.Hostname, spec.Path)] = api.CloudflareIngressEntry{
+		TunnelID: spec.TunnelID, Hostname: spec.Hostname, Path: spec.Path, Service: spec.Service,
+		HTTPHostHeader: spec.HTTPHostHeader, OriginServerName: spec.OriginServerName, NoTLSVerify: spec.NoTLSVerify,
+	}
 	return nil
 }
 
@@ -475,15 +539,60 @@ func (f *fakeCloudflareClient) DeleteTunnelRule(hostname string) error {
 func (f *fakeCloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelID string) error {
 	f.deletedRules = append(f.deletedRules, hostname)
 	f.deleteTunnelIDs = append(f.deleteTunnelIDs, tunnelID)
+	delete(f.ingress, cloudflareFakeIngressKey(tunnelID, hostname, ""))
+	return nil
+}
+
+func (f *fakeCloudflareClient) DeleteTunnelRuleAtPath(hostname, tunnelID, path string) error {
+	f.deletedRules = append(f.deletedRules, hostname)
+	f.deleteTunnelIDs = append(f.deleteTunnelIDs, tunnelID)
+	delete(f.ingress, cloudflareFakeIngressKey(tunnelID, hostname, path))
 	return nil
 }
 
 func (f *fakeCloudflareClient) EnsureDNSRecord(hostname string) error {
+	return f.EnsureDNSRecordInTunnel(hostname, "")
+}
+
+func (f *fakeCloudflareClient) EnsureDNSRecordInTunnel(hostname, tunnelID string) error {
 	f.ensuredDNS = append(f.ensuredDNS, hostname)
+	if f.ensureErr != nil {
+		return f.ensureErr
+	}
+	if f.dns == nil {
+		f.dns = map[string]api.CloudflareDNSRecord{}
+	}
+	f.dns[hostname] = api.CloudflareDNSRecord{ID: "dns-" + hostname, Hostname: hostname, Target: tunnelID + ".cfargotunnel.com"}
 	return nil
 }
 
 func (f *fakeCloudflareClient) DeleteDNSRecord(hostname string) error {
 	f.deletedDNS = append(f.deletedDNS, hostname)
+	delete(f.dns, hostname)
 	return nil
+}
+
+func (f *fakeCloudflareClient) DeleteDNSRecordByID(recordID string) error {
+	f.deletedDNS = append(f.deletedDNS, recordID)
+	for hostname, record := range f.dns {
+		if record.ID == recordID {
+			delete(f.dns, hostname)
+			return nil
+		}
+	}
+	return nil
+}
+
+func (f *fakeCloudflareClient) FindTunnelIngress(tunnelID, hostname, path string) (api.CloudflareIngressEntry, bool, error) {
+	entry, found := f.ingress[cloudflareFakeIngressKey(tunnelID, hostname, path)]
+	return entry, found, nil
+}
+
+func (f *fakeCloudflareClient) FindTunnelDNSRecord(hostname string) (api.CloudflareDNSRecord, bool, error) {
+	record, found := f.dns[hostname]
+	return record, found, nil
+}
+
+func cloudflareFakeIngressKey(tunnelID, hostname, path string) string {
+	return tunnelID + ":" + hostname + ":" + path
 }

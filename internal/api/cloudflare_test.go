@@ -481,6 +481,7 @@ func TestUpdateTunnelRulePreservesOptionalFields(t *testing.T) {
 
 	if err := client.UpdateTunnelRule(IngressRuleSpec{
 		Hostname:       "app.example.com",
+		Path:           "/api/*",
 		Service:        "http://10.0.0.15:80",
 		HTTPHostHeader: "app.example.com",
 	}); err != nil {

@@ -29,8 +29,13 @@ type CloudflareClient interface {
 	UpdateTunnelRule(api.IngressRuleSpec) error
 	DeleteTunnelRule(hostname string) error
 	DeleteTunnelRuleInTunnel(hostname, tunnelID string) error
+	DeleteTunnelRuleAtPath(hostname, tunnelID, path string) error
 	EnsureDNSRecord(hostname string) error
+	EnsureDNSRecordInTunnel(hostname, tunnelID string) error
 	DeleteDNSRecord(hostname string) error
+	DeleteDNSRecordByID(recordID string) error
+	FindTunnelIngress(tunnelID, hostname, path string) (api.CloudflareIngressEntry, bool, error)
+	FindTunnelDNSRecord(hostname string) (api.CloudflareDNSRecord, bool, error)
 }
 
 // Clients contains service clients used to apply a sync plan.
@@ -64,12 +69,12 @@ func Apply(ctx context.Context, clients Clients, plan Plan, options ApplyOptions
 	adguardChanged := false
 	var adguardOwnership *adguardOwnership
 	var adguardOwnershipErr error
-	var cloudflareOwnership ownership.State
+	var cloudflareOwnership *cloudflareOwnership
 	var cloudflareOwnershipErr error
 	if !options.DryRun && hasEnabledAction(actions, "adguard") {
 		adguardOwnership, adguardOwnershipErr = loadAdguardOwnership(options.OwnershipPath)
 	}
-	if !options.DryRun && hasEnabledCloudflareExistingAction(actions) {
+	if !options.DryRun && hasEnabledAction(actions, "cloudflare") {
 		cloudflareOwnership, cloudflareOwnershipErr = loadCloudflareOwnership(options.OwnershipPath)
 	}
 
@@ -134,7 +139,7 @@ func ApplyActions(ctx context.Context, clients Clients, actions []Action, option
 	return Apply(ctx, clients, Plan{Actions: actions}, options)
 }
 
-func applyAction(clients Clients, action Action, adguardOwnership *adguardOwnership, adguardOwnershipErr error, cloudflareOwnership ownership.State, cloudflareOwnershipErr error) error {
+func applyAction(clients Clients, action Action, adguardOwnership *adguardOwnership, adguardOwnershipErr error, cloudflareOwnership *cloudflareOwnership, cloudflareOwnershipErr error) error {
 	switch action.Service {
 	case "unbound":
 		return applyUnboundAction(clients.Unbound, action)
@@ -265,15 +270,6 @@ func hasEnabledAction(actions []Action, service string) bool {
 	return false
 }
 
-func hasEnabledCloudflareExistingAction(actions []Action) bool {
-	for _, action := range actions {
-		if action.Enabled && action.Service == "cloudflare" && (action.Type == "update" || action.Type == "delete") {
-			return true
-		}
-	}
-	return false
-}
-
 type adguardOwnership struct {
 	path  string
 	state ownership.State
@@ -365,20 +361,12 @@ func isAdguardRewriteNotFound(err error) bool {
 	return err != nil && strings.HasPrefix(err.Error(), "no matching AdGuard rewrite for ")
 }
 
-func applyCloudflareAction(client CloudflareClient, action Action, state ownership.State) error {
+func applyCloudflareAction(client CloudflareClient, action Action, owned *cloudflareOwnership) error {
 	if client == nil {
 		return fmt.Errorf("Cloudflare client not available")
 	}
-	if action.Type == "update" || action.Type == "delete" {
-		ingressID := cloudflareIngressResourceID(action)
-		if ingressID == "" || !state.Owns("cloudflare", "ingress", ingressID) {
-			return fmt.Errorf("Cloudflare ingress %s is not explicitly owned; adoption is required", action.Hostname)
-		}
-		if action.Type == "delete" {
-			if action.CloudflareDNSRecordID == "" || !state.Owns("cloudflare", "dns", action.CloudflareDNSRecordID) {
-				return fmt.Errorf("Cloudflare DNS record for %s is not explicitly owned; adoption is required", action.Hostname)
-			}
-		}
+	if owned == nil {
+		return fmt.Errorf("Cloudflare ownership state is required for mutations")
 	}
 
 	switch action.Type {
@@ -386,8 +374,26 @@ func applyCloudflareAction(client CloudflareClient, action Action, state ownersh
 		if action.TunnelID == "" {
 			return fmt.Errorf("Cloudflare add for %s has no explicit tunnel identity; preview again with a configured tunnel", action.Hostname)
 		}
+		ingressID := cloudflareIngressResourceID(action)
+		if err := owned.requireAbsent("ingress", ingressID); err != nil {
+			return err
+		}
+		if _, found, err := client.FindTunnelIngress(action.TunnelID, action.Hostname, action.Path); err != nil {
+			return fmt.Errorf("read Cloudflare ingress %s: %w", action.Hostname, err)
+		} else if found {
+			return fmt.Errorf("Cloudflare ingress %s already exists; explicit adoption is required", action.Hostname)
+		}
+		if record, found, err := client.FindTunnelDNSRecord(action.Hostname); err != nil {
+			return fmt.Errorf("read Cloudflare DNS record for %s: %w", action.Hostname, err)
+		} else if found && !owned.state.Owns("cloudflare", "dns", record.ID) {
+			return fmt.Errorf("Cloudflare DNS record for %s is not explicitly owned; adoption is required", action.Hostname)
+		}
+		if err := owned.begin("add", "ingress", ingressID, cloudflareActionIngressValue(action)); err != nil {
+			return err
+		}
 		if err := client.UpdateTunnelRule(api.IngressRuleSpec{
 			Hostname:                  action.Hostname,
+			Path:                      action.Path,
 			Service:                   action.NewService,
 			HTTPHostHeader:            action.NewHTTPHostHeader,
 			OriginServerName:          action.OriginServerName,
@@ -400,10 +406,27 @@ func applyCloudflareAction(client CloudflareClient, action Action, state ownersh
 		}); err != nil {
 			return err
 		}
-		return client.EnsureDNSRecord(action.Hostname)
+		if err := owned.verifyIngress(client, action, true); err != nil {
+			return err
+		}
+		pendingDNSID := cloudflarePendingDNSResourceID(action)
+		if err := owned.begin("add", "dns", pendingDNSID, action.TunnelID+".cfargotunnel.com"); err != nil {
+			return err
+		}
+		if err := client.EnsureDNSRecordInTunnel(action.Hostname, action.TunnelID); err != nil {
+			return err
+		}
+		return owned.verifyDNS(client, action, pendingDNSID, true)
 	case "update":
-		return client.UpdateTunnelRule(api.IngressRuleSpec{
+		if err := owned.requireCurrentIngress(client, action); err != nil {
+			return err
+		}
+		if err := owned.begin("update", "ingress", cloudflareIngressResourceID(action), cloudflareActionIngressValue(action)); err != nil {
+			return err
+		}
+		if err := client.UpdateTunnelRule(api.IngressRuleSpec{
 			Hostname:                  action.Hostname,
+			Path:                      action.Path,
 			Service:                   action.NewService,
 			HTTPHostHeader:            action.NewHTTPHostHeader,
 			OriginServerName:          action.OriginServerName,
@@ -413,26 +436,160 @@ func applyCloudflareAction(client CloudflareClient, action Action, state ownersh
 			DisableChunkedEncoding:    action.DisableChunkedEncoding,
 			SetDisableChunkedEncoding: true,
 			TunnelID:                  action.TunnelID,
-		})
-	case "delete":
-		if err := client.DeleteTunnelRuleInTunnel(action.Hostname, action.TunnelID); err != nil {
+		}); err != nil {
 			return err
 		}
-		return client.DeleteDNSRecord(action.Hostname)
+		return owned.verifyIngress(client, action, true)
+	case "delete":
+		if err := owned.requireCurrentIngress(client, action); err != nil {
+			return err
+		}
+		if err := owned.requireCurrentDNS(client, action); err != nil {
+			return err
+		}
+		ingressID := cloudflareIngressResourceID(action)
+		if err := owned.begin("delete", "ingress", ingressID, action.OldService); err != nil {
+			return err
+		}
+		if err := owned.begin("delete", "dns", action.CloudflareDNSRecordID, action.Hostname); err != nil {
+			return err
+		}
+		if err := client.DeleteTunnelRuleAtPath(action.Hostname, action.TunnelID, action.Path); err != nil {
+			return err
+		}
+		if _, found, err := client.FindTunnelIngress(action.TunnelID, action.Hostname, action.Path); err != nil {
+			return fmt.Errorf("read back deleted Cloudflare ingress %s: %w", action.Hostname, err)
+		} else if found {
+			return fmt.Errorf("readback still found Cloudflare ingress %s", action.Hostname)
+		}
+		if err := client.DeleteDNSRecordByID(action.CloudflareDNSRecordID); err != nil {
+			return err
+		}
+		if _, found, err := client.FindTunnelDNSRecord(action.Hostname); err != nil {
+			return fmt.Errorf("read back deleted Cloudflare DNS record for %s: %w", action.Hostname, err)
+		} else if found {
+			return fmt.Errorf("readback still found Cloudflare DNS record for %s", action.Hostname)
+		}
+		owned.state.Forget("cloudflare", "ingress", ingressID)
+		owned.state.Forget("cloudflare", "dns", action.CloudflareDNSRecordID)
+		owned.state.Resolve("cloudflare", "ingress", ingressID)
+		owned.state.Resolve("cloudflare", "dns", action.CloudflareDNSRecordID)
+		return ownership.Save(owned.path, owned.state)
 	default:
 		return fmt.Errorf("unknown action type: %s", action.Type)
 	}
 }
 
-func loadCloudflareOwnership(path string) (ownership.State, error) {
+type cloudflareOwnership struct {
+	path  string
+	state ownership.State
+}
+
+func loadCloudflareOwnership(path string) (*cloudflareOwnership, error) {
 	if strings.TrimSpace(path) == "" {
-		return ownership.State{}, fmt.Errorf("Cloudflare ownership state path is required for mutations")
+		return nil, fmt.Errorf("Cloudflare ownership state path is required for mutations")
 	}
 	state, err := ownership.Load(path)
 	if err != nil {
-		return ownership.State{}, fmt.Errorf("load Cloudflare ownership state: %w", err)
+		return nil, fmt.Errorf("load Cloudflare ownership state: %w", err)
 	}
-	return state, nil
+	return &cloudflareOwnership{path: path, state: state}, nil
+}
+
+func (o *cloudflareOwnership) requireAbsent(kind, id string) error {
+	if id == "" {
+		return fmt.Errorf("Cloudflare %s identity is required", kind)
+	}
+	if o.state.HasIntent("cloudflare", kind, id) {
+		return fmt.Errorf("Cloudflare %s %s has an unresolved operation; review recovery state before retrying", kind, id)
+	}
+	if o.state.Owns("cloudflare", kind, id) {
+		return fmt.Errorf("Cloudflare %s %s is already owned; preview again before changing it", kind, id)
+	}
+	return nil
+}
+
+func (o *cloudflareOwnership) begin(operation, kind, id, expected string) error {
+	if id == "" {
+		return fmt.Errorf("Cloudflare %s identity is required", kind)
+	}
+	if o.state.HasIntent("cloudflare", kind, id) {
+		return fmt.Errorf("Cloudflare %s %s has an unresolved operation; review recovery state before retrying", kind, id)
+	}
+	if err := o.state.Begin(ownership.Intent{Operation: operation, Provider: "cloudflare", Kind: kind, ID: id, Expected: ownership.Fingerprint(expected)}); err != nil {
+		return err
+	}
+	return ownership.Save(o.path, o.state)
+}
+
+func (o *cloudflareOwnership) requireCurrentIngress(client CloudflareClient, action Action) error {
+	id := cloudflareIngressResourceID(action)
+	resource, ok := o.state.Resources[ownership.Key("cloudflare", "ingress", id)]
+	if !ok || !o.state.Owns("cloudflare", "ingress", id) || resource.Expected == "" {
+		return fmt.Errorf("Cloudflare ingress %s is not explicitly owned; adoption is required", action.Hostname)
+	}
+	entry, found, err := client.FindTunnelIngress(action.TunnelID, action.Hostname, action.Path)
+	if err != nil {
+		return fmt.Errorf("read Cloudflare ingress %s: %w", action.Hostname, err)
+	}
+	if !found || resource.Expected != ownership.Fingerprint(cloudflareIngressValue(entry)) {
+		return fmt.Errorf("Cloudflare ingress %s changed outside this tool; preview adoption again", action.Hostname)
+	}
+	return nil
+}
+
+func (o *cloudflareOwnership) requireCurrentDNS(client CloudflareClient, action Action) error {
+	if action.CloudflareDNSRecordID == "" {
+		return fmt.Errorf("Cloudflare DNS record identity is required for %s", action.Hostname)
+	}
+	resource, ok := o.state.Resources[ownership.Key("cloudflare", "dns", action.CloudflareDNSRecordID)]
+	if !ok || !o.state.Owns("cloudflare", "dns", action.CloudflareDNSRecordID) || resource.Expected == "" {
+		return fmt.Errorf("Cloudflare DNS record for %s is not explicitly owned; adoption is required", action.Hostname)
+	}
+	record, found, err := client.FindTunnelDNSRecord(action.Hostname)
+	if err != nil {
+		return fmt.Errorf("read Cloudflare DNS record for %s: %w", action.Hostname, err)
+	}
+	if !found || record.ID != action.CloudflareDNSRecordID || resource.Expected != ownership.Fingerprint(record.Target) {
+		return fmt.Errorf("Cloudflare DNS record for %s changed outside this tool; preview adoption again", action.Hostname)
+	}
+	return nil
+}
+
+func (o *cloudflareOwnership) verifyIngress(client CloudflareClient, action Action, resolve bool) error {
+	entry, found, err := client.FindTunnelIngress(action.TunnelID, action.Hostname, action.Path)
+	if err != nil {
+		return fmt.Errorf("read back Cloudflare ingress %s: %w", action.Hostname, err)
+	}
+	if !found || entry.Service != action.NewService || entry.HTTPHostHeader != action.NewHTTPHostHeader || entry.OriginServerName != action.OriginServerName || entry.NoTLSVerify != action.NoTLSVerify {
+		return fmt.Errorf("Cloudflare ingress %s did not match the requested value after update", action.Hostname)
+	}
+	id := cloudflareIngressResourceID(action)
+	if err := o.state.Record(ownership.Resource{Provider: "cloudflare", Kind: "ingress", ID: id, Expected: ownership.Fingerprint(cloudflareIngressValue(entry))}); err != nil {
+		return err
+	}
+	if resolve {
+		o.state.Resolve("cloudflare", "ingress", id)
+	}
+	return ownership.Save(o.path, o.state)
+}
+
+func (o *cloudflareOwnership) verifyDNS(client CloudflareClient, action Action, pendingID string, resolve bool) error {
+	record, found, err := client.FindTunnelDNSRecord(action.Hostname)
+	if err != nil {
+		return fmt.Errorf("read back Cloudflare DNS record for %s: %w", action.Hostname, err)
+	}
+	expected := action.TunnelID + ".cfargotunnel.com"
+	if !found || record.Target != expected {
+		return fmt.Errorf("Cloudflare DNS record for %s did not match tunnel %s after update", action.Hostname, action.TunnelID)
+	}
+	if err := o.state.Record(ownership.Resource{Provider: "cloudflare", Kind: "dns", ID: record.ID, Expected: ownership.Fingerprint(record.Target)}); err != nil {
+		return err
+	}
+	if resolve {
+		o.state.Resolve("cloudflare", "dns", pendingID)
+	}
+	return ownership.Save(o.path, o.state)
 }
 
 func cloudflareIngressResourceID(action Action) string {
@@ -440,6 +597,18 @@ func cloudflareIngressResourceID(action Action) string {
 		return ""
 	}
 	return action.TunnelID + ":" + action.Hostname + ":" + action.Path
+}
+
+func cloudflarePendingDNSResourceID(action Action) string {
+	return "pending:" + action.TunnelID + ":" + action.Hostname
+}
+
+func cloudflareActionIngressValue(action Action) string {
+	return action.TunnelID + "|" + action.Hostname + "|" + action.Path + "|" + action.NewService + "|" + action.NewHTTPHostHeader + "|" + action.OriginServerName
+}
+
+func cloudflareIngressValue(entry api.CloudflareIngressEntry) string {
+	return entry.TunnelID + "|" + entry.Hostname + "|" + entry.Path + "|" + entry.Service + "|" + entry.HTTPHostHeader + "|" + entry.OriginServerName
 }
 
 func ensureUnboundHostnameUnused(client UnboundClient, hostname string) error {
