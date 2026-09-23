@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### <!-- 1 -->🐛 Bug Fixes
+
+- pin cosign installer release action ([b4fb2db](b4fb2db55a239177045b6feae33358d224e01025))
+
+
+### <!-- 3 -->📚 Documentation
+
+- update changelog ([ae6a66c](ae6a66cafdf22964c442c44fa7efbcae85e1d3bc))
+
+
+## [0.6.0] - 2026-09-23
+
 ### <!-- 0 -->🚀 Features
 
 - guide first-run DNS setup ([4a5d0cb](4a5d0cbafaed426846ad213c9ab6bdd73c7f63e8))
