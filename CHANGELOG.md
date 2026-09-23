@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- honor selected caddy endpoint everywhere ([2f1fe2c](2f1fe2cbfcc5586f13e97505be0b530e8c4c517e))
+
 - resolve effective configuration safely ([4c3a664](4c3a664f952079151bc9dacb21e040f79ca9d496))
 
 - harden web access and probe policy ([46bb98a](46bb98a17e948f8d5fb65c28db1570930ece1a88))
@@ -23,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([ea443fb](ea443fb8758a25e086333593f6ec383b3c859380))
 
 - update changelog ([f01519f](f01519f54d61c0d6449ce333e5c8d3b064ffd44b))
 
