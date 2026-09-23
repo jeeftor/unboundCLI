@@ -78,6 +78,15 @@ type CloudflareZone struct {
 	Name string `json:"name"`
 }
 
+// CloudflareDNSRecord identifies a tunnel CNAME by its provider record ID.
+// Hostnames are not identities because Cloudflare permits external replacement
+// of a record with another resource.
+type CloudflareDNSRecord struct {
+	ID       string `json:"id"`
+	Hostname string `json:"hostname"`
+	Target   string `json:"target"`
+}
+
 // NewCloudflareClient creates a new Cloudflare API client
 func NewCloudflareClient(config CloudflareConfig) (*CloudflareClient, error) {
 	opts := []cloudflare.Option{}
@@ -419,6 +428,23 @@ func servicesEquivalent(existing, desired string) bool {
 // ListManagedDNSRecords returns all CNAME records in the zone that point to
 // cfargotunnel.com, keyed by hostname. Used to diff current vs desired state.
 func (c *CloudflareClient) ListManagedDNSRecords() (map[string]string, error) {
+	records, err := c.ListTunnelDNSRecords()
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string, len(records))
+	for _, record := range records {
+		if _, exists := result[record.Hostname]; exists {
+			return nil, fmt.Errorf("ambiguous tunnel DNS records for %s", record.Hostname)
+		}
+		result[record.Hostname] = record.Target
+	}
+	return result, nil
+}
+
+// ListTunnelDNSRecords returns every tunnel CNAME with its immutable
+// Cloudflare record ID. Callers must retain the ID for ownership checks.
+func (c *CloudflareClient) ListTunnelDNSRecords() ([]CloudflareDNSRecord, error) {
 	ctx := c.getCtx()
 
 	records, _, err := c.api.ListDNSRecords(ctx,
@@ -429,10 +455,10 @@ func (c *CloudflareClient) ListManagedDNSRecords() (map[string]string, error) {
 		return nil, fmt.Errorf("error listing DNS records: %w", err)
 	}
 
-	result := make(map[string]string)
+	result := make([]CloudflareDNSRecord, 0, len(records))
 	for _, r := range records {
 		if strings.Contains(r.Content, "cfargotunnel.com") {
-			result[r.Name] = r.Content
+			result = append(result, CloudflareDNSRecord{ID: r.ID, Hostname: r.Name, Target: r.Content})
 		}
 	}
 	return result, nil

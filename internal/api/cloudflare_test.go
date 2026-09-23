@@ -565,6 +565,26 @@ func TestListManagedDNSRecords_FiltersToTunnelCNAMEs(t *testing.T) {
 	}
 }
 
+func TestListTunnelDNSRecordsIncludesProviderIDs(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/zones/test-zone/dns_records", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, dnsListResponse([]map[string]interface{}{
+			{"id": "record-1", "type": "CNAME", "name": "app.example.com", "content": "tunnel-1.cfargotunnel.com"},
+			{"id": "record-2", "type": "CNAME", "name": "manual.example.com", "content": "elsewhere.example.com"},
+		}))
+	})
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+	records, err := client.ListTunnelDNSRecords()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].ID != "record-1" || records[0].Hostname != "app.example.com" || records[0].Target != "tunnel-1.cfargotunnel.com" {
+		t.Fatalf("unexpected tunnel DNS records: %#v", records)
+	}
+}
+
 func TestListManagedDNSRecords_EmptyZone(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/client/v4/zones/test-zone/dns_records",
