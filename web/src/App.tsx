@@ -115,6 +115,7 @@ export function App() {
         if (name === 'dryrun') await dryRunSync();
         if (name === 'sync') await syncNow();
         if (name === 'toggleconfig') setConfigOpen(value !== 'closed');
+        if (name === 'clickfirstsetup') document.querySelector<HTMLButtonElement>('.first-run-callout button')?.click();
         if (name === 'setconfig' && value === 'unbound') {
           const nextForms = {
             ...useStore.getState().forms,

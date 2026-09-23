@@ -157,10 +157,11 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	firstRunServer := httptest.NewServer(firstRunHandler)
 	firstRunHandler.options.AllowedOrigin = firstRunServer.URL
 	defer firstRunServer.Close()
-	firstRunDOM := runChromeSmoke(t, chromePath, firstRunServer.URL, 1280, 900)
+	firstRunDOM := runChromeSmoke(t, chromePath, firstRunServer.URL+"?e2e=clickfirstsetup", 1280, 900)
 	if !strings.Contains(firstRunDOM, `class="first-run-callout"`) ||
 		!strings.Contains(firstRunDOM, "Set up your first DNS destination") ||
-		!strings.Contains(firstRunDOM, "Configure DNS") {
+		!strings.Contains(firstRunDOM, "Configure DNS") ||
+		!strings.Contains(firstRunDOM, `id="config-panel" class="config-modal open"`) {
 		t.Fatalf("an unconfigured session should show first-run setup guidance:\n%s", firstRunDOM)
 	}
 
