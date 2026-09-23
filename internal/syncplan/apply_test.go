@@ -3,9 +3,11 @@ package syncplan
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 )
 
 func TestApplyUpdatesUnboundByFullHostnameAndRestartsOnce(t *testing.T) {
@@ -139,7 +141,14 @@ func TestApplyReportsUnboundRestartFailure(t *testing.T) {
 }
 
 func TestApplyAdguardActions(t *testing.T) {
-	adguard := &fakeAdguardClient{}
+	adguard := &fakeAdguardClient{rewrites: []api.Rewrite{
+		{Domain: "update.example.com", Answer: "10.0.0.10"},
+		{Domain: "old.example.com", Answer: "10.0.0.10"},
+	}}
+	ownershipPath := adguardOwnershipPath(t, map[string]string{
+		"update.example.com": "10.0.0.10",
+		"old.example.com":    "10.0.0.10",
+	})
 
 	result := Apply(context.Background(), Clients{Adguard: adguard}, Plan{Actions: []Action{
 		{
@@ -164,7 +173,7 @@ func TestApplyAdguardActions(t *testing.T) {
 			OldIP:    "10.0.0.10",
 			Enabled:  true,
 		},
-	}}, ApplyOptions{})
+	}}, ApplyOptions{OwnershipPath: ownershipPath})
 
 	if !result.Success {
 		t.Fatalf("expected success, got %#v", result.Errors)
@@ -178,6 +187,49 @@ func TestApplyAdguardActions(t *testing.T) {
 	if adguard.updated[0].target.Answer != "10.0.0.10" || adguard.updated[0].update.Answer != "10.0.0.15" {
 		t.Fatalf("unexpected update payload: %#v", adguard.updated[0])
 	}
+}
+
+func TestApplyProtectsUnownedAdguardRewrite(t *testing.T) {
+	adguard := &fakeAdguardClient{rewrites: []api.Rewrite{{Domain: "manual.example.com", Answer: "10.0.0.10"}}}
+	result := Apply(context.Background(), Clients{Adguard: adguard}, Plan{Actions: []Action{{
+		Type: "delete", Service: "adguard", Hostname: "manual.example.com", OldIP: "10.0.0.10", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: adguardOwnershipPath(t, nil)})
+	if result.Success || len(adguard.deleted) != 0 {
+		t.Fatalf("manual AdGuard rewrite must be protected, result=%#v deleted=%#v", result, adguard.deleted)
+	}
+}
+
+func TestApplyAdguardPersistsIntentBeforeWriteFailure(t *testing.T) {
+	adguard := &fakeAdguardClient{addErr: errors.New("provider unavailable")}
+	path := adguardOwnershipPath(t, nil)
+	result := Apply(context.Background(), Clients{Adguard: adguard}, Plan{Actions: []Action{{
+		Type: "add", Service: "adguard", Hostname: "new.example.com", NewIP: "10.0.0.15", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: path})
+	if result.Success {
+		t.Fatal("expected provider failure")
+	}
+	state, err := ownership.Load(path)
+	if err != nil || !state.HasIntent("adguard", "rewrite", "new.example.com") {
+		t.Fatalf("expected unresolved intent after provider failure, state=%#v err=%v", state, err)
+	}
+}
+
+func adguardOwnershipPath(t *testing.T, resources map[string]string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "ownership.json")
+	state, err := ownership.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for domain, answer := range resources {
+		if err := state.Record(ownership.Resource{Provider: "adguard", Kind: "rewrite", ID: domain, Expected: ownership.Fingerprint(answer)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ownership.Save(path, state); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
@@ -301,24 +353,46 @@ type fakeAdguardUpdate struct {
 }
 
 type fakeAdguardClient struct {
-	added   []api.Rewrite
-	updated []fakeAdguardUpdate
-	deleted []api.Rewrite
+	rewrites []api.Rewrite
+	added    []api.Rewrite
+	updated  []fakeAdguardUpdate
+	deleted  []api.Rewrite
+	addErr   error
 }
 
 func (f *fakeAdguardClient) AddRewrite(domain, answer string) error {
+	if f.addErr != nil {
+		return f.addErr
+	}
 	f.added = append(f.added, api.Rewrite{Domain: domain, Answer: answer})
+	f.rewrites = append(f.rewrites, api.Rewrite{Domain: domain, Answer: answer})
 	return nil
 }
 
 func (f *fakeAdguardClient) UpdateRewrite(target, update api.Rewrite) error {
 	f.updated = append(f.updated, fakeAdguardUpdate{target: target, update: update})
+	for index := range f.rewrites {
+		if f.rewrites[index] == target {
+			f.rewrites[index] = update
+			break
+		}
+	}
 	return nil
 }
 
 func (f *fakeAdguardClient) DeleteRewrite(domain, answer string) error {
 	f.deleted = append(f.deleted, api.Rewrite{Domain: domain, Answer: answer})
+	for index, rewrite := range f.rewrites {
+		if rewrite.Domain == domain && rewrite.Answer == answer {
+			f.rewrites = append(f.rewrites[:index], f.rewrites[index+1:]...)
+			break
+		}
+	}
 	return nil
+}
+
+func (f *fakeAdguardClient) ListRewrites() ([]api.Rewrite, error) {
+	return append([]api.Rewrite(nil), f.rewrites...), nil
 }
 
 type fakeCloudflareClient struct {

@@ -4,14 +4,17 @@ import (
 	"context"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
 // TUISyncExecutor adapts TUI sync callbacks to the UI-neutral syncplan applier.
 type TUISyncExecutor struct {
-	clients syncplan.Clients
-	dryRun  bool
-	ctx     context.Context
+	clients       syncplan.Clients
+	dryRun        bool
+	ctx           context.Context
+	ownershipPath string
 }
 
 // WithContext sets the context for sync operations (enables Ctrl+C cancellation).
@@ -29,6 +32,9 @@ func NewTUISyncExecutor(
 ) *TUISyncExecutor {
 	_ = dhcpClient
 	executor := &TUISyncExecutor{}
+	if configPath, err := config.SelectedConfigPath(""); err == nil {
+		executor.ownershipPath = ownership.PathForConfig(configPath)
+	}
 	if unboundClient != nil {
 		executor.clients.Unbound = unboundClient
 	}
@@ -54,7 +60,8 @@ func (e *TUISyncExecutor) ExecuteSyncAction(action syncplan.Action) error {
 		ctx = context.Background()
 	}
 	result := syncplan.Apply(ctx, e.clients, syncplan.Plan{Actions: []syncplan.Action{action}}, syncplan.ApplyOptions{
-		DryRun: e.dryRun,
+		DryRun:        e.dryRun,
+		OwnershipPath: e.ownershipPath,
 	})
 	if result.Success {
 		return nil
@@ -75,6 +82,7 @@ func (e *TUISyncExecutor) ExecuteSyncActions(actions []syncplan.Action) *syncpla
 		ctx = context.Background()
 	}
 	return syncplan.Apply(ctx, e.clients, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{
-		DryRun: e.dryRun,
+		DryRun:        e.dryRun,
+		OwnershipPath: e.ownershipPath,
 	})
 }

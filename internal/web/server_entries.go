@@ -326,11 +326,18 @@ func (s *Server) handleApply(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) applyActions(ctx context.Context, actions []syncplan.Action, dryRun bool) *syncplan.Result {
 	runtime := s.runtimeSnapshot()
+	configPath, err := s.configPath()
+	if err != nil {
+		return &syncplan.Result{Errors: []string{fmt.Sprintf("resolve ownership state path: %v", err)}, Message: "Unable to apply plan"}
+	}
 	return syncplan.Apply(ctx, syncplan.Clients{
 		Unbound:    runtime.Clients.Unbound,
 		Adguard:    runtime.Clients.Adguard,
 		Cloudflare: runtime.Clients.Cloudflare,
-	}, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{DryRun: dryRun})
+	}, syncplan.Plan{Actions: actions}, syncplan.ApplyOptions{
+		DryRun:        dryRun,
+		OwnershipPath: ownership.PathForConfig(configPath),
+	})
 }
 
 // handleSyncRemove deletes DNS entries for a specific hostname.

@@ -8,12 +8,14 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"testing"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
@@ -181,8 +183,19 @@ func TestLoadPlanApplyWithNoLANFixtures(t *testing.T) {
 	if len(adguardPlan.Actions) != 1 {
 		t.Fatalf("expected one adguard action, got %#v", adguardPlan.Actions)
 	}
-	adguardApply := &fixtureApplyAdguard{}
-	adguardResult := syncplan.Apply(context.Background(), syncplan.Clients{Adguard: adguardApply}, adguardPlan, syncplan.ApplyOptions{})
+	adguardApply := &fixtureApplyAdguard{rewrites: []api.Rewrite{{Domain: "stale.example.test", Answer: "10.0.0.9"}}}
+	adguardOwnershipPath := filepath.Join(t.TempDir(), "ownership.json")
+	adguardOwnership, err := ownership.Load(adguardOwnershipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := adguardOwnership.Record(ownership.Resource{Provider: "adguard", Kind: "rewrite", ID: "stale.example.test", Expected: ownership.Fingerprint("10.0.0.9")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ownership.Save(adguardOwnershipPath, adguardOwnership); err != nil {
+		t.Fatal(err)
+	}
+	adguardResult := syncplan.Apply(context.Background(), syncplan.Clients{Adguard: adguardApply}, adguardPlan, syncplan.ApplyOptions{OwnershipPath: adguardOwnershipPath})
 	if !adguardResult.Success {
 		t.Fatalf("expected adguard apply success, got %#v", adguardResult)
 	}
@@ -301,22 +314,40 @@ type fixtureRewriteUpdate struct {
 }
 
 type fixtureApplyAdguard struct {
-	added   []api.Rewrite
-	updated []fixtureRewriteUpdate
-	deleted []api.Rewrite
+	rewrites []api.Rewrite
+	added    []api.Rewrite
+	updated  []fixtureRewriteUpdate
+	deleted  []api.Rewrite
 }
 
 func (f *fixtureApplyAdguard) AddRewrite(domain, answer string) error {
 	f.added = append(f.added, api.Rewrite{Domain: domain, Answer: answer})
+	f.rewrites = append(f.rewrites, api.Rewrite{Domain: domain, Answer: answer})
 	return nil
 }
 
 func (f *fixtureApplyAdguard) UpdateRewrite(target, update api.Rewrite) error {
 	f.updated = append(f.updated, fixtureRewriteUpdate{target: target, update: update})
+	for index := range f.rewrites {
+		if f.rewrites[index] == target {
+			f.rewrites[index] = update
+			break
+		}
+	}
 	return nil
 }
 
 func (f *fixtureApplyAdguard) DeleteRewrite(domain, answer string) error {
 	f.deleted = append(f.deleted, api.Rewrite{Domain: domain, Answer: answer})
+	for index, rewrite := range f.rewrites {
+		if rewrite.Domain == domain && rewrite.Answer == answer {
+			f.rewrites = append(f.rewrites[:index], f.rewrites[index+1:]...)
+			break
+		}
+	}
 	return nil
+}
+
+func (f *fixtureApplyAdguard) ListRewrites() ([]api.Rewrite, error) {
+	return append([]api.Rewrite(nil), f.rewrites...), nil
 }

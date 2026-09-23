@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 )
 
 type UnboundClient interface {
@@ -21,6 +22,7 @@ type AdguardClient interface {
 	AddRewrite(domain, answer string) error
 	UpdateRewrite(target, update api.Rewrite) error
 	DeleteRewrite(domain, answer string) error
+	ListRewrites() ([]api.Rewrite, error)
 }
 
 type CloudflareClient interface {
@@ -40,7 +42,8 @@ type Clients struct {
 
 // ApplyOptions controls sync plan application.
 type ApplyOptions struct {
-	DryRun bool
+	DryRun        bool
+	OwnershipPath string
 }
 
 type ActionError string
@@ -59,6 +62,11 @@ func Apply(ctx context.Context, clients Clients, plan Plan, options ApplyOptions
 
 	unboundChanged := false
 	adguardChanged := false
+	var adguardOwnership *adguardOwnership
+	var adguardOwnershipErr error
+	if !options.DryRun && hasEnabledAction(actions, "adguard") {
+		adguardOwnership, adguardOwnershipErr = loadAdguardOwnership(options.OwnershipPath)
+	}
 
 	for _, action := range actions {
 		actionResult := ActionResult{Action: action}
@@ -75,7 +83,7 @@ func Apply(ctx context.Context, clients Clients, plan Plan, options ApplyOptions
 
 		var err error
 		if !options.DryRun {
-			err = applyAction(clients, action)
+			err = applyAction(clients, action, adguardOwnership, adguardOwnershipErr)
 		}
 		if err != nil {
 			recordActionError(result, actionResult, err)
@@ -121,12 +129,15 @@ func ApplyActions(ctx context.Context, clients Clients, actions []Action, option
 	return Apply(ctx, clients, Plan{Actions: actions}, options)
 }
 
-func applyAction(clients Clients, action Action) error {
+func applyAction(clients Clients, action Action, adguardOwnership *adguardOwnership, adguardOwnershipErr error) error {
 	switch action.Service {
 	case "unbound":
 		return applyUnboundAction(clients.Unbound, action)
 	case "adguard":
-		return applyAdguardAction(clients.Adguard, action)
+		if adguardOwnershipErr != nil {
+			return adguardOwnershipErr
+		}
+		return applyAdguardAction(clients.Adguard, action, adguardOwnership)
 	case "cloudflare":
 		return applyCloudflareAction(clients.Cloudflare, action)
 	case "dhcp":
@@ -174,24 +185,164 @@ func applyUnboundAction(client UnboundClient, action Action) error {
 	}
 }
 
-func applyAdguardAction(client AdguardClient, action Action) error {
+func applyAdguardAction(client AdguardClient, action Action, owned *adguardOwnership) error {
 	if client == nil {
 		return fmt.Errorf("AdGuard client not available")
+	}
+	if owned == nil {
+		return fmt.Errorf("AdGuard ownership state is required for mutations")
+	}
+	if owned.state.HasIntent("adguard", "rewrite", action.Hostname) {
+		return fmt.Errorf("AdGuard rewrite %s has an unresolved operation; review recovery state before retrying", action.Hostname)
 	}
 
 	switch action.Type {
 	case "add":
-		return client.AddRewrite(action.Hostname, action.NewIP)
+		rewrites, err := client.ListRewrites()
+		if err != nil {
+			return fmt.Errorf("list AdGuard rewrites: %w", err)
+		}
+		if _, err := exactAdguardRewrite(rewrites, action.Hostname, ""); err == nil {
+			return fmt.Errorf("AdGuard rewrite already exists for %s; explicit adoption is required", action.Hostname)
+		} else if !isAdguardRewriteNotFound(err) {
+			return err
+		}
+		if err := owned.begin("add", action.Hostname, action.NewIP); err != nil {
+			return err
+		}
+		if err := client.AddRewrite(action.Hostname, action.NewIP); err != nil {
+			return err
+		}
+		return owned.verifyAndRecord(client, action.Hostname, action.NewIP)
 	case "update":
-		return client.UpdateRewrite(
-			api.Rewrite{Domain: action.Hostname, Answer: action.OldIP},
-			api.Rewrite{Domain: action.Hostname, Answer: action.NewIP},
-		)
+		if err := owned.require(action.Hostname, action.OldIP); err != nil {
+			return err
+		}
+		existing, err := owned.current(client, action.Hostname, action.OldIP)
+		if err != nil {
+			return err
+		}
+		if err := owned.begin("update", action.Hostname, action.NewIP); err != nil {
+			return err
+		}
+		if err := client.UpdateRewrite(existing, api.Rewrite{Domain: action.Hostname, Answer: action.NewIP}); err != nil {
+			return err
+		}
+		return owned.verifyAndRecord(client, action.Hostname, action.NewIP)
 	case "delete":
-		return client.DeleteRewrite(action.Hostname, action.OldIP)
+		if err := owned.require(action.Hostname, action.OldIP); err != nil {
+			return err
+		}
+		if _, err := owned.current(client, action.Hostname, action.OldIP); err != nil {
+			return err
+		}
+		if err := owned.begin("delete", action.Hostname, action.OldIP); err != nil {
+			return err
+		}
+		if err := client.DeleteRewrite(action.Hostname, action.OldIP); err != nil {
+			return err
+		}
+		return owned.verifyDeleted(client, action.Hostname)
 	default:
 		return fmt.Errorf("unknown action type: %s", action.Type)
 	}
+}
+
+func hasEnabledAction(actions []Action, service string) bool {
+	for _, action := range actions {
+		if action.Enabled && action.Service == service {
+			return true
+		}
+	}
+	return false
+}
+
+type adguardOwnership struct {
+	path  string
+	state ownership.State
+}
+
+func loadAdguardOwnership(path string) (*adguardOwnership, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("AdGuard ownership state path is required for mutations")
+	}
+	state, err := ownership.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("load AdGuard ownership state: %w", err)
+	}
+	return &adguardOwnership{path: path, state: state}, nil
+}
+
+func (o *adguardOwnership) begin(operation, domain, expected string) error {
+	if err := o.state.Begin(ownership.Intent{Operation: operation, Provider: "adguard", Kind: "rewrite", ID: domain, Expected: ownership.Fingerprint(expected)}); err != nil {
+		return err
+	}
+	return ownership.Save(o.path, o.state)
+}
+
+func (o *adguardOwnership) require(domain, expected string) error {
+	resource, ok := o.state.Resources[ownership.Key("adguard", "rewrite", domain)]
+	if !ok || !o.state.Owns("adguard", "rewrite", domain) || resource.Expected != ownership.Fingerprint(expected) {
+		return fmt.Errorf("AdGuard rewrite %s is not an owned resource with the expected value; explicit adoption is required", domain)
+	}
+	return nil
+}
+
+func (o *adguardOwnership) current(client AdguardClient, domain, expected string) (api.Rewrite, error) {
+	rewrites, err := client.ListRewrites()
+	if err != nil {
+		return api.Rewrite{}, fmt.Errorf("list AdGuard rewrites: %w", err)
+	}
+	return exactAdguardRewrite(rewrites, domain, expected)
+}
+
+func (o *adguardOwnership) verifyAndRecord(client AdguardClient, domain, answer string) error {
+	current, err := o.current(client, domain, answer)
+	if err != nil {
+		return fmt.Errorf("read back AdGuard rewrite: %w", err)
+	}
+	if err := o.state.Record(ownership.Resource{Provider: "adguard", Kind: "rewrite", ID: current.Domain, Expected: ownership.Fingerprint(current.Answer)}); err != nil {
+		return err
+	}
+	o.state.Resolve("adguard", "rewrite", domain)
+	return ownership.Save(o.path, o.state)
+}
+
+func (o *adguardOwnership) verifyDeleted(client AdguardClient, domain string) error {
+	rewrites, err := client.ListRewrites()
+	if err != nil {
+		return fmt.Errorf("read back AdGuard rewrites: %w", err)
+	}
+	if _, err := exactAdguardRewrite(rewrites, domain, ""); err == nil {
+		return fmt.Errorf("readback still found AdGuard rewrite %s", domain)
+	} else if !isAdguardRewriteNotFound(err) {
+		return err
+	}
+	o.state.Forget("adguard", "rewrite", domain)
+	o.state.Resolve("adguard", "rewrite", domain)
+	return ownership.Save(o.path, o.state)
+}
+
+func exactAdguardRewrite(rewrites []api.Rewrite, domain, expected string) (api.Rewrite, error) {
+	var match *api.Rewrite
+	for index := range rewrites {
+		rewrite := &rewrites[index]
+		if rewrite.Domain != domain || (expected != "" && rewrite.Answer != expected) {
+			continue
+		}
+		if match != nil {
+			return api.Rewrite{}, fmt.Errorf("ambiguous AdGuard rewrites for %s", domain)
+		}
+		match = rewrite
+	}
+	if match == nil {
+		return api.Rewrite{}, fmt.Errorf("no matching AdGuard rewrite for %s", domain)
+	}
+	return *match, nil
+}
+
+func isAdguardRewriteNotFound(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "no matching AdGuard rewrite for ")
 }
 
 func applyCloudflareAction(client CloudflareClient, action Action) error {
