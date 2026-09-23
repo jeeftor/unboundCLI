@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- retain cloudflare DNS identity in inventory ([7d47585](7d47585413684510eaede600e918971c54152c4e))
+
 - expose cloudflare DNS record identities ([77ca5c8](77ca5c8f24b1b6f23111e670b751245825ad2373))
 
 - add verified adguard adoption previews ([4d13f35](4d13f35f26e5504efb1fc0d4c7d668aa32707870))
@@ -68,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([ab9891e](ab9891e7596131a099bf8a0c9bcc09cf65dd975a))
 
 - update changelog ([4f9c2e3](4f9c2e366630db921f089e430f98c0b91fac82e4))
 
