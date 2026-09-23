@@ -21,7 +21,7 @@
   /* Text */
   --text:       #dde8f8;
   --text-2:     #728aab;
-  --text-muted: #3f5570;
+  --text-muted: #8296ad;
 
   /* Accent colors */
   --blue:       #4fa8ff;
@@ -159,6 +159,10 @@ input::placeholder { color: var(--text-muted); }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .entries-toolbar, .config-grid { grid-template-columns: 1fr; }
   .sync-modal { width: 100%; }
+}
+
+@media (max-width: 760px) {
+  button, select, input { min-height: 44px; }
 }
 
 @media (max-width: 760px) {
