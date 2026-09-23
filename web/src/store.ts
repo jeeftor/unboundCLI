@@ -322,6 +322,7 @@ let configFetched = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 1000;
 let pendingOnDataChanged: (() => void) | undefined;
+let syncPlanSequence = 0;
 
 function scheduleReconnect() {
   if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -478,8 +479,9 @@ export function refreshEntries(onDataChanged?: () => void) {
 // ─── Sync actions ────────────────────────────────────────────────────────────
 
 export async function previewSync(service = useStore.getState().syncService, hostname = '', unsync = false): Promise<boolean> {
-  const store = useStore.getState();
-  const enabledServices = store.config?.enabled || {};
+	const store = useStore.getState();
+	const requestID = ++syncPlanSequence;
+	const enabledServices = store.config?.enabled || {};
 
   if (service === 'dhcp') {
     store.clearPlan('DHCP apply is not implemented; preview only.');
@@ -497,9 +499,10 @@ export async function previewSync(service = useStore.getState().syncService, hos
   });
   store.setSyncLog(unsync ? `Planning ${service} removal for ${hostname}...` : hostname ? `Planning ${service} sync for ${hostname}...` : `Planning ${service} sync...`);
 
-  try {
-    const data = await api.planSync(service, hostname, unsync);
-    const nextPlan: PlanState = {
+	try {
+		const data = await api.planSync(service, hostname, unsync);
+		if (requestID !== syncPlanSequence) return false;
+		const nextPlan: PlanState = {
       actions: data.actions || [],
       actionIDs: data.action_ids || [],
       planID: data.plan_id || '',
@@ -512,14 +515,15 @@ export async function previewSync(service = useStore.getState().syncService, hos
     } else {
       store.setSyncLog(`${hostname ? `Planned actions for ${hostname}` : 'Planned actions'}\n${actions.map(renderActionLine).join('\n')}`);
     }
-    store.setPlan(nextPlan);
-    return nextPlan.actionIDs.length > 0;
-  } catch (err) {
-    store.clearPlan(err instanceof Error ? err.message : String(err));
-    return false;
-  } finally {
-    store.setSyncLoading(false);
-  }
+		store.setPlan(nextPlan);
+		return nextPlan.actionIDs.length > 0;
+	} catch (err) {
+		if (requestID !== syncPlanSequence) return false;
+		store.clearPlan(err instanceof Error ? err.message : String(err));
+		return false;
+	} finally {
+		if (requestID === syncPlanSequence) store.setSyncLoading(false);
+	}
 }
 
 export async function dryRunSync(): Promise<void> {
