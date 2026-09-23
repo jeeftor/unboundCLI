@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- reject duplicate adguard rewrites ([4ad8e02](4ad8e02469a3ac1798ebf70c5d3d89b1252353d8))
+
 - enforce ownership in shared adguard applies ([5f526ea](5f526eabf35369f47143e7288f43efb14f2a28ce))
 
 - support sync locks on windows ([577e44e](577e44ea2dd1582fa8b0f90f1a05fe83a08ecf66))
@@ -62,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([d41ada0](d41ada005e0793621c98a6b5afa1ad51f016a543))
 
 - update changelog ([08e8241](08e8241769881fc6fc448eff3be335d6632efc1d))
 
