@@ -13,7 +13,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 export function DeployPanel({ onClose }: { onClose: () => void }) {
   const [log, setLog] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<'ok' | 'error' | null>(null);
+  const [result, setResult] = useState<'ok' | 'error' | 'unknown' | null>(null);
   const [validateResult, setValidateResult] = useState<CaddyValidateResult | null>(null);
   const [validating, setValidating] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
@@ -35,50 +35,56 @@ export function DeployPanel({ onClose }: { onClose: () => void }) {
     setLog([]);
     setResult(null);
 
-    const response = await fetch('/api/caddy/deploy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-UnboundCLI-Token': window.UNBOUNDCLI_WEB_CONFIG?.applyToken ?? ''
-      },
-      body: JSON.stringify({})
-    });
-
-    if (!response.ok || !response.body) {
-      setLog(['Error: deploy request failed']);
-      setResult('error');
-      setRunning(false);
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop() ?? '';
-      for (const part of parts) {
-        const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
-        if (!dataLine) continue;
-        try {
-          const event = JSON.parse(dataLine.slice(6)) as CaddyDeployEvent;
-          if ('done' in event && event.done) {
-            setResult(event.status);
-            setRunning(false);
-          } else if ('line' in event) {
-            setLog((prev) => [...prev, event.line]);
+    try {
+      const response = await fetch('/api/caddy/deploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-UnboundCLI-Token': window.UNBOUNDCLI_WEB_CONFIG?.applyToken ?? ''
+        },
+        body: JSON.stringify({})
+      });
+      if (!response.ok || !response.body) {
+        setLog(['Error: deploy request failed']);
+        setResult('error');
+        return;
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let completed = false;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const dataLine = part.split('\n').find((l) => l.startsWith('data: '));
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine.slice(6)) as CaddyDeployEvent;
+            if ('done' in event && event.done) {
+              completed = true;
+              setResult(event.status);
+            } else if ('line' in event) {
+              setLog((prev) => [...prev, event.line]);
+            }
+          } catch {
+            // Skip malformed events and wait for a valid terminal result.
           }
-        } catch {
-          // skip malformed events
         }
       }
+      if (!completed) {
+        setLog((prev) => [...prev, 'Connection closed before deployment completion. Verify Caddy before retrying.']);
+        setResult('unknown');
+      }
+    } catch (error) {
+      setLog((prev) => [...prev, `Connection lost; deployment outcome is unknown: ${String(error)}`]);
+      setResult('unknown');
+    } finally {
+      setRunning(false);
     }
-
-    setRunning(false);
   };
 
   useEffect(() => {
@@ -124,7 +130,9 @@ export function DeployPanel({ onClose }: { onClose: () => void }) {
             <div className={`deploy-result ${result}`}>
               {result === 'ok'
                 ? <><CheckCircle2 size={14} /> Deployment successful</>
-                : <><XCircle size={14} /> Deployment failed</>}
+                : result === 'error'
+                  ? <><XCircle size={14} /> Deployment failed</>
+                  : <><XCircle size={14} /> Connection lost — verify deployment outcome before retrying</>}
             </div>
           )}
         </div>
