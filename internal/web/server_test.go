@@ -1313,7 +1313,7 @@ func TestMutatingApplyRejectsWildcardBindHost(t *testing.T) {
 func TestClaimPlanPreventsReplayAndRetainsResult(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 	action := syncplan.Action{Type: "add", Service: "unbound", Hostname: "claimed.example.test", NewIP: "10.0.0.15", Enabled: true}
-	server.storePlan("plan-test", []syncplan.Action{action}, []string{"action-test"})
+	server.storePlan("plan-test", []syncplan.Action{action}, []string{"action-test"}, "", "")
 
 	actions, result, status, err := server.claimPlan("plan-test", []string{"action-test"})
 	if err != nil || status != "applying" || result != nil || len(actions) != 1 {
@@ -1336,9 +1336,29 @@ func TestClaimPlanPreventsReplayAndRetainsResult(t *testing.T) {
 func TestClaimPlanRejectsDuplicateActionID(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 	action := syncplan.Action{Type: "add", Service: "unbound", Hostname: "duplicate.example.test", NewIP: "10.0.0.15", Enabled: true}
-	server.storePlan("plan-test", []syncplan.Action{action}, []string{"action-test"})
+	server.storePlan("plan-test", []syncplan.Action{action}, []string{"action-test"}, "", "")
 	if _, _, _, err := server.claimPlan("plan-test", []string{"action-test", "action-test"}); err == nil {
 		t.Fatal("expected duplicate action IDs to be rejected")
+	}
+}
+
+func TestClaimPlanRejectsChangedConfiguration(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"caddy":{"server_ip":"10.0.0.15"}}`), 0o600); err != nil {
+		t.Fatalf("write configuration: %v", err)
+	}
+	revision, err := config.Revision(configPath)
+	if err != nil {
+		t.Fatalf("read configuration revision: %v", err)
+	}
+	server := NewServer(&app.Runtime{})
+	action := syncplan.Action{Type: "add", Service: "unbound", Hostname: "changed.example.test", NewIP: "10.0.0.15", Enabled: true}
+	server.storePlan("plan-test", []syncplan.Action{action}, []string{"action-test"}, configPath, revision)
+	if err := os.WriteFile(configPath, []byte(`{"caddy":{"server_ip":"10.0.0.16"}}`), 0o600); err != nil {
+		t.Fatalf("change configuration: %v", err)
+	}
+	if _, _, _, err := server.claimPlan("plan-test", []string{"action-test"}); err == nil {
+		t.Fatal("expected changed configuration to invalidate plan")
 	}
 }
 

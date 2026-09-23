@@ -243,7 +243,17 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actionIDs := actionIDs(actions)
-	s.storePlan(planID, actions, actionIDs)
+	configPath, err := config.SelectedConfigPath(s.options.ConfigPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("resolve plan configuration: %w", err))
+		return
+	}
+	configRevision, err := config.Revision(configPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("read plan configuration revision: %w", err))
+		return
+	}
+	s.storePlan(planID, actions, actionIDs, configPath, configRevision)
 	writeJSON(w, http.StatusOK, PlanResponse{
 		PlanID:    planID,
 		ActionIDs: actionIDs,
@@ -728,7 +738,7 @@ func validateApplyActions(actions []syncplan.Action) error {
 	return nil
 }
 
-func (s *Server) storePlan(planID string, actions []syncplan.Action, actionIDs []string) {
+func (s *Server) storePlan(planID string, actions []syncplan.Action, actionIDs []string, configPath, configRevision string) {
 	s.cleanExpiredPlans()
 	actionsByID := make(map[string]syncplan.Action, len(actions))
 	for i, action := range actions {
@@ -738,7 +748,13 @@ func (s *Server) storePlan(planID string, actions []syncplan.Action, actionIDs [
 		actionsByID[actionIDs[i]] = action
 	}
 	s.planMu.Lock()
-	s.plans[planID] = storedPlan{ActionsByID: actionsByID, createdAt: time.Now(), status: "pending"}
+	s.plans[planID] = storedPlan{
+		ActionsByID:    actionsByID,
+		createdAt:      time.Now(),
+		configPath:     configPath,
+		configRevision: configRevision,
+		status:         "pending",
+	}
 	s.planMu.Unlock()
 }
 
@@ -760,6 +776,15 @@ func (s *Server) claimPlan(planID string, actionIDs []string) ([]syncplan.Action
 	plan, ok := s.plans[planID]
 	if !ok {
 		return nil, nil, "", fmt.Errorf("unknown or expired sync plan")
+	}
+	if plan.configPath != "" {
+		currentRevision, err := config.Revision(plan.configPath)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("read plan configuration revision: %w", err)
+		}
+		if currentRevision != plan.configRevision {
+			return nil, nil, "", fmt.Errorf("sync plan configuration changed; preview again before applying")
+		}
 	}
 	if plan.status == "completed" {
 		return nil, plan.result, plan.status, nil
