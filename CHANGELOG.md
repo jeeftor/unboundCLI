@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- enforce ownership for direct unbound edits ([5b0d97b](5b0d97b87b5f7f2eb06ab48560a0b0fca1799a80))
+
 - verify legacy cloudflare sync activation ([ccff534](ccff5349ccf34b145b39f9ecef0c27816854f63b))
 
 - return failure for unhealthy status checks ([8f163e8](8f163e873a07c5e0f435a71c0a5fa41d8b5a353f))
@@ -124,6 +126,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([b9122c1](b9122c1324a49ac454254c933f86f5768713fcce))
 
 - update changelog ([68e99c0](68e99c00418a27cdc88132c9c9a9f792df379e6a))
 
