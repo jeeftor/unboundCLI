@@ -589,32 +589,35 @@ func (c *CloudflareClient) UpdateTunnelRule(spec IngressRuleSpec) error {
 		return fmt.Errorf("error getting tunnel config: %w", err)
 	}
 
-	// Auto-backup before mutating
-	if backupPath, berr := c.saveTunnelBackup(current.Config.Ingress); berr != nil {
-		logging.Warn("Could not write CF tunnel backup", "error", berr)
-	} else {
-		logging.Info("CF tunnel backup saved", "path", backupPath)
+	// A destructive configuration write is not recoverable without a backup.
+	backupPath, berr := c.saveTunnelBackup(current.Config.Ingress)
+	if berr != nil {
+		return fmt.Errorf("backup tunnel configuration before update: %w", berr)
 	}
+	logging.Info("CF tunnel backup saved", "path", backupPath)
 
-	found := false
+	catchAll, insertionIndex, err := cloudflareCatchAll(current.Config.Ingress)
+	if err != nil {
+		return err
+	}
+	found := 0
 	newIngress := make([]cloudflare.UnvalidatedIngressRule, 0, len(current.Config.Ingress)+1)
 
-	for _, rule := range current.Config.Ingress {
-		if rule.Hostname == "" {
-			continue // skip catch-all; re-added at end
+	for index, rule := range current.Config.Ingress {
+		if index == insertionIndex && found == 0 {
+			newIngress = append(newIngress, buildCFIngressRule(spec))
 		}
 		if rule.Hostname == spec.Hostname {
 			newIngress = append(newIngress, patchCFIngressRule(rule, spec))
-			found = true
+			found++
 		} else {
 			newIngress = append(newIngress, rule)
 		}
 	}
-	if !found {
-		newIngress = append(newIngress, buildCFIngressRule(spec))
+	if found > 1 {
+		return fmt.Errorf("ambiguous tunnel ingress rules for %s", spec.Hostname)
 	}
-	// Catch-all must always be last
-	newIngress = append(newIngress, cloudflare.UnvalidatedIngressRule{Service: "http_status:404"})
+	_ = catchAll
 
 	_, err = c.api.UpdateTunnelConfiguration(ctx,
 		cloudflare.ResourceIdentifier(c.accountID),
@@ -654,30 +657,32 @@ func (c *CloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelIDOverride s
 		return fmt.Errorf("error getting tunnel config: %w", err)
 	}
 
-	// Auto-backup before mutating
-	if backupPath, berr := c.saveTunnelBackup(current.Config.Ingress); berr != nil {
-		logging.Warn("Could not write CF tunnel backup", "error", berr)
-	} else {
-		logging.Info("CF tunnel backup saved", "path", backupPath)
+	// A destructive configuration write is not recoverable without a backup.
+	backupPath, berr := c.saveTunnelBackup(current.Config.Ingress)
+	if berr != nil {
+		return fmt.Errorf("backup tunnel configuration before delete: %w", berr)
+	}
+	logging.Info("CF tunnel backup saved", "path", backupPath)
+	if _, _, err := cloudflareCatchAll(current.Config.Ingress); err != nil {
+		return err
 	}
 
 	newIngress := make([]cloudflare.UnvalidatedIngressRule, 0, len(current.Config.Ingress))
-	found := false
+	found := 0
 	for _, rule := range current.Config.Ingress {
-		if rule.Hostname == "" {
-			continue // skip catch-all; re-added at end
-		}
 		if rule.Hostname == hostname {
-			found = true
+			found++
 			continue // drop this rule
 		}
 		newIngress = append(newIngress, rule)
 	}
-	if !found {
+	if found == 0 {
 		logging.Warn("DeleteTunnelRule: hostname not found, nothing to delete", "hostname", hostname)
 		return nil
 	}
-	newIngress = append(newIngress, cloudflare.UnvalidatedIngressRule{Service: "http_status:404"})
+	if found > 1 {
+		return fmt.Errorf("ambiguous tunnel ingress rules for %s", hostname)
+	}
 
 	_, err = c.api.UpdateTunnelConfiguration(ctx,
 		cloudflare.ResourceIdentifier(c.accountID),
@@ -692,6 +697,23 @@ func (c *CloudflareClient) DeleteTunnelRuleInTunnel(hostname, tunnelIDOverride s
 
 	logging.Info("Deleted tunnel rule", "hostname", hostname, "tunnelID", tunnelID)
 	return nil
+}
+
+// cloudflareCatchAll validates that exactly one terminal catch-all rule exists.
+func cloudflareCatchAll(rules []cloudflare.UnvalidatedIngressRule) (cloudflare.UnvalidatedIngressRule, int, error) {
+	if len(rules) == 0 {
+		return cloudflare.UnvalidatedIngressRule{}, 0, fmt.Errorf("tunnel configuration has no terminal catch-all rule")
+	}
+	last := len(rules) - 1
+	if rules[last].Hostname != "" {
+		return cloudflare.UnvalidatedIngressRule{}, 0, fmt.Errorf("tunnel configuration has no terminal catch-all rule")
+	}
+	for index := 0; index < last; index++ {
+		if rules[index].Hostname == "" {
+			return cloudflare.UnvalidatedIngressRule{}, 0, fmt.Errorf("tunnel configuration has a non-terminal catch-all rule")
+		}
+	}
+	return rules[last], last, nil
 }
 
 // buildCFIngressRule constructs a cloudflare ingress rule from a spec.

@@ -463,7 +463,7 @@ func TestUpdateTunnelRulePreservesOptionalFields(t *testing.T) {
 										}
 									}
 								},
-								{"service": "http_status:404"}
+								{"service": "http_status:418"}
 							]
 						}
 					}
@@ -521,8 +521,8 @@ func TestUpdateTunnelRulePreservesOptionalFields(t *testing.T) {
 		t.Fatalf("expected access policy to be preserved, got %#v", originRequest["access"])
 	}
 	last := ingress[len(ingress)-1].(map[string]interface{})
-	if last["service"] != "http_status:404" {
-		t.Fatalf("expected catch-all to remain last, got %#v", last)
+	if last["service"] != "http_status:418" {
+		t.Fatalf("expected original catch-all to remain last, got %#v", last)
 	}
 }
 
