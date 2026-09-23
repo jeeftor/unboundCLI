@@ -957,6 +957,55 @@ func TestPlanRouteRejectsStaleCachedInventoryWhenSourceFails(t *testing.T) {
 	}
 }
 
+func TestSyncRemoveProtectsUnownedAdguardRewrite(t *testing.T) {
+	adguard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/control/rewrite/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `[{"domain":"manual.example.test","answer":"10.0.0.99"}]`)
+		case "/control/rewrite/delete":
+			t.Fatal("unowned AdGuard rewrite must not be deleted")
+		default:
+			t.Fatalf("unexpected AdGuard path %s", r.URL.Path)
+		}
+	}))
+	defer adguard.Close()
+
+	server := NewServerWithOptions(&app.Runtime{Clients: app.ClientSet{
+		Adguard: api.NewAdguardClient(api.AdguardConfig{BaseURL: adguard.URL, Enabled: true}),
+	}}, Options{
+		ApplyToken:     "test-token",
+		AllowMutations: true,
+		AllowedOrigin:  "http://127.0.0.1:8080",
+		BoundHost:      "127.0.0.1",
+		ConfigPath:     filepath.Join(t.TempDir(), "config.json"),
+	})
+	body, err := json.Marshal(map[string]string{"hostname": "manual.example.test", "service": "adguard"})
+	if err != nil {
+		t.Fatalf("marshal remove request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/sync/remove", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Removed int      `json:"removed"`
+		Message string   `json:"message"`
+		Errors  []string `json:"errors"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Removed != 0 || len(response.Errors) != 0 || !strings.Contains(response.Message, "protected unmanaged") {
+		t.Fatalf("expected protected manual rewrite, got %#v", response)
+	}
+}
+
 func TestApplyRejectsOversizedRequestBody(t *testing.T) {
 	server := NewServer(&app.Runtime{})
 

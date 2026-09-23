@@ -11,9 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jeeftor/caddy-dns-sync/internal/api"
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
+	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 	"github.com/jeeftor/caddy-dns-sync/internal/status"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
@@ -348,10 +351,21 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 	if req.Service == "" {
 		req.Service = "all"
 	}
+	if req.Service != "all" && req.Service != "unbound" && req.Service != "adguard" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid removal service %q", req.Service))
+		return
+	}
+
+	state, statePath, err := s.loadOwnershipState()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 
 	runtime := s.runtimeSnapshot()
 	removed := 0
 	var msgs []string
+	var failures []string
 
 	// Remove from Unbound
 	if (req.Service == "all" || req.Service == "unbound") && runtime.Clients.Unbound != nil {
@@ -361,16 +375,42 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 			if err == nil {
 				unboundRemoved := 0
 				for _, o := range overrides {
-					if strings.EqualFold(o.Host, parts[0]) && strings.EqualFold(o.Domain, parts[1]) {
-						if delErr := runtime.Clients.Unbound.DeleteOverride(o.UUID); delErr == nil {
-							unboundRemoved++
-							removed++
-						}
+					if !strings.EqualFold(o.Host, parts[0]) || !strings.EqualFold(o.Domain, parts[1]) {
+						continue
 					}
+					if o.Description != app.CurrentUnboundDescription {
+						msgs = append(msgs, fmt.Sprintf("protected unmanaged Unbound override %s", req.Hostname))
+						continue
+					}
+					if err := beginOwnershipIntent(&state, statePath, "delete", "unbound", "override", o.UUID, o.Server); err != nil {
+						failures = append(failures, err.Error())
+						continue
+					}
+					if delErr := runtime.Clients.Unbound.DeleteOverride(o.UUID); delErr != nil {
+						failures = append(failures, fmt.Sprintf("delete Unbound override %s: %v", req.Hostname, delErr))
+						continue
+					}
+					current, readErr := runtime.Clients.Unbound.GetOverrides()
+					if readErr != nil || unboundOverridePresent(current, o.UUID) {
+						if readErr != nil {
+							failures = append(failures, fmt.Sprintf("verify Unbound override deletion: %v", readErr))
+						} else {
+							failures = append(failures, fmt.Sprintf("verify Unbound override deletion: override %s remains", req.Hostname))
+						}
+						continue
+					}
+					state.Forget("unbound", "override", o.UUID)
+					state.Resolve("unbound", "override", o.UUID)
+					if saveErr := ownership.Save(statePath, state); saveErr != nil {
+						failures = append(failures, fmt.Sprintf("record Unbound deletion: %v", saveErr))
+						continue
+					}
+					unboundRemoved++
+					removed++
 				}
 				if unboundRemoved > 0 {
 					if err := runtime.Clients.Unbound.ApplyChanges(); err != nil {
-						logging.Warn("Failed to apply Unbound changes after override removal", "error", err)
+						failures = append(failures, fmt.Sprintf("apply Unbound changes: %v", err))
 					}
 					msgs = append(msgs, fmt.Sprintf("removed %d Unbound override(s)", unboundRemoved))
 				}
@@ -384,10 +424,36 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			n := 0
 			for _, rw := range rewrites {
-				if delErr := runtime.Clients.Adguard.DeleteRewrite(rw.Domain, rw.Answer); delErr == nil {
-					n++
-					removed++
+				resource, known := state.Resources[ownership.Key("adguard", "rewrite", rw.Domain)]
+				if !known || !state.Owns("adguard", "rewrite", rw.Domain) || resource.Expected != ownership.Fingerprint(rw.Answer) {
+					msgs = append(msgs, fmt.Sprintf("protected unmanaged AdGuard rewrite %s", req.Hostname))
+					continue
 				}
+				if err := beginOwnershipIntent(&state, statePath, "delete", "adguard", "rewrite", rw.Domain, rw.Answer); err != nil {
+					failures = append(failures, err.Error())
+					continue
+				}
+				if delErr := runtime.Clients.Adguard.DeleteRewrite(rw.Domain, rw.Answer); delErr != nil {
+					failures = append(failures, fmt.Sprintf("delete AdGuard rewrite %s: %v", req.Hostname, delErr))
+					continue
+				}
+				current, readErr := runtime.Clients.Adguard.GetRewritesForDomain(rw.Domain)
+				if readErr != nil || adguardRewritePresent(current, rw) {
+					if readErr != nil {
+						failures = append(failures, fmt.Sprintf("verify AdGuard rewrite deletion: %v", readErr))
+					} else {
+						failures = append(failures, fmt.Sprintf("verify AdGuard rewrite deletion: rewrite %s remains", req.Hostname))
+					}
+					continue
+				}
+				state.Forget("adguard", "rewrite", rw.Domain)
+				state.Resolve("adguard", "rewrite", rw.Domain)
+				if saveErr := ownership.Save(statePath, state); saveErr != nil {
+					failures = append(failures, fmt.Sprintf("record AdGuard deletion: %v", saveErr))
+					continue
+				}
+				n++
+				removed++
 			}
 			if n > 0 {
 				msgs = append(msgs, fmt.Sprintf("removed %d AdGuard rewrite(s)", n))
@@ -404,10 +470,52 @@ func (s *Server) handleSyncRemove(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"removed": removed,
 		"message": msg,
+		"errors":  failures,
 	})
 	// Refresh auth cache — entries may have changed.
 	s.invalidateEntriesCache()
 	go s.refreshAuthCache()
+}
+
+func (s *Server) loadOwnershipState() (ownership.State, string, error) {
+	configPath, err := config.SelectedConfigPath(s.options.ConfigPath)
+	if err != nil {
+		return ownership.State{}, "", fmt.Errorf("resolve ownership state path: %w", err)
+	}
+	statePath := ownership.PathForConfig(configPath)
+	state, err := ownership.Load(statePath)
+	if err != nil {
+		return ownership.State{}, "", fmt.Errorf("load ownership state: %w", err)
+	}
+	return state, statePath, nil
+}
+
+func beginOwnershipIntent(state *ownership.State, path, operation, provider, kind, id, expected string) error {
+	if err := state.Begin(ownership.Intent{Operation: operation, Provider: provider, Kind: kind, ID: id, Expected: ownership.Fingerprint(expected)}); err != nil {
+		return fmt.Errorf("record %s intent: %w", operation, err)
+	}
+	if err := ownership.Save(path, *state); err != nil {
+		return fmt.Errorf("persist %s intent: %w", operation, err)
+	}
+	return nil
+}
+
+func unboundOverridePresent(overrides []api.DNSOverride, uuid string) bool {
+	for _, override := range overrides {
+		if override.UUID == uuid {
+			return true
+		}
+	}
+	return false
+}
+
+func adguardRewritePresent(rewrites []api.Rewrite, want api.Rewrite) bool {
+	for _, rewrite := range rewrites {
+		if rewrite.Domain == want.Domain && rewrite.Answer == want.Answer {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── Entry/Plan Helpers ─────────────────────────────────────────────────────
