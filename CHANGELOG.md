@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- preserve keyboard row action activation ([67a66e4](67a66e459e4c549aa182f6327f2b7c930b0421e9))
+
 - report filtered diagnostics truthfully ([93a1c9a](93a1c9ab3ca3855f57812a7139b1b803addb932f))
 
 - retain unrelated configuration drafts ([43fc8fa](43fc8fab45102b27143bc94f928d0337d26b4714))
@@ -110,6 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([cf78953](cf78953f8792257a1c846833b034f95b8d275799))
 
 - update changelog ([8916949](891694968a3cf73fa1836b71afd8008bfce5a204))
 
