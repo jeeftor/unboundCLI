@@ -802,6 +802,7 @@ func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
 	server := NewServer(&app.Runtime{
 		CaddyEndpoint:   app.CaddyEndpoint{ServerIP: host, ServerPort: port},
 		CaddyServiceURL: "http://10.0.0.15:80",
+		CloudflareConfig: config.CloudflareConfig{TunnelID: "tunnel-default"},
 		Clients: app.ClientSet{
 			Caddy:      api.NewCaddyClient(host, port),
 			Cloudflare: cfClient,
@@ -818,7 +819,8 @@ func TestPlanRouteSupportsCloudflareSelection(t *testing.T) {
 	}
 	if action.NewService != "https://10.0.0.15" ||
 		action.NewHTTPHostHeader != "cf-plan.example.test" ||
-		action.OriginServerName != "cf-plan.example.test" {
+		action.OriginServerName != "cf-plan.example.test" ||
+		action.TunnelID != "tunnel-default" {
 		t.Fatalf("unexpected Cloudflare action details: %#v", action)
 	}
 }

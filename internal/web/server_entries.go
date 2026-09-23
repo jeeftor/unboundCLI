@@ -232,6 +232,7 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		NoTLSVerify:            noTLSVerify,
 		DisableChunkedEncoding: disableChunked,
 		OverrideTunnelID:       overrideTunnelID,
+		CloudflareTunnelID:     runtime.CloudflareConfig.TunnelID,
 		Unsync:                 unsync,
 	})
 	actions := s.webPlanActions(&runtime, service, plan.Actions)

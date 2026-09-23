@@ -383,6 +383,9 @@ func applyCloudflareAction(client CloudflareClient, action Action, state ownersh
 
 	switch action.Type {
 	case "add":
+		if action.TunnelID == "" {
+			return fmt.Errorf("Cloudflare add for %s has no explicit tunnel identity; preview again with a configured tunnel", action.Hostname)
+		}
 		if err := client.UpdateTunnelRule(api.IngressRuleSpec{
 			Hostname:                  action.Hostname,
 			Service:                   action.NewService,

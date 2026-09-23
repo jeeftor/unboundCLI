@@ -83,6 +83,9 @@ type Options struct {
 	// OverrideTunnelID writes the rule to a specific tunnel instead of the
 	// configured default. Empty means use the configured default.
 	OverrideTunnelID string
+	// CloudflareTunnelID is the configured default tunnel identity. New ingress
+	// actions retain it so apply never has to infer a target from a hostname.
+	CloudflareTunnelID string
 }
 
 // BuildPlan creates a sync plan from entries for one service or all services.
@@ -252,6 +255,7 @@ func buildCloudflareAction(entry *models.Entry, options Options) Action {
 
 	// Apply tunnel override: if OverrideTunnelID is set, this action targets that
 	// specific tunnel (the apply layer will route accordingly).
+	base.TunnelID = options.CloudflareTunnelID
 	if options.OverrideTunnelID != "" {
 		base.TunnelID = options.OverrideTunnelID
 	}

@@ -258,6 +258,7 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 			Type:              "add",
 			Service:           "cloudflare",
 			Hostname:          "new.example.com",
+			TunnelID:          "selected-tunnel",
 			NewService:        "http://10.0.0.15:80",
 			NewHTTPHostHeader: "new.example.com",
 			Enabled:           true,
@@ -306,6 +307,16 @@ func TestApplyCloudflareAddUpdateAndDeleteActions(t *testing.T) {
 	}
 	if len(cloudflare.deletedDNS) != 1 || cloudflare.deletedDNS[0] != "old.example.com" {
 		t.Fatalf("expected one deleted DNS record, got %#v", cloudflare.deletedDNS)
+	}
+}
+
+func TestApplyCloudflareAddRejectsMissingTunnelIdentity(t *testing.T) {
+	cloudflare := &fakeCloudflareClient{}
+	result := Apply(context.Background(), Clients{Cloudflare: cloudflare}, Plan{Actions: []Action{{
+		Type: "add", Service: "cloudflare", Hostname: "unknown.example.com", Enabled: true,
+	}}}, ApplyOptions{OwnershipPath: cloudflareOwnershipPath(t, nil)})
+	if result.Success || len(cloudflare.updatedRules) != 0 || len(cloudflare.ensuredDNS) != 0 {
+		t.Fatalf("Cloudflare add without an explicit tunnel must not write, result=%#v", result)
 	}
 }
 
