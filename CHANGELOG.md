@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- satisfy frontend end-of-file check ([086dea9](086dea9783511c653dc0c5f7f1f781576202036d))
+
 - sync button 502s and file_server hostnames skipped ([18f4b6b](18f4b6bc812c30d953011b94cf2e20a28946acee))
 
 - separate Caddy admin API host from LAN IP for DNS comparison ([4e006d6](4e006d6f4891b8c0993ab7781e2cd1e416ceee89))
@@ -17,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([a85a191](a85a191887a6c5717c4e3079e50ca8efa71ab067))
 
 - update changelog ([48d3233](48d32330879f867f044f5bf68376963dc8c7ddeb))
 
