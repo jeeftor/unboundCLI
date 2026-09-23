@@ -123,6 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- align setup and release guidance ([d91dbbb](d91dbbb1eba4d94f295868bfcfe51c3ce778fc24))
+
+- update changelog ([2844feb](2844feb161b4ff4d4ac26a9f2f35ed509ea14790))
+
 - update changelog ([9b48563](9b485630db8c947e2c8de4dbf16b6e282db9610f))
 
 - update changelog ([21bda15](21bda1531cb5d2d53d7584f4151caef5860bad46))
