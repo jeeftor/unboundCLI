@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([ff33775](ff33775e79ef98aeb46c43bb7b17a97a267ef6ee))
+
 - update changelog ([e8bc99c](e8bc99c555b070e4aecf690b3fc3476af78f8a58))
 
 - update changelog ([638337c](638337ccce4ac4d9bc0f2d5df12d0a3cf9739c6b))
@@ -35,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- move GitHub Actions to Node 24 ([08ac2a5](08ac2a500e9535b6c5b6ade317c3f4e1cd54d726))
 
 - add missing .PHONY targets and fix help text alignment ([3e0a022](3e0a022e549ef570a61c3a72e0b8b5a2af07fbe1))
 
