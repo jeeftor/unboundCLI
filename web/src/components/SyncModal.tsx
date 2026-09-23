@@ -20,7 +20,6 @@ import {
   syncOptions
 } from '../lib/services';
 import { InlineProgress } from './InlineProgress';
-import { CloudflareRoutePanel } from './CloudflarePanel';
 import { EntryModal } from './CaddyEntryModal';
 import { Select } from './Select';
 import type { CaddyEntry, Entry, ServiceKey, SyncAction } from '../types';
@@ -188,9 +187,19 @@ export function SyncModal({
 
   if (!open) return null;
 
-  const serviceRows: Array<{ key: string; label: string; status?: { configured: boolean; in_sync: boolean; ip: string } }> = [
-    { key: 'unbound', label: 'Unbound DNS', status: entry?.unbound_status },
-    { key: 'adguard', label: 'AdGuard Home', status: entry?.adguard_status },
+  const serviceRows: Array<{ key: string; label: string; removable: boolean; status?: { configured: boolean; in_sync: boolean; ip?: string } }> = [
+    { key: 'unbound', label: 'Unbound DNS', removable: true, status: entry?.unbound_status },
+    { key: 'adguard', label: 'AdGuard Home', removable: true, status: entry?.adguard_status },
+    {
+      key: 'cloudflare',
+      label: 'Cloudflare Tunnel',
+      removable: false,
+      status: entry?.cloudflare_status ? {
+        configured: entry.cloudflare_status.configured,
+        in_sync: entry.cloudflare_status.configured && entry.cloudflare_status.has_dns_record,
+        ip: entry.cloudflare_status.service,
+      } : undefined,
+    },
   ].filter(s => enabledServices[s.key as ServiceKey]);
 
   const handleServiceRemove = async (key: string) => {
@@ -251,7 +260,7 @@ export function SyncModal({
   };
 
   // Any service with a real entry that can be removed.
-  const canRemoveAll = serviceRows.some(({ key, status }) => !localRemoved.has(key) && status?.configured === true);
+  const canRemoveAll = serviceRows.some(({ key, removable, status }) => removable && !localRemoved.has(key) && status?.configured === true);
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
@@ -315,7 +324,7 @@ export function SyncModal({
 
           {/* Per-service rows */}
           <div className="service-sync-rows">
-            {serviceRows.map(({ key, label, status }) => {
+            {serviceRows.map(({ key, label, removable, status }) => {
               const isLocallyRemoved = localRemoved.has(key);
               const isRemoving = removingService === key;
               const configured = status?.configured ?? false;
@@ -333,7 +342,7 @@ export function SyncModal({
               //   stale -> only Remove (sync makes no sense for stale entries)
               //   in sync -> show "In sync" indicator + Remove
               //   out of sync / missing -> Sync button (+ Remove if configured)
-              const removeBtn = configured && !isLocallyRemoved && mutationEnabled ? (
+              const removeBtn = removable && configured && !isLocallyRemoved && mutationEnabled ? (
                 <button type="button" className="btn-sm btn-danger-sm" onClick={() => void handleServiceRemove(key)} disabled={busy}>
                   <Trash2 size={12} /> {isRemoving ? 'Removing...' : 'Remove'}
                 </button>
@@ -343,6 +352,12 @@ export function SyncModal({
               if (!isLocallyRemoved) {
                 if (isStale) {
                   // stale: remove only, no sync action
+                } else if (key === 'cloudflare') {
+                  primaryBtn = (
+                    <button type="button" className="btn-sm" onClick={() => void runServiceSync(key)} disabled={busy || !mutationEnabled}>
+                      <Zap size={12} /> Preview
+                    </button>
+                  );
                 } else if (configured && inSync) {
                   primaryBtn = (
                     <span className="btn-sm btn-synced" style={{ cursor: 'default' }}>In sync</span>
@@ -373,15 +388,6 @@ export function SyncModal({
               <div className="service-sync-empty">No DNS services configured</div>
             )}
           </div>
-
-          {entry?.cloudflare_status && enabledServices.cloudflare && (
-            <CloudflareRoutePanel
-              entry={entry}
-              caddyServerIP={caddyServerIP}
-              mutationEnabled={mutationEnabled}
-              onRefresh={onRefresh}
-            />
-          )}
 
           <InlineProgress loading={busy} title={syncProgress.title} detail={syncProgress.detail} />
 

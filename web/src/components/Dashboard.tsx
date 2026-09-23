@@ -285,9 +285,7 @@ export function AppShell() {
               />
               <CFRepairBanner
                 entries={entries}
-                mutationEnabled={mutationEnabled}
                 cfEnabled={enabledServices.cloudflare === true}
-                onRepaired={() => void refreshEntries()}
               />
               <EntriesTable
                 entries={entries}

@@ -113,14 +113,6 @@ export const api = {
     return getJSON<CaddyPreviewResponse>(`/api/caddy/preview?${q.toString()}`);
   },
 
-  // Cloudflare
-  cfSetRoute: (payload: { hostname: string; service: string; http_host_header?: string; origin_server_name?: string; no_tls_verify?: boolean }) =>
-    postJSON<{ status: string; dns_warning?: string }>('/api/cloudflare/set-route', payload),
-  cfRemoveRoute: (hostname: string) =>
-    postJSON<{ status: string }>('/api/cloudflare/remove-route', { hostname }),
-  cfRepairDNS: () =>
-    postJSON<{ fixed: string[]; failed: string[] }>('/api/cloudflare/repair-dns', {}),
-
   // DNS probe via Cloudflare's public resolver (1.1.1.1)
   dnsProbe: (hostname: string) => getJSON<{ resolved: boolean; cname?: string; addresses?: string[]; error?: string }>(`/api/dns-probe?hostname=${encodeURIComponent(hostname)}`),
 
