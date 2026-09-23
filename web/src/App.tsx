@@ -52,6 +52,26 @@ export function App() {
       setMobile(window.innerWidth <= 760);
       const panel = document.getElementById('entries-panel');
       setTableScrolls(Boolean(panel && panel.scrollWidth > panel.clientWidth));
+      if (window.UNBOUNDCLI_TEST_HOOKS === true) {
+        window.requestAnimationFrame(() => {
+          const app = document.getElementById('app');
+          const search = document.getElementById('search');
+          const rows = document.querySelectorAll<HTMLTableRowElement>('tr[data-hostname]');
+          const visibleRows = Array.from(rows).filter((row) => {
+            const rect = row.getBoundingClientRect();
+            return rect.top >= 0 && rect.bottom <= window.innerHeight;
+          });
+          const firstRow = rows.item(0)?.getBoundingClientRect();
+          const firstHostname = rows.item(0)?.querySelector('td:first-child strong')?.getBoundingClientRect();
+          const table = document.querySelector('#entries-panel')?.getBoundingClientRect();
+          app?.setAttribute('data-visible-hostname-rows', String(visibleRows.length));
+          app?.setAttribute('data-search-visible', String(Boolean(search && search.getBoundingClientRect().bottom <= window.innerHeight)));
+          app?.setAttribute('data-first-hostname-visible', String(Boolean(firstHostname && firstHostname.top >= 0 && firstHostname.bottom <= window.innerHeight)));
+          app?.setAttribute('data-first-row-height', String(Math.round(firstRow?.height ?? 0)));
+          app?.setAttribute('data-entries-top', String(Math.round(table?.top ?? 0)));
+          app?.setAttribute('data-first-row-content-heights', Array.from(rows.item(0)?.cells ?? []).map((cell) => String(Math.round(Math.max(...Array.from(cell.children).map((child) => child.getBoundingClientRect().height), 0)))).join(','));
+        });
+      }
     };
     updateResponsive();
     window.addEventListener('resize', updateResponsive);

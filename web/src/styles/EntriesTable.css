@@ -368,6 +368,22 @@ tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 
 .toolbar-sync-all { margin-left: auto; }
 
+/* Keep the desktop inventory scannable: the hostname, state, and actions stay
+   visible while supporting details remain available on selection. */
+@media (min-width: 761px) {
+  tbody tr { height: 45px; }
+  td { padding: 5px 9px; }
+  .status-subtext, .protocol-pill { display: none; }
+  #entries-panel .subtle { display: none; }
+  .service-stack { display: flex; flex-wrap: nowrap; gap: 2px; }
+  .service-badge { padding: 1px 4px; font-size: 9.5px; white-space: nowrap; }
+  .service-badge strong { display: none; }
+  .cloudflare-detail { gap: 0; }
+  .cloudflare-detail > span { display: none; }
+  .row-actions { gap: 3px; }
+  .row-sync-btn, .row-modify-btn, .row-visualize-btn { min-height: 26px; padding: 3px 7px; font-size: 11px; }
+}
+
 .btn-danger-sm {
   padding: 4px 10px;
   font-size: 12px;

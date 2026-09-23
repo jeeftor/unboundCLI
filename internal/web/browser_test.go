@@ -105,7 +105,7 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	webHandler.options.AllowedOrigin = webServer.URL
 	defer webServer.Close()
 
-	dom := runChromeSmoke(t, chromePath, webServer.URL, 1280, 900)
+	dom := runChromeSmoke(t, chromePath, webServer.URL, 1440, 1000)
 	if !strings.Contains(dom, "Caddy DNS Sync") || !strings.Contains(dom, "browser.example.test") {
 		t.Fatalf("browser DOM did not render fake entry:\n%s", dom)
 	}
@@ -139,8 +139,8 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(dom, `data-hostname="browser.example.test"`) || !strings.Contains(dom, `Not routed`) {
 		t.Fatalf("browser DOM should render hostname rows and Cloudflare route status:\n%s", dom)
 	}
-	if rows := strings.Count(dom, `data-hostname=`); rows < 8 {
-		t.Fatalf("desktop fixture should render at least eight hostname rows, got %d", rows)
+	if !strings.Contains(dom, `data-visible-hostname-rows="8"`) {
+		t.Fatalf("desktop viewport should show eight hostname rows:\n%s", dom)
 	}
 	if !strings.Contains(dom, `class="btn-primary btn-sm toolbar-sync-all"`) || !strings.Contains(dom, `class="row-sync-btn"`) {
 		t.Fatalf("browser DOM should expose global and row sync buttons:\n%s", dom)
@@ -211,6 +211,12 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 	if !strings.Contains(mobileDOM, `data-table-scrolls="false"`) || !strings.Contains(mobileDOM, `id="entries-panel"`) {
 		t.Fatalf("mobile DOM should avoid horizontal table scrolling and render hostname entries:\n%s", mobileDOM)
+	}
+	if !strings.Contains(mobileDOM, `data-search-visible="true"`) {
+		t.Fatal("mobile viewport should show search without scrolling")
+	}
+	if !strings.Contains(mobileDOM, `data-first-hostname-visible="true"`) {
+		t.Fatal("mobile viewport should show the first hostname without scrolling")
 	}
 	if !strings.Contains(mobileDOM, `tabindex="0"`) || !strings.Contains(mobileDOM, `class="row-sync-btn"`) {
 		t.Fatalf("entry rows should be keyboard-selectable:\n%s", mobileDOM)

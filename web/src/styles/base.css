@@ -150,9 +150,23 @@ input::placeholder { color: var(--text-muted); }
 /* ============================================================
    Responsive
    ============================================================ */
-@media (max-width: 1500px) {
+@media (max-width: 1200px) {
   .operations-header { grid-template-columns: 1fr; }
   .message { justify-self: stretch; max-width: none; }
+}
+
+@media (min-width: 761px) {
+  .dashboard-shell { gap: 6px; padding-top: 6px; }
+  .operations-header { gap: 6px; padding: 6px 10px; }
+  .operations-header p { display: none; }
+  .metric-grid { gap: 6px; }
+  .metric-card { min-height: 40px; padding: 6px 8px; }
+  .metric-card > div { display: flex; align-items: baseline; gap: 5px; }
+  .metric-card strong { margin: 0; font-size: 20px; }
+  .metric-card small { display: none; }
+  .entries-toolbar { padding: 8px 10px; }
+  .git-remote-banner { gap: 5px; margin-bottom: 4px; padding: 4px 8px; font-size: 11px; }
+  .git-remote-banner .btn-sm { min-height: 24px; padding: 2px 7px; font-size: 11px; }
 }
 
 @media (max-width: 980px) {
@@ -163,6 +177,8 @@ input::placeholder { color: var(--text-muted); }
 
 @media (max-width: 760px) {
   button, select, input { min-height: 44px; }
+  #summary { display: none; }
+  .operations-header { display: none; }
 }
 
 @media (max-width: 760px) {
