@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- read cloudflare ingress by hostname and path ([872f75c](872f75c9a6af85d6a6d1aa04f632a0662b6eb02d))
+
 - use ownership state for cloudflare cli sync ([b0c997b](b0c997b0a1f6a82d33a6b95e968dd780ce1501f9))
 
 - retain cloudflare tunnel IDs in tui plans ([99b7908](99b7908e59714307549266a04b33a745daccd900))
@@ -98,6 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([91f9512](91f951214ebef5193996f73d657f14d855ac83d4))
 
 - update changelog ([c1a2b70](c1a2b70d6561ced4b33938c40cb793e59600028c))
 
