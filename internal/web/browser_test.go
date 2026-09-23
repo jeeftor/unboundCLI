@@ -34,41 +34,25 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 
 	chromePath := chromeHeadlessShellPath(t)
+	fixtureHostnames := []string{
+		"browser.example.test", "hidden.example.test", "media.example.test", "notes.example.test",
+		"photos.example.test", "status.example.test", "vault.example.test", "wiki.example.test",
+	}
 	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/config/" {
 			t.Fatalf("unexpected Caddy path %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
-			"apps": {
-				"http": {
-					"servers": {
-						"srv0": {
-							"routes": [
-								{
-									"match": [{"host": ["browser.example.test"]}],
-									"handle": [
-										{
-											"handler": "reverse_proxy",
-											"upstreams": [{"dial": "10.0.0.5:8080"}]
-										}
-									]
-								},
-								{
-									"match": [{"host": ["hidden.example.test"]}],
-									"handle": [
-										{
-											"handler": "reverse_proxy",
-											"upstreams": [{"dial": "10.0.0.6:8080"}]
-										}
-									]
-								}
-							]
-						}
-					}
-				}
-			}
-		}`)
+		routes := make([]map[string]any, 0, len(fixtureHostnames))
+		for index, hostname := range fixtureHostnames {
+			routes = append(routes, map[string]any{
+				"match":  []map[string][]string{{"host": {hostname}}},
+				"handle": []map[string]any{{"handler": "reverse_proxy", "upstreams": []map[string]string{{"dial": fmt.Sprintf("10.0.0.%d:8080", index+5)}}}},
+			})
+		}
+		if err := json.NewEncoder(w).Encode(map[string]any{"apps": map[string]any{"http": map[string]any{"servers": map[string]any{"srv0": map[string]any{"routes": routes}}}}}); err != nil {
+			t.Fatalf("encode Caddy fixture: %v", err)
+		}
 	}))
 	defer caddy.Close()
 
@@ -155,6 +139,9 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if !strings.Contains(dom, `data-hostname="browser.example.test"`) || !strings.Contains(dom, `Not routed`) {
 		t.Fatalf("browser DOM should render hostname rows and Cloudflare route status:\n%s", dom)
 	}
+	if rows := strings.Count(dom, `data-hostname=`); rows < 8 {
+		t.Fatalf("desktop fixture should render at least eight hostname rows, got %d", rows)
+	}
 	if !strings.Contains(dom, `class="btn-primary btn-sm toolbar-sync-all"`) || !strings.Contains(dom, `class="row-sync-btn"`) {
 		t.Fatalf("browser DOM should expose global and row sync buttons:\n%s", dom)
 	}
@@ -204,8 +191,8 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	}
 
 	_ = runChromeSmoke(t, chromePath, webServer.URL+"?e2e=preview:unbound,sync", 1280, 900)
-	if writes := unboundWrites.Load(); writes != 2 {
-		t.Fatalf("sync made %d Unbound writes, want 2", writes)
+	if writes := unboundWrites.Load(); writes != int32(len(fixtureHostnames)) {
+		t.Fatalf("sync made %d Unbound writes, want %d", writes, len(fixtureHostnames))
 	}
 
 	rowPreviewDOM := runChromeSmoke(t, chromePath, webServer.URL+"?e2e=rowpreview:browser.example.test:unbound", 1280, 900)
