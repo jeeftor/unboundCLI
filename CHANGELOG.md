@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([244dce8](244dce83fb4d0dd8b94c9c590f48d499ad5da1ec))
+
 - update changelog ([ff33775](ff33775e79ef98aeb46c43bb7b17a97a267ef6ee))
 
 - update changelog ([e8bc99c](e8bc99c555b070e4aecf690b3fc3476af78f8a58))
@@ -37,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- update CodeQL upload action runtime ([b969c81](b969c81c3c9ff8d4d2753fc563e1f31b648f5b68))
 
 - move GitHub Actions to Node 24 ([08ac2a5](08ac2a500e9535b6c5b6ade317c3f4e1cd54d726))
 
