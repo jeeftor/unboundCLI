@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- reject ambiguous adguard adoption targets ([f4e52d9](f4e52d95f79c5e34f1ebed0e289b8a554f37ea88))
+
 - target cloudflare delete actions by tunnel ([dbfdb01](dbfdb019c8af7a8294b8d64127782327181a13af))
 
 - reject ambiguous cloudflare tunnel hosts ([838bd8d](838bd8d6d0a5bd91b323c48b7c6af0db61a966fb))
@@ -56,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([5d1f783](5d1f7838fd1744a575968f31482a304bb40c4a89))
 
 - update changelog ([36e517a](36e517a0b1ccc275c5ad869afbcee2b834c85407))
 
