@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- guide first-run DNS setup ([4a5d0cb](4a5d0cbafaed426846ad213c9ab6bdd73c7f63e8))
+
 - show recent operation history ([0360027](0360027fb2ddf8130b539e2306c581dc731ba75b))
 
 - retain sanitized local operation history ([3907135](3907135b35a352279f3e0bccb05cf90678c1b3dd))
@@ -136,6 +138,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([3a82d4e](3a82d4edcc587be4e8840d80923f24d552e68fc2))
 
 - update changelog ([c03dc9d](c03dc9d63fb9068640c96bf95fc072cad045b60f))
 
