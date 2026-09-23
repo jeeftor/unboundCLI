@@ -20,6 +20,7 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/models"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 	"github.com/jeeftor/caddy-dns-sync/internal/syncplan"
 )
 
@@ -1003,6 +1004,36 @@ func TestSyncRemoveProtectsUnownedAdguardRewrite(t *testing.T) {
 	}
 	if response.Removed != 0 || len(response.Errors) != 0 || !strings.Contains(response.Message, "protected unmanaged") {
 		t.Fatalf("expected protected manual rewrite, got %#v", response)
+	}
+}
+
+func TestAdguardAdoptionPreviewAndConfirmation(t *testing.T) {
+	adguard := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/control/rewrite/list" {
+			t.Fatalf("unexpected AdGuard path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"domain":"adopt.example.test","answer":"10.0.0.44"}]`)
+	}))
+	defer adguard.Close()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	server := NewServerWithOptions(&app.Runtime{Clients: app.ClientSet{Adguard: api.NewAdguardClient(api.AdguardConfig{BaseURL: adguard.URL, Enabled: true})}}, Options{ApplyToken: "test-token", AllowMutations: true, AllowedOrigin: "http://127.0.0.1:8080", BoundHost: "127.0.0.1", ConfigPath: configPath})
+	preview := getJSON[adoptionResponse](t, server, "/api/ownership/adoption?provider=adguard")
+	if len(preview.Candidates) != 1 || preview.Candidates[0].ID != "adopt.example.test" || preview.PreviewID == "" {
+		t.Fatalf("unexpected preview %#v", preview)
+	}
+	body, _ := json.Marshal(map[string]any{"preview_id": preview.PreviewID, "ids": []string{"adopt.example.test"}})
+	req := httptest.NewRequest(http.MethodPost, "/api/ownership/adoption", bytes.NewReader(body))
+	req.Header.Set("X-UnboundCLI-Token", "test-token")
+	req.Header.Set("Origin", "http://127.0.0.1:8080")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected confirmation success, got %d: %s", rec.Code, rec.Body.String())
+	}
+	state, err := ownership.Load(ownership.PathForConfig(configPath))
+	if err != nil || !state.Owns("adguard", "rewrite", "adopt.example.test") {
+		t.Fatalf("expected adopted ownership state, state=%#v err=%v", state, err)
 	}
 }
 
