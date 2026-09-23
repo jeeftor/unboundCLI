@@ -73,6 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([b19d397](b19d3970682f2825ad4f1af6c7c9cee98095fba6))
+
 - update changelog ([a3d737f](a3d737f0e11932eb216989d28798552656319265))
 
 - update changelog ([ab9891e](ab9891e7596131a099bf8a0c9bcc09cf65dd975a))
@@ -145,6 +147,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 6 -->🧪 Testing
+
+- cover cloudflare ownership adoption ([3cca168](3cca16895a373adce11ceae8522dc35c7bfe0c2d))
 
 - cover adguard adoption confirmation ([00ebcf7](00ebcf75141d8603017ba87b6bb8b237df992f9b))
 
