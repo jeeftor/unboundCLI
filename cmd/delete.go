@@ -29,6 +29,11 @@ UUID of the override to delete. Use the 'list' command to find UUIDs.`,
 
 func runDelete(cmd *cobra.Command, args []string) error {
 	deleteUI := newDeleteUI()
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
 
 	uuid := args[0]
 	if logging.GetLogLevel() == logging.LogLevelDebug {

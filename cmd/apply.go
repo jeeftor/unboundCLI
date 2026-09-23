@@ -26,6 +26,11 @@ this command to apply the changes.`,
 
 func runApply(cmd *cobra.Command, args []string) error {
 	applyUI := newApplyUI()
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
 
 	cfg, err := config.LoadConfig()
 	if err != nil {

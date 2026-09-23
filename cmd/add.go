@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/ui"
@@ -33,6 +34,11 @@ the host, domain, and server (IP address) for the override.`,
 
 func runAdd(cmd *cobra.Command, args []string) error {
 	addUI := newAddUI()
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
 
 	if host == "" || domain == "" || server == "" {
 		logging.Error("Missing required flags",
@@ -83,6 +89,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		Server:      server,
 		Description: description,
 	}
+	if !app.IsManagedUnboundDescription(override.Description) {
+		return fmt.Errorf("refusing to create an unowned Unbound override; use the managed description %q", app.CurrentUnboundDescription)
+	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderAddingMessage())
 	uuid, err := client.AddOverride(override)
@@ -94,6 +103,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		return fmt.Errorf("error adding override: %w", err)
+	}
+	if err := verifyManagedOverride(client, uuid, override); err != nil {
+		return err
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), addUI.RenderApplyingMessage())
@@ -164,7 +176,7 @@ func init() {
 	addCmd.Flags().StringVarP(&host, "host", "H", "", "Host name (required)")
 	addCmd.Flags().StringVarP(&domain, "domain", "d", "", "Domain name (required)")
 	addCmd.Flags().StringVarP(&server, "server", "s", "", "Server IP address (required)")
-	addCmd.Flags().StringVarP(&description, "description", "D", "", "Description")
+	addCmd.Flags().StringVarP(&description, "description", "D", app.CurrentUnboundDescription, "Managed ownership description")
 	addCmd.Flags().BoolVar(&disabled, "disabled", false, "Disable this override")
 	addCmd.Flags().
 		BoolVar(&forceAdd, "force", false, "Force adding the override even if it already exists")

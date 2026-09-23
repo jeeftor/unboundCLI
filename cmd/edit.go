@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/api"
+	"github.com/jeeftor/caddy-dns-sync/internal/app"
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	"github.com/jeeftor/caddy-dns-sync/internal/ui"
@@ -39,6 +40,11 @@ you want to edit.`,
 func runEdit(cmd *cobra.Command, args []string) error {
 	uuid := args[0]
 	logging.Debug("Edit command called", "uuid", uuid)
+	releaseLock, err := acquireSyncLockWithWait()
+	if err != nil {
+		return err
+	}
+	defer releaseLock()
 
 	editUI := newEditUI()
 
@@ -57,17 +63,10 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error fetching overrides: %w", err)
 	}
 
-	var targetOverride *api.DNSOverride
-	for _, o := range overrides {
-		if o.UUID == uuid {
-			targetOverride = &o
-			break
-		}
-	}
-
-	if targetOverride == nil {
-		logging.Error("No override found with UUID", "uuid", uuid)
-		return fmt.Errorf("no override found with UUID %s", uuid)
+	targetOverride, err := managedOverrideForEdit(overrides, uuid)
+	if err != nil {
+		logging.Error("Override cannot be edited", "uuid", uuid, "error", err)
+		return err
 	}
 
 	logging.Debug("Found override to edit",
@@ -110,6 +109,9 @@ func runEdit(cmd *cobra.Command, args []string) error {
 			"server", editedOverride.Server)
 		return fmt.Errorf("host, domain, and server are required")
 	}
+	if !app.IsManagedUnboundDescription(editedOverride.Description) {
+		return fmt.Errorf("refusing to remove the ownership marker from Unbound override %s", uuid)
+	}
 
 	fmt.Fprintln(cmd.OutOrStdout(),
 		editUI.RenderUpdatingMessage(
@@ -121,6 +123,9 @@ func runEdit(cmd *cobra.Command, args []string) error {
 	if err := client.UpdateOverride(editedOverride); err != nil {
 		logging.Error("Error updating override", "error", err)
 		return fmt.Errorf("error updating override: %w", err)
+	}
+	if err := verifyManagedOverride(client, uuid, editedOverride); err != nil {
+		return err
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), editUI.RenderSuccess("DNS override updated successfully"))
@@ -138,6 +143,37 @@ func runEdit(cmd *cobra.Command, args []string) error {
 
 	logging.Info("DNS override updated successfully", "uuid", uuid)
 	return nil
+}
+
+func managedOverrideForEdit(overrides []api.DNSOverride, uuid string) (*api.DNSOverride, error) {
+	for index := range overrides {
+		override := &overrides[index]
+		if override.UUID != uuid {
+			continue
+		}
+		if !app.IsManagedUnboundDescription(override.Description) {
+			return nil, fmt.Errorf("refusing to edit unowned Unbound override %s; explicitly adopt it before syncing or edit it in OPNSense", uuid)
+		}
+		return override, nil
+	}
+	return nil, fmt.Errorf("no override found with UUID %s", uuid)
+}
+
+func verifyManagedOverride(client *api.Client, uuid string, expected api.DNSOverride) error {
+	overrides, err := client.GetOverrides()
+	if err != nil {
+		return fmt.Errorf("read back Unbound override %s: %w", uuid, err)
+	}
+	for _, override := range overrides {
+		if override.UUID != uuid {
+			continue
+		}
+		if override.Host == expected.Host && override.Domain == expected.Domain && override.Server == expected.Server && override.Enabled == expected.Enabled && override.Description == expected.Description {
+			return nil
+		}
+		return fmt.Errorf("verify Unbound override %s: provider returned different values", uuid)
+	}
+	return fmt.Errorf("verify Unbound override %s: record not found", uuid)
 }
 
 func promptForOverrideEdits(cmd *cobra.Command, override *api.DNSOverride) error {

@@ -33,3 +33,17 @@ func TestManagedOverrideForDelete(t *testing.T) {
 		}
 	}
 }
+
+func TestManagedOverrideForEdit(t *testing.T) {
+	overrides := []api.DNSOverride{
+		{UUID: "managed", Description: app.CurrentUnboundDescription},
+		{UUID: "manual", Description: "Created manually"},
+	}
+
+	if override, err := managedOverrideForEdit(overrides, "managed"); err != nil || override.UUID != "managed" {
+		t.Fatalf("managedOverrideForEdit(managed) = %#v, %v", override, err)
+	}
+	if _, err := managedOverrideForEdit(overrides, "manual"); err == nil || !strings.Contains(err.Error(), "unowned") {
+		t.Fatalf("manual override must be rejected, got %v", err)
+	}
+}
