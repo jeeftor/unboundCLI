@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- require apply for legacy sync writes ([de84b0c](de84b0c01cdeead55177be21290af170e17b3cff))
+
 - fail legacy sync on partial outcomes ([e2ab677](e2ab677e506b465769afece149374b4a8ac3987e))
 
 - enforce ownership for direct unbound edits ([5b0d97b](5b0d97b87b5f7f2eb06ab48560a0b0fca1799a80))
@@ -128,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([b2de8f4](b2de8f4d41954ebc5fee65f4d96753661322969f))
 
 - update changelog ([a26d050](a26d0509508056ec2ecfcaf66ea3afcd7393e361))
 
