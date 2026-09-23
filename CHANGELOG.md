@@ -105,6 +105,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 3 -->📚 Documentation
 
+- update changelog ([effc7cf](effc7cffe58c9597cae774d08b5a7567e1bc1b84))
+
 - clarify delete force behavior ([447af3e](447af3eac5220140665bc77ac67212e99e96f42a))
 
 - update changelog ([cea8c87](cea8c8723ba4f47bbdc903c77be24fd463b7bff7))
@@ -217,6 +219,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 6 -->🧪 Testing
+
+- cover plan-based web removal requests ([2e5dafa](2e5dafab16eef6902fad7183fdb92b81cc20ce4b))
 
 - bound local operation history ([fb71971](fb71971a70b4a3b309611eb070fd9af078b40c6d))
 
