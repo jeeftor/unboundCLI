@@ -14,8 +14,9 @@ func TestCloudflareSyncEntriesAddsDirectSiblingHost(t *testing.T) {
 	)
 
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
-		Service:         "cloudflare",
-		CaddyServiceURL: "https://10.0.0.15",
+		Service:            "cloudflare",
+		CaddyServiceURL:    "https://10.0.0.15",
+		CloudflareTunnelID: "tunnel-default",
 	})
 
 	if len(plan.Actions) != 2 {
@@ -29,6 +30,7 @@ func TestCloudflareSyncEntriesAddsDirectSiblingHost(t *testing.T) {
 		NewService:           "https://10.0.0.15",
 		NewHTTPHostHeader:    "ssh.vookie.net",
 		OriginServerName:     "ssh.vookie.net",
+		TunnelID:             "tunnel-default",
 		Details:              "missing in default Cloudflare tunnel",
 		Enabled:              true,
 		ManagedFields:        "service,http_host_header,origin_server_name",
@@ -40,6 +42,7 @@ func TestCloudflareSyncEntriesAddsDirectSiblingHost(t *testing.T) {
 		Service:              "cloudflare",
 		NewService:           "http://10.0.0.23:22",
 		NewHTTPHostHeader:    "ssh.vookie.net",
+		TunnelID:             "tunnel-default",
 		Details:              "missing in default Cloudflare tunnel",
 		Enabled:              true,
 		ManagedFields:        "service,http_host_header,origin_server_name",

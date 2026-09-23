@@ -11,6 +11,7 @@ import (
 	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	sync2 "github.com/jeeftor/caddy-dns-sync/internal/exec/sync"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/ownership"
 	"github.com/spf13/cobra"
 )
 
@@ -92,6 +93,13 @@ func runCaddyPushCloudflare(cmd *cobra.Command, args []string) error {
 		ExcludeHostnames: cpCFExcludeHostnames,
 		DirectHostSuffix: cpCFDirectHostSuffix,
 		Verbose:          cpCFVerbose,
+	}
+	if !cpCFDryRun {
+		configPath, pathErr := config.SelectedConfigPath("")
+		if pathErr != nil {
+			return fmt.Errorf("resolve selected configuration for Cloudflare ownership state: %w", pathErr)
+		}
+		options.OwnershipPath = ownership.PathForConfig(configPath)
 	}
 
 	if cpCFDryRun {

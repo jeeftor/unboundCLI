@@ -19,6 +19,9 @@ type CaddyToCloudflareSyncOptions struct {
 	ExcludeHostnames []string // hostnames to skip entirely; their CF rules are left untouched
 	DirectHostSuffix string   // optional: add sibling direct hosts, e.g. "-direct" creates app-direct.example.com
 	Verbose          bool
+	// OwnershipPath is the selected configuration's durable local ownership
+	// state. Mutating runs require it; dry runs remain read-only.
+	OwnershipPath string
 }
 
 // CaddyToCloudflareSyncResult holds the outcome of a Caddy-to-Cloudflare push sync.
@@ -107,9 +110,10 @@ func SyncCaddyToCloudflare(
 
 	entries := cloudflareSyncEntries(caddyHosts, allCFHosts, options.DirectHostSuffix)
 	plan := syncplan.BuildPlan(entries, syncplan.Options{
-		Service:           "cloudflare",
-		CaddyServiceURL:   options.CaddyServiceURL,
-		IncludeCloudflare: true,
+		Service:            "cloudflare",
+		CaddyServiceURL:    options.CaddyServiceURL,
+		IncludeCloudflare:  true,
+		CloudflareTunnelID: cfClient.TunnelID(),
 	})
 	for _, action := range plan.Actions {
 		switch action.Type {
@@ -147,7 +151,7 @@ func SyncCaddyToCloudflare(
 	}
 
 	if !options.DryRun {
-		applyResult := syncplan.Apply(ctx, syncplan.Clients{Cloudflare: cfClient}, plan, syncplan.ApplyOptions{})
+		applyResult := syncplan.Apply(ctx, syncplan.Clients{Cloudflare: cfClient}, plan, syncplan.ApplyOptions{OwnershipPath: options.OwnershipPath})
 		if !applyResult.Success {
 			return result, fmt.Errorf("error updating Cloudflare tunnel: %s", strings.Join(applyResult.Errors, "; "))
 		}
