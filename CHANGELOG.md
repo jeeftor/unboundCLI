@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- protect direct web record removal ([d3de1ec](d3de1ec9e9ddb87bbff50f523481b6815be9a770))
+
 - require fresh inventory for sync plans ([6e51a96](6e51a964c9728c58d77002540fae4dea6956ef53))
 
 - honor selected config in cloudflare sync ([1bc4c62](1bc4c62962df58e3dc6d19fb2fa73fef2f3c2923))
@@ -40,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([0c38087](0c38087ce5e28f55d71e6a45de97736697cc05f1))
 
 - update changelog ([fbfbaa1](fbfbaa1650fcffe9b7a6f729723d2101b0a49c74))
 
