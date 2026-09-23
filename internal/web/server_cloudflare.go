@@ -41,6 +41,10 @@ func (s *Server) handleCloudflareDiscover(w http.ResponseWriter, r *http.Request
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
 
 	var req CloudflareDiscoverRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -137,6 +141,11 @@ func (s *Server) handleCloudflareSetRoute(w http.ResponseWriter, r *http.Request
 		writeMethodNotAllowed(w)
 		return
 	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	runtime := s.runtimeSnapshot()
 	if runtime.Clients.Cloudflare == nil {
 		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare not configured"))
@@ -193,6 +202,11 @@ func (s *Server) handleCloudflareRemoveRoute(w http.ResponseWriter, r *http.Requ
 		writeMethodNotAllowed(w)
 		return
 	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	runtime := s.runtimeSnapshot()
 	if runtime.Clients.Cloudflare == nil {
 		writeError(w, http.StatusServiceUnavailable, fmt.Errorf("Cloudflare not configured"))
@@ -228,6 +242,10 @@ func (s *Server) handleCloudflareRemoveRoute(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleCloudflareRepairDNS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
+		return
+	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
 		return
 	}
 	runtime := s.runtimeSnapshot()

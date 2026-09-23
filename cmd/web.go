@@ -25,6 +25,7 @@ var (
 	webHost            string
 	webPort            int
 	webOrigin          string
+	webProxyAuthHeader string
 	webCaddyServerIP   string
 	webCaddyServerPort int
 	webCaddyAdminHost  string
@@ -43,13 +44,25 @@ func init() {
 
 	webCmd.Flags().StringVar(&webHost, "host", "127.0.0.1", "host interface for the web server")
 	webCmd.Flags().IntVar(&webPort, "port", 8080, "port for the web server")
-	webCmd.Flags().StringVar(&webOrigin, "origin", "", "allowed Origin header for browser mutations (e.g. https://caddy-sync.example.com); empty = no origin check")
+	webCmd.Flags().StringVar(&webOrigin, "origin", "", "public HTTPS origin served by an authenticated reverse proxy (e.g. https://caddy-sync.example.com)")
+	webCmd.Flags().StringVar(&webProxyAuthHeader, "proxy-auth-header", "", "header injected by the authenticated reverse proxy; required with --origin")
 	webCmd.Flags().StringVar(&webCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "Caddy LAN IP (used for DNS comparison)")
 	webCmd.Flags().IntVar(&webCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Caddy admin API port")
 	webCmd.Flags().StringVar(&webCaddyAdminHost, "caddy-admin-host", "", "Caddy admin API host override (default: same as --caddy-ip)")
 }
 
 func runWeb(cmd *cobra.Command, args []string) error {
+	if !webui.IsLoopbackHost(webHost) {
+		return fmt.Errorf("web server must remain loopback-bound; use an authenticated reverse proxy in front of --host 127.0.0.1")
+	}
+	if webOrigin != "" {
+		if !webui.ValidPublicOrigin(webOrigin) {
+			return fmt.Errorf("--origin must be an absolute HTTPS origin without a path")
+		}
+		if webProxyAuthHeader == "" {
+			return fmt.Errorf("--origin requires --proxy-auth-header from your authenticated reverse proxy")
+		}
+	}
 	// If --caddy-ip / --caddy-port were not explicitly set on the command line,
 	// fall back to the values stored in the config file so that settings saved
 	// via the web UI are honoured on the next restart.
@@ -91,26 +104,28 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return serveWeb(listener, runtime, token, webHost, webOrigin, cmd.OutOrStdout())
+	return serveWeb(listener, runtime, token, webHost, webOrigin, webProxyAuthHeader, cmd.OutOrStdout())
 }
 
 func serveWebForTest(listener net.Listener, token string, out io.Writer) error {
-	return serveWebInternal(listener, &runtimeapp.Runtime{}, token, "127.0.0.1", "", out, false)
+	return serveWebInternal(listener, &runtimeapp.Runtime{}, token, "127.0.0.1", "", "", out, false)
 }
 
 // serveWebInternal is the core server setup. When installSignalHandler is true,
 // SIGINT/SIGTERM trigger graceful shutdown. When false, the caller manages
 // lifecycle (used by tests which close the listener to stop the server).
-func serveWebInternal(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHost, allowedOrigin string, out io.Writer, installSignalHandler bool) error {
+func serveWebInternal(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHost, allowedOrigin, proxyAuthHeader string, out io.Writer, installSignalHandler bool) error {
 	addr := listener.Addr().String()
 	webServer := webui.NewServerWithOptions(runtime, webui.Options{
-		ApplyToken:     token,
-		AllowMutations: true,
-		AllowedOrigin:  allowedOrigin,
-		BoundHost:      boundHost,
-		Version:        Version,
-		Commit:         Commit,
-		BuildDate:      Date,
+		ApplyToken:        token,
+		AllowMutations:    true,
+		AllowedOrigin:     allowedOrigin,
+		ProxyAuthHeader:   proxyAuthHeader,
+		BoundHost:         boundHost,
+		EnforceHostPolicy: true,
+		Version:           Version,
+		Commit:            Commit,
+		BuildDate:         Date,
 	})
 	server := &http.Server{
 		Handler:           webServer,
@@ -158,8 +173,8 @@ func serveWebInternal(listener net.Listener, runtime *runtimeapp.Runtime, token,
 	return nil
 }
 
-func serveWeb(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHost, allowedOrigin string, out io.Writer) error {
-	return serveWebInternal(listener, runtime, token, boundHost, allowedOrigin, out, true)
+func serveWeb(listener net.Listener, runtime *runtimeapp.Runtime, token, boundHost, allowedOrigin, proxyAuthHeader string, out io.Writer) error {
+	return serveWebInternal(listener, runtime, token, boundHost, allowedOrigin, proxyAuthHeader, out, true)
 }
 
 func newWebToken() (string, error) {

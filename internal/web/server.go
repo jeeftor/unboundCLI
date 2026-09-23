@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -26,16 +28,23 @@ var staticFiles embed.FS
 // ─── Server Core ────────────────────────────────────────────────────────────
 
 type Options struct {
-	ApplyToken      string
-	AllowMutations  bool
-	AllowedOrigin   string
+	ApplyToken     string
+	AllowMutations bool
+	AllowedOrigin  string
+	// ProxyAuthHeader is a header injected only by an authenticated reverse
+	// proxy. It is required on proxy-served requests so a public Host or Origin
+	// alone can never expose the local administrative API.
+	ProxyAuthHeader string
 	AllowUnsafeBind bool
 	BoundHost       string
-	EnableTestHooks bool
-	ConfigPath      string
-	Version         string // build version, e.g. "v1.2.3" or "dev"
-	Commit          string // git commit hash
-	BuildDate       string // build timestamp
+	// EnforceHostPolicy is enabled by the production web command. It remains
+	// opt-in for in-process package consumers that do not have a listener host.
+	EnforceHostPolicy bool
+	EnableTestHooks   bool
+	ConfigPath        string
+	Version           string // build version, e.g. "v1.2.3" or "dev"
+	Commit            string // git commit hash
+	BuildDate         string // build timestamp
 }
 
 type Server struct {
@@ -192,6 +201,10 @@ func (s *Server) refreshAuthCache() {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := s.allowRequest(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
@@ -348,16 +361,115 @@ func (s *Server) allowMutation(r *http.Request) error {
 	if s.options.ApplyToken == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-UnboundCLI-Token")), []byte(s.options.ApplyToken)) != 1 {
 		return fmt.Errorf("web apply requires a valid local session token")
 	}
-	if s.options.AllowedOrigin != "" {
-		if origin := r.Header.Get("Origin"); origin != "" && origin != s.options.AllowedOrigin {
-			return fmt.Errorf("web apply rejected origin %q", origin)
-		}
+	if err := s.allowOrigin(r, true); err != nil {
+		return err
 	}
 	return nil
 }
 
+// allowRequest applies the common Host and authenticated-proxy boundary before
+// any route handler can disclose data or start work. The process itself stays
+// loopback-bound; a public hostname is accepted only when --origin names it.
+func (s *Server) allowRequest(r *http.Request) error {
+	if err := s.allowHost(r); err != nil {
+		return err
+	}
+	if !s.options.EnforceHostPolicy || s.options.AllowedOrigin == "" || isPublicStatusRoute(r.URL.Path) {
+		return nil
+	}
+	if s.options.ProxyAuthHeader == "" {
+		return fmt.Errorf("public proxy access requires authenticated proxy protection")
+	}
+	if strings.TrimSpace(r.Header.Get(s.options.ProxyAuthHeader)) == "" {
+		return fmt.Errorf("authenticated proxy header is required")
+	}
+	return nil
+}
+
+func isPublicStatusRoute(path string) bool {
+	return path == "/api/health" || path == "/api/version"
+}
+
+func (s *Server) allowHost(r *http.Request) error {
+	// NewServer is used as an in-process test helper. Production construction
+	// always supplies BoundHost through the web command.
+	if !s.options.EnforceHostPolicy {
+		return nil
+	}
+	host := requestHost(r.Host)
+	if host == "" {
+		return fmt.Errorf("Host header is required")
+	}
+	if isLoopbackHost(host) || strings.EqualFold(host, s.options.BoundHost) {
+		return nil
+	}
+	if originHost, ok := configuredOriginHost(s.options.AllowedOrigin); ok && strings.EqualFold(host, originHost) {
+		return nil
+	}
+	return fmt.Errorf("unrecognized Host header %q", r.Host)
+}
+
+func (s *Server) allowOrigin(r *http.Request, requireOrigin bool) error {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		if requireOrigin && s.options.AllowedOrigin != "" {
+			return fmt.Errorf("web apply requires Origin %q", s.options.AllowedOrigin)
+		}
+		return nil
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("invalid Origin header")
+	}
+	if s.options.AllowedOrigin != "" {
+		if normalizedOrigin(origin) != normalizedOrigin(s.options.AllowedOrigin) {
+			return fmt.Errorf("web apply rejected origin %q", origin)
+		}
+		return nil
+	}
+	if parsed.Scheme != "http" || !isLoopbackHost(parsed.Hostname()) {
+		return fmt.Errorf("web apply rejected cross-origin request %q", origin)
+	}
+	return nil
+}
+
+func requestHost(raw string) string {
+	host := strings.TrimSpace(raw)
+	if host == "" {
+		return ""
+	}
+	if splitHost, _, err := net.SplitHostPort(host); err == nil {
+		return strings.Trim(splitHost, "[]")
+	}
+	return strings.Trim(host, "[]")
+}
+
+func configuredOriginHost(origin string) (string, bool) {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false
+	}
+	return parsed.Hostname(), true
+}
+
+func normalizedOrigin(origin string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(origin)), "/")
+}
+
 func isLoopbackHost(host string) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+// IsLoopbackHost reports whether host is a permitted web-admin bind address.
+func IsLoopbackHost(host string) bool {
+	return isLoopbackHost(host)
+}
+
+// ValidPublicOrigin reports whether origin is a pathless HTTPS origin suitable
+// for a reverse proxy that fronts the loopback-bound administrative server.
+func ValidPublicOrigin(origin string) bool {
+	_, ok := configuredOriginHost(origin)
+	return ok
 }
 
 const appCSP = "default-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://static.cloudflareinsights.com; font-src 'self'; frame-ancestors 'none'"

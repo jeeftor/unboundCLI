@@ -3,14 +3,17 @@ package web
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
+	"github.com/jeeftor/caddy-dns-sync/internal/models"
 )
 
 // ─── Probe Types ────────────────────────────────────────────────────────────
@@ -44,22 +47,20 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 	}
 	upstream := strings.TrimSpace(r.URL.Query().Get("upstream"))
 	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
-	if upstream == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("upstream parameter required"))
+	if upstream == "" || hostname == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("upstream and hostname parameters are required"))
 		return
 	}
-
-	// Strip any existing scheme so we can determine it ourselves.
-	upstream = strings.TrimPrefix(strings.TrimPrefix(upstream, "https://"), "http://")
-	upstream = strings.TrimSuffix(upstream, "/")
-
-	// Infer scheme from port suffix.
-	scheme := "http"
-	if strings.HasSuffix(upstream, ":443") || strings.HasSuffix(upstream, ":8443") {
-		scheme = "https"
+	entries, _, err := s.loadEntries(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("load probe inventory: %w", err))
+		return
 	}
-
-	probeURL := scheme + "://" + upstream + "/"
+	probeURL, err := inventoryProbeURL(entries, hostname, upstream)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodHead, probeURL, nil)
 	if err != nil {
 		writeJSON(w, http.StatusOK, ProbeResponse{Reachable: false, Error: err.Error(), ProbeURL: probeURL})
@@ -77,7 +78,7 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 			MaxIdleConnsPerHost: 1,
 		},
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse // don't follow redirects
+			return errProbeRedirect
 		},
 	}
 
@@ -89,6 +90,10 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		_ = resp.Body.Close()
 	}
 	if err != nil {
+		if errors.Is(err, errProbeRedirect) {
+			writeJSON(w, http.StatusOK, ProbeResponse{Reachable: false, Error: "redirects are not allowed for probes", LatencyMS: latency, ProbeURL: probeURL})
+			return
+		}
 		// Try GET as fallback (some servers reject HEAD)
 		req2, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, probeURL, nil)
 		if req2 != nil {
@@ -137,6 +142,15 @@ func (s *Server) handleDNSProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("hostname parameter required"))
 		return
 	}
+	entries, _, err := s.loadEntries(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Errorf("load DNS probe inventory: %w", err))
+		return
+	}
+	if !inventoryContainsHostname(entries, hostname) {
+		writeError(w, http.StatusForbidden, fmt.Errorf("hostname %q is not in the current inventory", hostname))
+		return
+	}
 
 	resolver := &net.Resolver{
 		PreferGo: true,
@@ -172,6 +186,67 @@ func (s *Server) handleDNSProbe(w http.ResponseWriter, r *http.Request) {
 		CNAME:     canonicalCNAME,
 		Addresses: addrs,
 	})
+}
+
+var errProbeRedirect = errors.New("probe redirect")
+
+func inventoryProbeURL(entries []*models.Entry, hostname, upstream string) (string, error) {
+	if !validHostname(hostname) {
+		return "", fmt.Errorf("invalid hostname %q", hostname)
+	}
+	candidate, err := normalizeProbeUpstream(upstream)
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range entries {
+		if entry == nil || !strings.EqualFold(entry.Hostname, hostname) {
+			continue
+		}
+		known, err := normalizeProbeUpstream(entry.CaddyUpstream)
+		if err == nil && known == candidate {
+			return candidate + "/", nil
+		}
+	}
+	return "", fmt.Errorf("upstream is not the inventoried destination for %q", hostname)
+}
+
+func inventoryContainsHostname(entries []*models.Entry, hostname string) bool {
+	for _, entry := range entries {
+		if entry != nil && strings.EqualFold(entry.Hostname, hostname) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeProbeUpstream(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.ContainsAny(raw, "\\?#") {
+		return "", fmt.Errorf("invalid upstream")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("invalid upstream")
+	}
+	port := parsed.Port()
+	if port == "" {
+		if parsed.Scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	if _, err := net.LookupPort("tcp", port); err != nil {
+		return "", fmt.Errorf("invalid upstream port")
+	}
+	scheme := "http"
+	if port == "443" || port == "8443" {
+		scheme = "https"
+	}
+	return scheme + "://" + net.JoinHostPort(strings.ToLower(parsed.Hostname()), port), nil
 }
 
 // handleLogs returns buffered log lines since a given cursor index.

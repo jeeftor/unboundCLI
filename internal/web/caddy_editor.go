@@ -406,6 +406,10 @@ func (s *Server) handleCaddyValidate(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w)
 		return
 	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
 	cfg, err := s.caddyEditorConfig()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -419,6 +423,10 @@ func (s *Server) handleCaddyValidate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCaddyValidateDraft(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMethodNotAllowed(w)
+		return
+	}
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)

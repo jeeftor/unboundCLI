@@ -145,6 +145,11 @@ func (s *Server) handleAuthFixDoubleLogin(w http.ResponseWriter, r *http.Request
 		writeMethodNotAllowed(w)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := s.allowMutation(r); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
 
 	var req struct {
 		Hostname string `json:"hostname"`
