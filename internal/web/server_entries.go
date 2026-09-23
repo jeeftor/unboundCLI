@@ -829,6 +829,34 @@ func (s *Server) completePlan(planID string, result *syncplan.Result) {
 	plan.status = "completed"
 	plan.result = result
 	s.plans[planID] = plan
+	s.recordOperation(planID, result)
+}
+
+func (s *Server) recordOperation(planID string, result *syncplan.Result) {
+	if result == nil {
+		return
+	}
+	record := operationRecord{CompletedAt: time.Now().UTC(), PlanID: planID, Success: result.Success, Message: result.Message, ItemsAdded: result.ItemsAdded, ItemsUpdated: result.ItemsUpdated, ItemsDeleted: result.ItemsDeleted, Actions: make([]operationAction, 0, len(result.ActionResults))}
+	for _, action := range result.ActionResults {
+		record.Actions = append(record.Actions, operationAction{Service: action.Action.Service, Hostname: action.Action.Hostname, Type: action.Action.Type, Success: action.Success, Skipped: action.Skipped})
+	}
+	s.operationsMu.Lock()
+	defer s.operationsMu.Unlock()
+	s.operations = append([]operationRecord{record}, s.operations...)
+	if len(s.operations) > 100 {
+		s.operations = s.operations[:100]
+	}
+}
+
+func (s *Server) handleOperations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+		return
+	}
+	s.operationsMu.Lock()
+	operations := append([]operationRecord(nil), s.operations...)
+	s.operationsMu.Unlock()
+	writeJSON(w, http.StatusOK, operations)
 }
 
 func failedPlanResult(err error) *syncplan.Result {

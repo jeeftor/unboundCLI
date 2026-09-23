@@ -1479,6 +1479,16 @@ func TestDirectCloudflareMutationsRequirePlan(t *testing.T) {
 	}
 }
 
+func TestOperationsRetainSanitizedPlanResults(t *testing.T) {
+	server := NewServer(&app.Runtime{})
+	server.storePlan("plan-1", nil, nil, "", "")
+	server.completePlan("plan-1", &syncplan.Result{Success: false, Message: "Completed with 1 error(s)", Errors: []string{"token=must-not-appear"}, ActionResults: []syncplan.ActionResult{{Action: syncplan.Action{Service: "adguard", Hostname: "app.example.test", Type: "update"}}}})
+	response := getRawJSON(t, server, "/api/operations")
+	if bytes.Contains(response, []byte("must-not-appear")) || !bytes.Contains(response, []byte("app.example.test")) {
+		t.Fatalf("operation history must retain sanitized action detail only, got %s", response)
+	}
+}
+
 func getJSON[T any](t *testing.T, handler http.Handler, path string) T {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)

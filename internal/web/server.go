@@ -48,14 +48,16 @@ type Options struct {
 }
 
 type Server struct {
-	runtime    *app.Runtime
-	options    Options
-	mux        *http.ServeMux
-	runtimeMu  sync.RWMutex
-	planMu     sync.Mutex
-	plans      map[string]storedPlan
-	adoptionMu sync.Mutex
-	adoptions  map[string]adoptionPreview
+	runtime      *app.Runtime
+	options      Options
+	mux          *http.ServeMux
+	runtimeMu    sync.RWMutex
+	planMu       sync.Mutex
+	plans        map[string]storedPlan
+	adoptionMu   sync.Mutex
+	adoptions    map[string]adoptionPreview
+	operationsMu sync.Mutex
+	operations   []operationRecord
 
 	// Auth inventory cache — populated at startup and after mutations.
 	authMu    sync.RWMutex
@@ -86,6 +88,26 @@ type storedPlan struct {
 	configRevision string
 	status         string
 	result         *syncplan.Result
+}
+
+// operationRecord is a deliberately sanitized local operation summary.
+type operationRecord struct {
+	CompletedAt  time.Time         `json:"completed_at"`
+	PlanID       string            `json:"plan_id"`
+	Success      bool              `json:"success"`
+	Message      string            `json:"message"`
+	ItemsAdded   int               `json:"items_added"`
+	ItemsUpdated int               `json:"items_updated"`
+	ItemsDeleted int               `json:"items_deleted"`
+	Actions      []operationAction `json:"actions"`
+}
+
+type operationAction struct {
+	Service  string `json:"service"`
+	Hostname string `json:"hostname"`
+	Type     string `json:"type"`
+	Success  bool   `json:"success"`
+	Skipped  bool   `json:"skipped"`
 }
 
 const planTTL = 10 * time.Minute
@@ -265,6 +287,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/sync/apply", s.handleApply)
 	s.mux.HandleFunc("/api/sync/remove", s.handleSyncRemove)
 	s.mux.HandleFunc("/api/ownership/adoption", s.handleAdoption)
+	s.mux.HandleFunc("/api/operations", s.handleOperations)
 	// Caddy Editor routes
 	s.mux.HandleFunc("/api/caddy/entries", s.handleCaddyEntries)
 	s.mux.HandleFunc("/api/caddy/entries/", s.handleCaddyEntry)
