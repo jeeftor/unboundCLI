@@ -599,17 +599,59 @@ func (c *CloudflareClient) FindTunnelDNSRecord(hostname string) (CloudflareDNSRe
 }
 
 // FindTunnelIngress returns the exact hostname/path ingress rule in tunnelID.
-// Account-wide duplicate hostnames are rejected by GetAllTunnelsDetails.
+// It reads the selected tunnel directly so multiple path rules on one hostname
+// remain distinct instead of being collapsed into an account-wide hostname map.
 func (c *CloudflareClient) FindTunnelIngress(tunnelID, hostname, path string) (CloudflareIngressEntry, bool, error) {
-	entries, err := c.GetAllTunnelsDetails()
+	if strings.TrimSpace(tunnelID) == "" {
+		return CloudflareIngressEntry{}, false, fmt.Errorf("tunnel ID is required for ingress lookup")
+	}
+	config, err := c.api.GetTunnelConfiguration(c.getCtx(), cloudflare.ResourceIdentifier(c.accountID), tunnelID)
 	if err != nil {
 		return CloudflareIngressEntry{}, false, err
 	}
-	entry, ok := entries[hostname]
-	if !ok || entry.TunnelID != tunnelID || entry.Path != path {
+	mergedDefault := config.Config.OriginRequest
+	var found *CloudflareIngressEntry
+	for _, rule := range config.Config.Ingress {
+		if rule.Hostname != hostname || rule.Path != path {
+			continue
+		}
+		if found != nil {
+			return CloudflareIngressEntry{}, false, fmt.Errorf("ambiguous Cloudflare ingress rules for %s%s", hostname, path)
+		}
+		merged := mergedDefault
+		if rule.OriginRequest != nil {
+			if rule.OriginRequest.HTTPHostHeader != nil {
+				merged.HTTPHostHeader = rule.OriginRequest.HTTPHostHeader
+			}
+			if rule.OriginRequest.OriginServerName != nil {
+				merged.OriginServerName = rule.OriginRequest.OriginServerName
+			}
+			if rule.OriginRequest.NoTLSVerify != nil {
+				merged.NoTLSVerify = rule.OriginRequest.NoTLSVerify
+			}
+			if rule.OriginRequest.Http2Origin != nil {
+				merged.Http2Origin = rule.OriginRequest.Http2Origin
+			}
+		}
+		entry := CloudflareIngressEntry{TunnelID: tunnelID, Hostname: rule.Hostname, Path: rule.Path, Service: rule.Service, IsDefaultTunnel: tunnelID == c.tunnelID}
+		if merged.HTTPHostHeader != nil {
+			entry.HTTPHostHeader = *merged.HTTPHostHeader
+		}
+		if merged.OriginServerName != nil {
+			entry.OriginServerName = *merged.OriginServerName
+		}
+		if merged.NoTLSVerify != nil {
+			entry.NoTLSVerify = *merged.NoTLSVerify
+		}
+		if merged.Http2Origin != nil {
+			entry.Http2Origin = *merged.Http2Origin
+		}
+		found = &entry
+	}
+	if found == nil {
 		return CloudflareIngressEntry{}, false, nil
 	}
-	return entry, true, nil
+	return *found, true, nil
 }
 
 // IngressRuleSpec describes the desired state for a single tunnel ingress rule.

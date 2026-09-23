@@ -527,6 +527,28 @@ func TestUpdateTunnelRulePreservesOptionalFields(t *testing.T) {
 	}
 }
 
+func TestFindTunnelIngressDistinguishesHostnamePaths(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/client/v4/accounts/test-account/cfd_tunnel/test-tunnel-uuid/configurations", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"success": true, "errors": [], "messages": [],
+			"result": {"tunnel_id": "test-tunnel-uuid", "version": 1, "config": {"ingress": [
+				{"hostname": "app.example.com", "path": "/api/*", "service": "http://api:8080"},
+				{"hostname": "app.example.com", "path": "/web/*", "service": "http://web:8080"},
+				{"service": "http_status:404"}
+			]}}
+		}`)
+	})
+	client, srv := newTestClient(t, mux)
+	defer srv.Close()
+
+	entry, found, err := client.FindTunnelIngress("test-tunnel-uuid", "app.example.com", "/web/*")
+	if err != nil || !found || entry.Service != "http://web:8080" {
+		t.Fatalf("expected exact path ingress, entry=%#v found=%t err=%v", entry, found, err)
+	}
+}
+
 // --- ListManagedDNSRecords ---
 
 func TestListManagedDNSRecords_FiltersToTunnelCNAMEs(t *testing.T) {
