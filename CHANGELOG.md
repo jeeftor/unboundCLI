@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- report filtered diagnostics truthfully ([93a1c9a](93a1c9ab3ca3855f57812a7139b1b803addb932f))
+
 - retain unrelated configuration drafts ([43fc8fa](43fc8fab45102b27143bc94f928d0337d26b4714))
 
 - reject superseded sync previews ([5632140](56321401e8aa36396b17cea331aa93f08a672ef5))
@@ -108,6 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([8916949](891694968a3cf73fa1836b71afd8008bfce5a204))
 
 - update changelog ([0ff2c2a](0ff2c2afcb66a41f3d2e3dd3f706bf6654517429))
 
