@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 1 -->🐛 Bug Fixes
 
+- run artifact actions on node 24 ([6beec36](6beec36fbfc7059365d6189499383dd5fe192985))
+
+
+### <!-- 3 -->📚 Documentation
+
+- update changelog ([1880272](188027295c6c2206b373e92acbb447c6942496e7))
+
+
+## [0.6.3] - 2026-09-23
+
+### <!-- 1 -->🐛 Bug Fixes
+
 - upgrade artifact actions to node 24 ([6759d5e](6759d5e7a8c72d298ac03d9b62efeca94993fd9e))
 
 
