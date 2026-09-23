@@ -15,7 +15,6 @@ import (
 	"time"
 
 	runtimeapp "github.com/jeeftor/caddy-dns-sync/internal/app"
-	"github.com/jeeftor/caddy-dns-sync/internal/config"
 	"github.com/jeeftor/caddy-dns-sync/internal/logging"
 	webui "github.com/jeeftor/caddy-dns-sync/internal/web"
 	"github.com/spf13/cobra"
@@ -46,8 +45,8 @@ func init() {
 	webCmd.Flags().IntVar(&webPort, "port", 8080, "port for the web server")
 	webCmd.Flags().StringVar(&webOrigin, "origin", "", "public HTTPS origin served by an authenticated reverse proxy (e.g. https://caddy-sync.example.com)")
 	webCmd.Flags().StringVar(&webProxyAuthHeader, "proxy-auth-header", "", "header injected by the authenticated reverse proxy; required with --origin")
-	webCmd.Flags().StringVar(&webCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "Caddy LAN IP (used for DNS comparison)")
-	webCmd.Flags().IntVar(&webCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Caddy admin API port")
+	webCmd.Flags().StringVar(&webCaddyServerIP, "caddy-ip", "", "Caddy LAN IP (defaults to selected config)")
+	webCmd.Flags().IntVar(&webCaddyServerPort, "caddy-port", 0, "Caddy admin API port (defaults to selected config)")
 	webCmd.Flags().StringVar(&webCaddyAdminHost, "caddy-admin-host", "", "Caddy admin API host override (default: same as --caddy-ip)")
 }
 
@@ -63,23 +62,6 @@ func runWeb(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("--origin requires --proxy-auth-header from your authenticated reverse proxy")
 		}
 	}
-	// If --caddy-ip / --caddy-port were not explicitly set on the command line,
-	// fall back to the values stored in the config file so that settings saved
-	// via the web UI are honoured on the next restart.
-	if !cmd.Flags().Changed("caddy-ip") || !cmd.Flags().Changed("caddy-port") || !cmd.Flags().Changed("caddy-admin-host") {
-		if extCfg, err := config.LoadExtendedConfig(); err == nil {
-			if !cmd.Flags().Changed("caddy-ip") && extCfg.Caddy.ServerIP != "" {
-				webCaddyServerIP = extCfg.Caddy.ServerIP
-			}
-			if !cmd.Flags().Changed("caddy-port") && extCfg.Caddy.ServerPort != 0 {
-				webCaddyServerPort = extCfg.Caddy.ServerPort
-			}
-			if !cmd.Flags().Changed("caddy-admin-host") && extCfg.Caddy.AdminHost != "" {
-				webCaddyAdminHost = extCfg.Caddy.AdminHost
-			}
-		}
-	}
-
 	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
 		CaddyServerIP:     webCaddyServerIP,
 		CaddyServerPort:   webCaddyServerPort,

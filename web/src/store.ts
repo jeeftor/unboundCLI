@@ -480,11 +480,9 @@ export function refreshEntries(onDataChanged?: () => void) {
   void configPromise;
 }
 
-// Initialize config from cache on module load.
-const cachedConfig = loadCachedConfig();
-if (cachedConfig) {
-  useStore.getState().setConfig(cachedConfig);
-}
+// Configuration saves require the revision returned by a live server response.
+// A cached summary is useful only for display and can be stale by the time a
+// user opens this page, so it must never initialize the mutable config state.
 
 // ─── Sync actions ────────────────────────────────────────────────────────────
 

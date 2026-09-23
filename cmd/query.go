@@ -40,8 +40,6 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	all := queryServices == "all"
 
 	runtime, err := runtimeapp.LoadRuntime(runtimeapp.RuntimeOptions{
-		CaddyServerIP:     runtimeapp.DefaultCaddyServerIP,
-		CaddyServerPort:   runtimeapp.DefaultCaddyServerPort,
 		IncludeUnbound:    all || want["unbound"],
 		IncludeDNSMasq:    false,
 		IncludeAdguard:    all || want["adguard"],

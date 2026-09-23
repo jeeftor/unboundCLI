@@ -51,10 +51,10 @@ Keyboard shortcuts:
 func init() {
 	rootCmd.AddCommand(tuiCmd)
 
-	tuiCmd.Flags().StringVar(&tuiCaddyServerIP, "caddy-server-ip", runtimeapp.DefaultCaddyServerIP,
-		"IP address of the Caddy server (source of truth)")
-	tuiCmd.Flags().IntVar(&tuiCaddyServerPort, "caddy-server-port", runtimeapp.DefaultCaddyServerPort,
-		"Port number for Caddy admin API")
+	tuiCmd.Flags().StringVar(&tuiCaddyServerIP, "caddy-server-ip", "",
+		"Caddy server IP (defaults to selected config)")
+	tuiCmd.Flags().IntVar(&tuiCaddyServerPort, "caddy-server-port", 0,
+		"Caddy admin API port (defaults to selected config)")
 }
 
 func runTUI(cmd *cobra.Command, args []string) error {

@@ -44,7 +44,7 @@ func TestNewRuntimeFromConfigsBuildsCoreClientsWithDefaults(t *testing.T) {
 
 func TestLoadRuntimeUsesExplicitSelectedConfigFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "selected.json")
-	data := []byte(`{"api_key":"selected-key","api_secret":"selected-secret","base_url":"https://selected.example.test","caddy":{"server_ip":"10.10.0.8","server_port":2022}}`)
+	data := []byte(`{"api_key":"selected-key","api_secret":"selected-secret","base_url":"https://selected.example.test","caddy":{"server_ip":"10.10.0.8","server_port":2022,"admin_host":"caddy-admin.example.test"}}`)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatalf("write selected config: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestLoadRuntimeUsesExplicitSelectedConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load runtime: %v", err)
 	}
-	if runtime.Clients.Unbound == nil || runtime.CaddyEndpoint.ServerIP != "10.10.0.8" || runtime.CaddyEndpoint.ServerPort != 2022 {
+	if runtime.Clients.Unbound == nil || runtime.CaddyEndpoint.ServerIP != "10.10.0.8" || runtime.CaddyEndpoint.ServerPort != 2022 || runtime.CaddyEndpoint.AdminHost != "caddy-admin.example.test" {
 		t.Fatalf("runtime did not use selected file: %#v", runtime)
 	}
 }

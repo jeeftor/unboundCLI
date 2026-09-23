@@ -32,12 +32,11 @@ func (o *SyncOptions) Validate() error {
 	return nil
 }
 
-// DefaultSyncOptions returns sync options with default values
+// DefaultSyncOptions returns sync options whose endpoint is resolved by the
+// shared runtime from the selected config file or built-in fallback.
 func DefaultSyncOptions() *SyncOptions {
 	return &SyncOptions{
 		DryRun:           false,
-		CaddyServerIP:    "10.0.0.15",
-		CaddyServerPort:  2019,
 		EntryDescription: app.CurrentUnboundDescription,
 		Verbose:          false,
 		UnboundOnly:      false,

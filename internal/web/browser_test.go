@@ -26,6 +26,12 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if os.Getenv("CADDY_DNS_SYNC_BROWSER_TESTS") != "1" && os.Getenv("UNBOUNDCLI_BROWSER_TESTS") != "1" {
 		t.Skip("set CADDY_DNS_SYNC_BROWSER_TESTS=1 to run browser smoke checks")
 	}
+	for _, name := range []string{
+		config.EnvAPIKey, config.EnvAPISecret, config.EnvBaseURL, config.EnvInsecure,
+		config.EnvAPIKeyDeprecated, config.EnvAPISecretDeprecated, config.EnvBaseURLDeprecated, config.EnvInsecureDeprecated,
+	} {
+		t.Setenv(name, "")
+	}
 
 	chromePath := chromeHeadlessShellPath(t)
 	caddy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -238,7 +244,9 @@ func TestBrowserSmokeWithFakeData(t *testing.T) {
 	if err := json.Unmarshal(savedData, &savedConfig); err != nil {
 		t.Fatalf("failed to decode browser-saved config: %v", err)
 	}
-	if savedConfig.BaseURL != "https://saved.example.test" || savedConfig.APIKey != "saved-key" || savedConfig.APISecret != "fixture-browser-secret" {
+	// The browser fixture starts with no config file. A blank secret must not
+	// copy the runtime-only secret into this new file.
+	if savedConfig.BaseURL != "https://saved.example.test" || savedConfig.APIKey != "saved-key" || savedConfig.APISecret != "" {
 		t.Fatalf("unexpected browser-saved OPNSense config: %#v", savedConfig.Config)
 	}
 }

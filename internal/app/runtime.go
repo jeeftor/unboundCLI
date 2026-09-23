@@ -98,6 +98,9 @@ func LoadRuntime(options RuntimeOptions) (*Runtime, error) {
 	if options.CaddyAdminHost == "" {
 		options.CaddyAdminHost = effective.Caddy.AdminHost
 	}
+	if options.CaddyAdminHost == "" {
+		options.CaddyAdminHost = effective.Caddy.AdminHost
+	}
 
 	return NewRuntimeFromConfigs(unboundConfig, adguardConfig, cloudflareConfig, authentikConfig, options)
 }

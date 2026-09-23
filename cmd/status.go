@@ -265,8 +265,8 @@ func statusRenderCF(cf models.CloudflareStatus) string {
 func init() {
 	rootCmd.AddCommand(statusCmd)
 
-	statusCmd.Flags().StringVar(&statusCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "IP address of the Caddy server")
-	statusCmd.Flags().IntVar(&statusCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Admin port of the Caddy server")
+	statusCmd.Flags().StringVar(&statusCaddyServerIP, "caddy-ip", "", "Caddy server IP (defaults to selected config)")
+	statusCmd.Flags().IntVar(&statusCaddyServerPort, "caddy-port", 0, "Caddy admin API port (defaults to selected config)")
 	statusCmd.Flags().BoolVar(&statusIssuesOnly, "issues-only", false, "Show only entries with issues")
 	statusCmd.Flags().StringVar(&statusHostnameFilter, "hostname", "", "Filter by hostname (partial match)")
 	statusCmd.Flags().BoolVar(&statusCompact, "compact", false, "Show one-line summary only")

@@ -97,6 +97,11 @@ func buildSyncOptions() *sync.SyncOptions {
 	return opts
 }
 
+func applyRuntimeEndpoint(opts *sync.SyncOptions, runtime *runtimeapp.Runtime) {
+	opts.CaddyServerIP = runtime.CaddyEndpoint.ServerIP
+	opts.CaddyServerPort = runtime.CaddyEndpoint.ServerPort
+}
+
 func runSyncAll(cmd *cobra.Command, args []string) error {
 	// Validate flag combinations
 	if syncUnboundOnly && syncAdguardOnly {
@@ -124,6 +129,7 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 		logging.Error("Error loading sync runtime", "error", err)
 		return fmt.Errorf("error loading sync runtime: %w", err)
 	}
+	applyRuntimeEndpoint(opts, runtime)
 
 	// Check what systems we'll sync to
 	syncToUnbound := !syncAdguardOnly
@@ -210,6 +216,7 @@ func runSyncUnbound(cmd *cobra.Command, args []string) error {
 		logging.Error("Error loading configuration", "error", err)
 		return fmt.Errorf("error loading configuration: %w\nPlease run 'config' command to set up API access", err)
 	}
+	applyRuntimeEndpoint(opts, runtime)
 
 	// Create executor
 	executor := sync.NewSyncExecutor(opts)
@@ -275,6 +282,7 @@ func runSyncAdguard(cmd *cobra.Command, args []string) error {
 		logging.Error("Error loading AdguardHome runtime", "error", err)
 		return fmt.Errorf("error loading AdguardHome runtime: %w", err)
 	}
+	applyRuntimeEndpoint(opts, runtime)
 
 	// Create executor
 	executor := sync.NewSyncExecutor(opts)
@@ -352,8 +360,8 @@ func init() {
 
 	// Shared flags for all sync commands
 	syncCmd.PersistentFlags().BoolVar(&syncDryRun, "dry-run", false, "Show what would be changed without applying")
-	syncCmd.PersistentFlags().StringVar(&syncCaddyServerIP, "caddy-ip", runtimeapp.DefaultCaddyServerIP, "Caddy server IP")
-	syncCmd.PersistentFlags().IntVar(&syncCaddyServerPort, "caddy-port", runtimeapp.DefaultCaddyServerPort, "Caddy admin API port")
+	syncCmd.PersistentFlags().StringVar(&syncCaddyServerIP, "caddy-ip", "", "Caddy server IP (defaults to selected config)")
+	syncCmd.PersistentFlags().IntVar(&syncCaddyServerPort, "caddy-port", 0, "Caddy admin API port (defaults to selected config)")
 	syncCmd.PersistentFlags().StringVar(&syncEntryDescription, "description", runtimeapp.CurrentUnboundDescription, "Description for DNS entries")
 	syncCmd.PersistentFlags().StringVar(&syncLegacyDescriptions, "legacy-desc", "Entry created by unboundCLI caddy-sync-all,Entry created by unboundCLI sync,Entry created by unboundCLI caddy-sync-unbound,Entry created by unboundCLI caddy-sync-cloudflare,Entry created by CaddySync,Route via Caddy", "Comma-separated legacy descriptions")
 	syncCmd.PersistentFlags().BoolVar(&syncPrompt, "prompt", false, "Prompt before each API call")
