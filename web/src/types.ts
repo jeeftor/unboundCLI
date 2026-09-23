@@ -269,3 +269,6 @@ export type PruneResponse = {
   total: number;
   actions: PruneAction[];
 };
+
+export type OwnershipCandidate = { id: string; kind: string; current: string };
+export type OwnershipAdoptionPreview = { preview_id: string; candidates: OwnershipCandidate[] };

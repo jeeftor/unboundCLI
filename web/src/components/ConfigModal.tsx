@@ -16,8 +16,9 @@ import {
 } from '../lib/services';
 import { Field } from './InlineProgress';
 import type { ConfigResponse, ConfigServiceSummary, ServiceKey } from '../types';
+import { OwnershipPanel } from './OwnershipPanel';
 
-type ConfigTab = ServiceKey | 'caddy-editor';
+type ConfigTab = ServiceKey | 'caddy-editor' | 'ownership';
 
 const configTabLabels: Record<ConfigTab, string> = {
   caddy:        'Caddy',
@@ -26,9 +27,10 @@ const configTabLabels: Record<ConfigTab, string> = {
   dhcp:         'DHCP',
   cloudflare:   'Cloudflare',
   'caddy-editor': 'File Editor',
+	ownership: 'Ownership',
 };
 
-const configTabOrder: ConfigTab[] = ['caddy', 'unbound', 'adguard', 'dhcp', 'cloudflare', 'caddy-editor'];
+const configTabOrder: ConfigTab[] = ['caddy', 'unbound', 'adguard', 'dhcp', 'cloudflare', 'ownership', 'caddy-editor'];
 
 export function ConfigModal({
   open,
@@ -131,7 +133,7 @@ function ConfigWorkspace(props: {
         ))}
       </div>
       <div className="cfg-tab-content">
-        {activeTab === 'caddy-editor' ? (
+        {activeTab === 'ownership' ? <OwnershipPanel mutationEnabled={props.mutationEnabled} /> : activeTab === 'caddy-editor' ? (
           <CaddyEditorSetupPanel
             form={props.forms.caddyEditor}
             savedForm={props.savedForms.caddyEditor}

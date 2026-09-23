@@ -10,6 +10,7 @@ import type {
   ConfigTestResponse,
   EntriesResponse,
   PlanResponse,
+	OwnershipAdoptionPreview,
   PruneResponse,
   ServiceKey,
   SyncAction
@@ -132,4 +133,9 @@ export const api = {
   // Diagnostics
   diagnosticsPrune: (payload: { dry_run: boolean; hostname?: string; hostnames?: string[] }) =>
     postJSON<PruneResponse>('/api/diagnostics/prune', payload),
+
+  ownershipPreview: (provider: 'adguard' | 'cloudflare') =>
+    getJSON<OwnershipAdoptionPreview>(`/api/ownership/adoption?provider=${provider}`),
+  ownershipAdopt: (previewID: string, ids: string[]) =>
+    postJSON<{ adopted: number }>('/api/ownership/adoption', { preview_id: previewID, ids }),
 };

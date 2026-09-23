@@ -99,6 +99,15 @@
   min-height: 0;
 }
 
+.ownership-panel { display: grid; gap: 14px; max-width: 860px; }
+.ownership-panel header { display: grid; gap: 3px; }
+.ownership-panel header span, .ownership-panel p { color: var(--text-2); font-size: 12px; margin: 0; }
+.ownership-controls { display: flex; gap: 10px; align-items: center; }
+.ownership-candidates { display: grid; gap: 8px; }
+.ownership-candidates label { display: grid; grid-template-columns: auto 90px minmax(0, 1fr); gap: 8px; align-items: start; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.ownership-candidates code, .ownership-candidates small { grid-column: 3; overflow-wrap: anywhere; }
+.ownership-candidates small { color: var(--text-2); }
+
 .config-overview {
   display: flex;
   align-items: center;
