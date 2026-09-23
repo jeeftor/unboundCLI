@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### <!-- 0 -->🚀 Features
 
+- add ownership adoption interface ([0f26fc9](0f26fc9c5f753ab1e76ba6e529bfd186e91f8630))
+
 - add cloudflare ownership adoption ([83c7d96](83c7d96655e9f263b293c7b2abaa777812873aa4))
 
 - retain cloudflare DNS identity in inventory ([7d47585](7d47585413684510eaede600e918971c54152c4e))
@@ -72,6 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### <!-- 3 -->📚 Documentation
+
+- update changelog ([4cdd612](4cdd612134c2d7cf4e5dd606b01f3dfb6bec18e2))
 
 - update changelog ([b19d397](b19d3970682f2825ad4f1af6c7c9cee98095fba6))
 
