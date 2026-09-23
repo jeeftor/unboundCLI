@@ -168,8 +168,9 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 			},
 		},
 	}, Options{
-		Service:         "cloudflare",
-		CaddyServiceURL: "http://10.0.0.15:80",
+		Service:            "cloudflare",
+		CaddyServiceURL:    "http://10.0.0.15:80",
+		CloudflareTunnelID: "tunnel-default",
 	})
 
 	if len(actions) != 3 {
@@ -182,6 +183,7 @@ func TestPlanFromEntriesCreatesCloudflareAddUpdateAndDeleteActions(t *testing.T)
 		NewService:           "https://10.0.0.15",
 		NewHTTPHostHeader:    "missing.example.com",
 		OriginServerName:     "missing.example.com",
+		TunnelID:             "tunnel-default",
 		Details:              "missing in default Cloudflare tunnel",
 		Enabled:              true,
 		ManagedFields:        "service,http_host_header,origin_server_name",

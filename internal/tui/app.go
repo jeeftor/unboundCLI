@@ -591,14 +591,19 @@ func (m *AppModel) showSyncDialog() {
 	// Inject sync executor into dialog
 	m.syncDialog.SetSyncExecutor(executor.ExecuteSyncActions)
 
+	cloudflareTunnelID := ""
+	if m.cfClient != nil {
+		cloudflareTunnelID = m.cfClient.TunnelID()
+	}
+
 	// Check if any entries are selected
 	selectedEntries := m.tableWidget.GetSelectedEntries()
 	if len(selectedEntries) > 0 {
 		// Use selected entries
-		m.syncDialog.AddActionsFromEntries(selectedEntries, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil)
+		m.syncDialog.AddActionsFromEntries(selectedEntries, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil, cloudflareTunnelID)
 	} else {
 		// Use all entries if nothing selected
-		m.syncDialog.AddActionsFromEntries(m.entries, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil)
+		m.syncDialog.AddActionsFromEntries(m.entries, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil, cloudflareTunnelID)
 	}
 }
 
@@ -619,7 +624,11 @@ func (m *AppModel) showSingleEntrySync() {
 	m.syncDialog.SetSyncExecutor(executor.ExecuteSyncActions)
 
 	// Generate actions for just this entry
-	m.syncDialog.AddActionsFromEntries([]*models.Entry{entry}, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil)
+	cloudflareTunnelID := ""
+	if m.cfClient != nil {
+		cloudflareTunnelID = m.cfClient.TunnelID()
+	}
+	m.syncDialog.AddActionsFromEntries([]*models.Entry{entry}, "all", m.caddyServerIP, m.caddyServiceURL, m.cfClient != nil, cloudflareTunnelID)
 }
 
 // cycleFilter cycles through the available filters based on what data is present.

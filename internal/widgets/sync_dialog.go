@@ -762,16 +762,18 @@ func (w *SyncDialog) AddActionsFromEntries(
 	caddyServerIP string,
 	caddyServiceURL string,
 	includeCloudflare bool,
+	cloudflareTunnelID string,
 ) {
 	w.caddyServerIP = caddyServerIP
 	// Reset the dialog state first to clear any previous actions
 	w.Reset()
 
 	actions := syncplan.PlanFromEntries(entries, syncplan.Options{
-		Service:           service,
-		CaddyServerIP:     caddyServerIP,
-		CaddyServiceURL:   caddyServiceURL,
-		IncludeCloudflare: includeCloudflare,
+		Service:            service,
+		CaddyServerIP:      caddyServerIP,
+		CaddyServiceURL:    caddyServiceURL,
+		IncludeCloudflare:  includeCloudflare,
+		CloudflareTunnelID: cloudflareTunnelID,
 	})
 
 	// Store actions (all enabled by default)

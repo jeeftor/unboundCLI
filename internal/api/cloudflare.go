@@ -39,6 +39,12 @@ func (c *CloudflareClient) WithContext(ctx context.Context) *CloudflareClient {
 	}
 }
 
+// TunnelID returns the configured default tunnel identity used for planned
+// ingress mutations. It is an ID, not a hostname-derived selection.
+func (c *CloudflareClient) TunnelID() string {
+	return c.tunnelID
+}
+
 // getCtx returns the client's context, falling back to context.Background().
 func (c *CloudflareClient) getCtx() context.Context {
 	if c.ctx != nil {
